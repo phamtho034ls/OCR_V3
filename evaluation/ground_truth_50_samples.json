@@ -1,0 +1,6452 @@
+[
+  {
+    "stt": 1,
+    "source_file": "Tờ 1\\thửa 22\\Cao Thị Phương Hiền\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "1",
+      "so_thua": "22",
+      "ten_chu_thu_muc": "Cao Thị Phương Hiền",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 1\\thửa 22\\Cao Thị Phương Hiền\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BL 230421",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH.00.106,D Km",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Cao Thị Phương Hiền",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1961",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "b)",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "22",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "1",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Hải Phòng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "dien_tich_rieng": {
+        "value": "43.9",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "25/03/2012",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho bà Cao Thị Phương Hiền, CCCD",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 2,
+    "source_file": "Tờ 2\\THửa 163\\Nguyễn Văn Chung\\2023-10-09-10-18-03-01.signed.pdf",
+    "folder_meta": {
+      "to_ban_do": "2",
+      "so_thua": "163",
+      "ten_chu_thu_muc": "Nguyễn Văn Chung",
+      "pdf_name": "2023-10-09-10-18-03-01.signed.pdf",
+      "relative_path": "Tờ 2\\THửa 163\\Nguyễn Văn Chung\\2023-10-09-10-18-03-01.signed.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": null,
+        "status": "missing"
+      },
+      "so_vao_so": {
+        "value": "CH00.H6.5",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Văn Chung",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": null,
+        "status": "missing"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "163",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "2",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 29/115 Dư Hàng, phường Dư Hàng, quận Lê Chân, Nghệ An",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "29.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "8",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng chung",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUẬN LÊ CHÂN THUẬN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 3,
+    "source_file": "Tờ 2\\THửa 163\\Nguyễn Văn chung (thừa kế)\\2023-12-11-16-55-06-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "2",
+      "so_thua": "163",
+      "ten_chu_thu_muc": "Nguyễn Văn chung (thừa kế)",
+      "pdf_name": "2023-12-11-16-55-06-01.pdf",
+      "relative_path": "Tờ 2\\THửa 163\\Nguyễn Văn chung (thừa kế)\\2023-12-11-16-55-06-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DM 483137",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH00.H6.5",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Văn Chung (thừa Kế)",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031067015881",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1967",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 29/115 Dư Hàng, phường Dư Hàng, quận Lê Chân thành phố hải phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "163",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "2",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 29/115 Dư Hàng, phường Dư Hàng, quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "29.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "8",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng chung",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUẬN LÊ CHÂN THỊ",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": "06/10/2023",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Để thừa kế, tặng cho ông Nguyễn Văn Chung, CCCD số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 4,
+    "source_file": "Tờ 2\\Thửa 17\\Đỗ Minh Châu\\2024-07-31-12-06-02-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "2",
+      "so_thua": "17",
+      "ten_chu_thu_muc": "Đỗ Minh Châu",
+      "pdf_name": "2024-07-31-12-06-02-01.pdf",
+      "relative_path": "Tờ 2\\Thửa 17\\Đỗ Minh Châu\\2024-07-31-12-06-02-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DP 528411",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CN 006 01",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Đỗ Minh Châu",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "001192006656",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1992",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 32/28 An Da, phung Lach Tray, quan Ngo Quyen,",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "17",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "2",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 145 Dư Hàng, phường Dư Hàng, quận Lê Chân, thành phố Hải Phòng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "34.5",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "34.5",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": null,
+        "status": "missing"
+      },
+      "noi_cap": {
+        "value": "CHI NHÁNH VĂN PHÒNG ĐĂNG KÝ ĐẤT ĐAI QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": "31/07/2024",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Lê Châu",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:2000",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "có thẩm quyền",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 5,
+    "source_file": "Tờ 2\\Thửa 181\\Quách Văn Thuận\\GCN.signed.pdf",
+    "folder_meta": {
+      "to_ban_do": "2",
+      "so_thua": "181",
+      "ten_chu_thu_muc": "Quách Văn Thuận",
+      "pdf_name": "GCN.signed.pdf",
+      "relative_path": "Tờ 2\\Thửa 181\\Quách Văn Thuận\\GCN.signed.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DO 163231",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CHOD.57.7",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Quách Văn Thuận",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031057002146",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1957",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": "Phạm Thị Hoan",
+        "status": "value"
+      },
+      "cccd_chu_2": {
+        "value": "031158002257",
+        "status": "value"
+      },
+      "nam_sinh_chu_2": {
+        "value": "1958",
+        "status": "value"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 28/30 Chợ Cột Đèn, phường Dư Hàng, quận Lê Chân thành phố hải phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "181",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "2",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 28/30 Chợ Cột Đèn, phường Dư Hàng, quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "92.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "92.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUẬN LÊ CHÂN THỊ",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 6,
+    "source_file": "Tờ 2\\Thửa 40\\Ngô Thị Chung\\GCN.signed.pdf",
+    "folder_meta": {
+      "to_ban_do": "2",
+      "so_thua": "40",
+      "ten_chu_thu_muc": "Ngô Thị Chung",
+      "pdf_name": "GCN.signed.pdf",
+      "relative_path": "Tờ 2\\Thửa 40\\Ngô Thị Chung\\GCN.signed.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DM 483195",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CHOV.466",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Ngô Thị Chung",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031148008467",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1948",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 3/2/125 Dư Hàng, phường Dư Hàng, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "40",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "2",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 3/2/125 Dư Hàng, phường Dư Hàng, quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "26.4",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "26.4",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. 1971 TM. Ủy ban nhân dân QUẬN LÊ CHÂN THỊ",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": "06/10/2023",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": null,
+        "status": "missing"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 7,
+    "source_file": "Tờ 2\\Thửa 66+68\\Đồng Mạnh Hùng\\2022-04-28-17-01-08-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "2",
+      "so_thua": "66",
+      "ten_chu_thu_muc": "Đồng Mạnh Hùng",
+      "pdf_name": "2022-04-28-17-01-08-01.pdf",
+      "relative_path": "Tờ 2\\Thửa 66+68\\Đồng Mạnh Hùng\\2022-04-28-17-01-08-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BH 318914",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": null,
+        "status": "missing"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Đồng Mạnh Hùng",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1952",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "b)",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "66",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "2",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 09/2/125 Dư Hàng - phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "32.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "32.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Choodio Idh",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho ông Đồng Mạnh Hùng, CCCC số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 8,
+    "source_file": "Tờ 2\\Thửa 84\\Mai Duy Kha\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "2",
+      "so_thua": "84",
+      "ten_chu_thu_muc": "Mai Duy Kha",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 2\\Thửa 84\\Mai Duy Kha\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BM 353417",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH.00/70.[.DH",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Mai Duy Kha",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1960",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": null,
+        "status": "missing"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "84",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "2",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 02/115 Dư Hàng - phường Dư Hàng - quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "48.3",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "48.3",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "14/12/2012",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho ông mai Duy Kha, CCCD số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 9,
+    "source_file": "Tờ 2\\thửa 77\\Lê Thị Yến\\2022-06-21-14-26-22-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "2",
+      "so_thua": "77",
+      "ten_chu_thu_muc": "Lê Thị Yến",
+      "pdf_name": "2022-06-21-14-26-22-01.pdf",
+      "relative_path": "Tờ 2\\thửa 77\\Lê Thị Yến\\2022-06-21-14-26-22-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BM 526766",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH.000.29.1.DH",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Lê Thị Yến",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1936",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "77",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "2",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 125 Dư Hàng - phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "107.5",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "107.5",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Một trăm linh bảy phẩy năm mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. KHU ĐẤT TRỐNG Ủy ban nhân dân PHƯỜNG ĐANG QUẢN LÝ",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 10,
+    "source_file": "Tờ 3\\Thửa 1032\\Nguyễn Văn Dũng\\2023-06-06-15-58-54-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "1032",
+      "ten_chu_thu_muc": "Nguyễn Văn Dũng",
+      "pdf_name": "2023-06-06-15-58-54-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 1032\\Nguyễn Văn Dũng\\2023-06-06-15-58-54-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "CY 630503",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": null,
+        "status": "missing"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Văn Dũng",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031088005299",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1988",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": "Nguyễn Thị Hiền",
+        "status": "value"
+      },
+      "cccd_chu_2": {
+        "value": "101217323",
+        "status": "value"
+      },
+      "nam_sinh_chu_2": {
+        "value": "1994",
+        "status": "value"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "tại: Số 8T2 CT4A8, phường Vạn Mỹ, quận Ngô Quyền thành phố hải phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "1032",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 8T2 CT4A8, phường Vạn Mỹ, quận Ngô Quyền",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "32.2",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "32.2",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "32,2m', (Bằng chữ: Ba mươi hai phầy hai mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Chi Nhành",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "quan có thẩm quyền",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 11,
+    "source_file": "Tờ 3\\Thửa 1061\\Hoàng Kỳ Thượng\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "1061",
+      "ten_chu_thu_muc": "Hoàng Kỳ Thượng",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 3\\Thửa 1061\\Hoàng Kỳ Thượng\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DI 804743",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH10D 377",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Hoàng Kỳ Thượng",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031078006605",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1978",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": "Trần Thị Phương Thảo",
+        "status": "value"
+      },
+      "cccd_chu_2": {
+        "value": "031178007589",
+        "status": "value"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "missing"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 05/145 Hai Bà Trưng, phường An Biên, quận Lê Chân thành phố hải phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "1061",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 11/34/51 Dư Hàng, phường Dư Hàng, quận Lê Chân,",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "23.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "23.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở đô thì",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "19/12/2022",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 12,
+    "source_file": "Tờ 3\\Thửa 1068\\Nguyễn Thị Thu Hà\\2022-12-08-11-29-03-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "1068",
+      "ten_chu_thu_muc": "Nguyễn Thị Thu Hà",
+      "pdf_name": "2022-12-08-11-29-03-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 1068\\Nguyễn Thị Thu Hà\\2022-12-08-11-29-03-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DG 746715",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH.OD 3:36",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Thị Thu Hà",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031181007881",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1981",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Thôn Tân Phú, xã Sơn Đông, thị xã Sơn Tây, thành phố Hà Nội",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "1068",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Thôn Tân Phú, xã Sơn Đông, thị xã Sơn Tây, thành phố Hà Nội",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "30.3",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "30.3",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng chung",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUẬN LÊ CHÂN THUY",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Thừa kế, tặng cho bà nguyễn Thị Thu Hà, CCCC số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 13,
+    "source_file": "Tờ 3\\Thửa 1265\\Hoàng Kiều Trang\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "1265",
+      "ten_chu_thu_muc": "Hoàng Kiều Trang",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 3\\Thửa 1265\\Hoàng Kiều Trang\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BĐ 101397",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CN.001",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Hoàng Kiều Trang",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1982",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "b)",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "1265",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 10A/30/199 Tô Hiệu - phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "dien_tich_rieng": {
+        "value": "39.60",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Ba mươi chín phẩy sáu mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Xác nhận của cơ quan có thẩm quyên",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 14,
+    "source_file": "Tờ 3\\Thửa 1284 (tách từ 980)\\Đoàn quốc tiến (đồng thua kế\\2023-08-23-15-44-43-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "1284",
+      "ten_chu_thu_muc": "Đoàn quốc tiến (đồng thua kế",
+      "pdf_name": "2023-08-23-15-44-43-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 1284 (tách từ 980)\\Đoàn quốc tiến (đồng thua kế\\2023-08-23-15-44-43-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "XL 188000",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH000.31",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Đoàn Quốc Tiến (đồng Thua Kế",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1970",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 17 Phố Chợ Cột Đèn, phường Dư Hàng, quận Lê Chân,",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "1284",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 17 Phố Chợ Cột Đèn, phường Dư Hàng, quận Lê Chân,",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "112.4",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "112.4",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "112,4m\", (Bằng chữ: Một trăm mười hai phẩy bốn mét vuông);\"",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng chung",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUẬN LÊ CHÂN THỊ",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": "24/04/2020",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Phần diện tích nhà 51,5 m? nhận thừa kế, tặng cho ông Đoàn Quốc Tiến",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 15,
+    "source_file": "Tờ 3\\Thửa 1285\\Đoàn Quốc tiến\\2023-08-23-15-43-02-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "1285",
+      "ten_chu_thu_muc": "Đoàn Quốc tiến",
+      "pdf_name": "2023-08-23-15-43-02-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 1285\\Đoàn Quốc tiến\\2023-08-23-15-43-02-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DL 694865",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CN 004 57",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Đoàn Quốc Tiến",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031070002060",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1970",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 17 Chợ Cột Đên, phường Dư Hàng, quận Lê Chân, thành phố Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "1285",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 17 Chợ Cột Đên, phường Dư Hàng, quận Lê Chân, Hải Phòng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "51.5",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "60.9",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "CHI NHÁNH VĂN PHÒNG ĐĂNG KÝ ĐẤT ĐAI QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": "17/08/2023",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": null,
+        "status": "missing"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "1. THÔNG TIN VỀ NGƯỜI NỘP THUẾ THUẾ 1. Tên người nộp thuế: Đoàn Quốc Tiến 2. Mã số thuế: 8077751483 3. Địa chi: Dư Hàng 4. Điện thoại",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 16,
+    "source_file": "Tờ 3\\Thửa 1287\\Trần Thị Thu\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "1287",
+      "ten_chu_thu_muc": "Trần Thị Thu",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 3\\Thửa 1287\\Trần Thị Thu\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DN 451775",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CN 00498",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Trần Thị Thu",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031187024564",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1987",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 88 Dư Hàng, phường Dư Hàng, quận Lê Chân, thành phố Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "1287",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 88 Dư Hàng, phường Dư Hàng, quận Lê Chân, Hải Phòng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "87.4",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "87.4",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "CHI NHÁNH VĂN PHÒNG ĐĂNG KÝ ĐẤT ĐAI QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Phạm Thị Tuyết",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 17,
+    "source_file": "Tờ 3\\Thửa 133\\Nguyễn Văn Huy\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "133",
+      "ten_chu_thu_muc": "Nguyễn Văn Huy",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 3\\Thửa 133\\Nguyễn Văn Huy\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": null,
+        "status": "missing"
+      },
+      "so_vao_so": {
+        "value": "CH000.14.5",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Văn Huy",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1932",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 26/274 Hàng Kênh, phường Hàng Kênh, quận Lê Chân, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "133",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "03.03.0 Chân; tờ bản đồ số: 03,",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "32.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "32.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "32,0m. (Bằng chữ: Ba mươi hai mét vuông",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đải ở đồ thị;",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ONT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "UV OT 15X PUN SUOC UOU M MO EP.0-1610780150",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "3. Công trình xây dựng khác: -l- 4. Rừng sản xuất là rừng trồng: -) 5. Cây lâu năm: -1",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "27/10/2016",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho bà nguyễn thị nhàn, CCCD sổ",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 18,
+    "source_file": "Tờ 3\\Thửa 17\\Nguyễn Thị Vân\\2022-12-07-10-25-13-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "17",
+      "ten_chu_thu_muc": "Nguyễn Thị Vân",
+      "pdf_name": "2022-12-07-10-25-13-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 17\\Nguyễn Thị Vân\\2022-12-07-10-25-13-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DI 804638",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": null,
+        "status": "missing"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Thị Vân",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031160014191",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1960",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 95/202 Miếu Hai Xã, phường Dư Hàng Kênh, quận Lê Chân, thành phố Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "17",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 95/202 Miếu Hai Xã, phường Dư Hàng Kênh, quận Lê Chân,",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "29.4",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "29.4",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "SỞ TÀI NGUYÊN VÀ MÔI TRƯỜNG THÀNH PHỐ HẢI PHÒNG",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Tài Nó Ưu",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Xác nhận của cơ quan Nội dung thay đổi và cơ sở pháp lý có thẩm quyên",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 19,
+    "source_file": "Tờ 3\\Thửa 242\\Hoàng Lại Quang\\2023-06-28-11-39-05-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "242",
+      "ten_chu_thu_muc": "Hoàng Lại Quang",
+      "pdf_name": "2023-06-28-11-39-05-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 242\\Hoàng Lại Quang\\2023-06-28-11-39-05-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": null,
+        "status": "missing"
+      },
+      "so_vao_so": {
+        "value": "CHQ 436",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Hoàng Lại Quang",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031160016751",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1960",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": null,
+        "status": "missing"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "242",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 28/30/199 Tô Hiệu, phường Dư Hàng, quận Lê Chân,",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "35.1",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "35.1",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUẬN LÊ CHÂN THỊ",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 20,
+    "source_file": "Tờ 3\\Thửa 258\\Trần Thúy Hiền\\2022-04-13-15-03-52-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "258",
+      "ten_chu_thu_muc": "Trần Thúy Hiền",
+      "pdf_name": "2022-04-13-15-03-52-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 258\\Trần Thúy Hiền\\2022-04-13-15-03-52-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "CY 630465",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CHOOM2",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Trần Thúy Hiền",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031057001",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1957",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "tại: Số 13/3/227 Lê Thánh Tông, phường Máy Chai, quận ngô quyền, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "258",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 13/3/227 Lê Thánh Tông, phường Máy Chai,",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "56.5",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "1.12",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "56,5m\", (Bằng chữ: Năm mươi sáu phấy năm mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "01/12/2021",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Tặng cho ông Trần Nguyên Ngọc, CCCCD số 031057001 120",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 21,
+    "source_file": "Tờ 3\\Thửa 464\\Trần Thị Hải Hà\\2023-11-20-16-59-05-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "464",
+      "ten_chu_thu_muc": "Trần Thị Hải Hà",
+      "pdf_name": "2023-11-20-16-59-05-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 464\\Trần Thị Hải Hà\\2023-11-20-16-59-05-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "CO 713984",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "Lt.0DD39",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Trần Thị Hải Hà",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1959",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 15/62 Dư Hàng, phường Dư Hàng, quận Lê Chân, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "464",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 15/62 Dư Hàng, phường Dư Hàng, quận Lê Chân, Hà Nội",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "28.25",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "28.25",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Hai mươi tám phẩy hai mươi lăm mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "22/03/2019",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Phạm Văn Tân",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Để thừa kế, được tặng cho ông hà mạnh Dũng, CCCCD",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 22,
+    "source_file": "Tờ 3\\Thửa 508\\Nguyễn Thị Bích\\2022-07-15-10-45-08-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "508",
+      "ten_chu_thu_muc": "Nguyễn Thị Bích",
+      "pdf_name": "2022-07-15-10-45-08-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 508\\Nguyễn Thị Bích\\2022-07-15-10-45-08-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DG 746448",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CS.003",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Thị Bích",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031171003568",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1971",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 55/2/47 Trần Nguyên Hãn, phường Trần Nguyên Hãn quận lê chân, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "508",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 55/2/47 Trần Nguyên Hãn, phường Trần Nguyên Hãn",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "56.2",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "56.2",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "56,2m\", (bằng chữ: Năm mươi sáu phầy hai mét vuông);\"",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "THỊ SỞ TÀI NGUYÊN VÀ MÔI TRƯỜNG THÀNH PHỐ HẢI PHÒNG THÁI",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Tài Nguyên",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 23,
+    "source_file": "Tờ 3\\Thửa 650\\Phạm Văn Quý\\2024-03-06-18-01-33-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "650",
+      "ten_chu_thu_muc": "Phạm Văn Quý",
+      "pdf_name": "2024-03-06-18-01-33-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 650\\Phạm Văn Quý\\2024-03-06-18-01-33-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BH 216037",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH.00.121.IDH",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Phạm Văn Quý",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031183005268",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1981",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": null,
+        "status": "missing"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "650",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 03/44 Dư Hàng - phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "58.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "58.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Năm mươi tám mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Phạm Thị Xuyết",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho ông Phạm Văn Quý, CCCD số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 24,
+    "source_file": "Tờ 3\\Thửa 835\\Nguyễn Hùng Vương\\2024-01-10-07-43-19-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "835",
+      "ten_chu_thu_muc": "Nguyễn Hùng Vương",
+      "pdf_name": "2024-01-10-07-43-19-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 835\\Nguyễn Hùng Vương\\2024-01-10-07-43-19-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BS 453256",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "(HT.0D.14.5 (04",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Hùng Vương",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1966",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "835",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 18/77 Dư Hàng - phường Dư Hàng - quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "34.7",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "34.7",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Ba mươi tư phẩy bẩy mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Xác nhận của cơ quan",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 25,
+    "source_file": "Tờ 3\\Thửa 942\\Ngô Thị Thuỷ\\2022-10-05-09-07-24-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "942",
+      "ten_chu_thu_muc": "Ngô Thị Thuỷ",
+      "pdf_name": "2022-10-05-09-07-24-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 942\\Ngô Thị Thuỷ\\2022-10-05-09-07-24-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BM 353163",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH.00.15.1.IDH",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Ngô Thị Thuỷ",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1950",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "b)",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "942",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 45 Dư Hàng - phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "92.5",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "92.5",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Chín mươi hai phẩy năm mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 26,
+    "source_file": "Tờ 3\\Thửa 962\\Vũ Hoàng Trường Bùi Thị Thanh Huyền\\2022-12-07-11-35-36-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "962",
+      "ten_chu_thu_muc": "Vũ Hoàng Trường Bùi Thị Thanh Huyền",
+      "pdf_name": "2022-12-07-11-35-36-01.pdf",
+      "relative_path": "Tờ 3\\Thửa 962\\Vũ Hoàng Trường Bùi Thị Thanh Huyền\\2022-12-07-11-35-36-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "CV 122137",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CS 000091",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Vũ Hoàng Trường Bùi Thị Thanh Huyền",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1980",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 32/136 Phạm Hữu Điều, phường Niệm Nghĩa, Nam Xã quận Lê Chân, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "962",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 32/136 Phạm Hữu Điều, phường Niệm Nghĩa, Hà Nam",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "26.7",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "26.7",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Năm sinh: 1980; CCCD số: 031 180 007 362 Thuật Địa chỉ thường trú: Số 32/136 Phạm Hữu Điều, phường Niệm Nghĩa, Nam Xã quận Lê Chân, thành phố Hải Phòng Nam",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "THUYỀN SỞ TÀI NGUYÊN VÀ MÔI TRƯỜNG THÀNH PHỐ HẢI PHÒNG",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Tài Nguyên",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 27,
+    "source_file": "Tờ 3\\thua 938\\Đỗ Thuỳ Dung\\G.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "938",
+      "ten_chu_thu_muc": "Đỗ Thuỳ Dung",
+      "pdf_name": "G.pdf",
+      "relative_path": "Tờ 3\\thua 938\\Đỗ Thuỳ Dung\\G.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BS 364940",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "OH 00166./DH",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Đỗ Thuỳ Dung",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1954",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "938",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 6/51 Dư Hàng - phường Dư Hàng - quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "28.6",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "28.6",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Hai mươi tám phẩy sáu mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "THUY UOS ẤN UỘUL TÀI 140 EIP 'ST9T10961990 GS",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "30/10/2014",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Ngày 29/9/2017: Chuyển nhượng cho bà Bùi Khánh Thuật",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 28,
+    "source_file": "Tờ 3\\thửa 1223\\Đỗ Tuấn Nghĩa\\2023-04-26-14-56-30-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "1223",
+      "ten_chu_thu_muc": "Đỗ Tuấn Nghĩa",
+      "pdf_name": "2023-04-26-14-56-30-01.pdf",
+      "relative_path": "Tờ 3\\thửa 1223\\Đỗ Tuấn Nghĩa\\2023-04-26-14-56-30-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BM 526712",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CM.000.23/pm",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Đỗ Tuấn Nghĩa",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1975",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "b)",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "1223",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 14B/30/199 Tô Hiệu - phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "36.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "36.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Ba mươi sáu mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "11/03/2013",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "quan có thẩm quyền",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 29,
+    "source_file": "Tờ 3\\thửa 420\\Nguyễn Huy Anh\\Bìa.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "420",
+      "ten_chu_thu_muc": "Nguyễn Huy Anh",
+      "pdf_name": "Bìa.pdf",
+      "relative_path": "Tờ 3\\thửa 420\\Nguyễn Huy Anh\\Bìa.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "OS 000960",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": null,
+        "status": "missing"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Huy Anh",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "030690405",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1950",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 131/199 Tô Hiệu - phường Dư Hàng quận Lê Chân thành phố hải phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "420",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 71/25/199 (131/199 cũ) Tố Hiệu - phường Dư Hàng ? quận Lê (Tháng 19",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "64.6",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "64.6",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Sáu mươi tư phấy sáu mét vuông",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "09/12/1986",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Phạm Tiến Du",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 30,
+    "source_file": "Tờ 3\\thửa 429\\Nguyễn Phạm Quỳnh Anh\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "429",
+      "ten_chu_thu_muc": "Nguyễn Phạm Quỳnh Anh",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 3\\thửa 429\\Nguyễn Phạm Quỳnh Anh\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "CC 372512",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH00133.04",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Phạm Quỳnh Anh",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1963",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "NYHO 31 Hops qy 03yl ?Suqya \"BH oyd quẹy1 ?Sueg 3uộh uệnh Thuận NYNO MILL SUỌNYD 'UỆA ƯỚG LV/LT 9S : [40 EỊP 'L9S0981E0 1998) HNYHNONHOL \"cro7\"\"b\"\" 72 se3\" CNINI ' WEN IEH SƯỆCH SUỌ OỰI 8uỏnyu Uạányo Va Va",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "429",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 15/80 Dư Hàng - phường Dư Hàng ? quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "22.8",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "22.8",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Hai mươi hai phẩy tám mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Nhận chuyển nhượng",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 31,
+    "source_file": "Tờ 3\\thửa 642\\Nguyễn Thị Hồng\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "642",
+      "ten_chu_thu_muc": "Nguyễn Thị Hồng",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 3\\thửa 642\\Nguyễn Thị Hồng\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DN 555447",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CN OD530",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Thị Hồng",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "034155003523",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1955",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 143 Đình Tiên Hoàng, phường Hoàng Văn Thụ, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "642",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 143 Đình Tiên Hoàng, phường Hoàng Văn Thụ, quận Hồng Bàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "107.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "107.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "CHI NHÁNH VĂN PHÒNG ĐĂNG KÝ ĐẤT ĐAI QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Phạm Thị Tuyết",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 32,
+    "source_file": "Tờ 3\\thửa 689\\Phạm Thị Vân\\2023-10-03-14-37-12-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "3",
+      "so_thua": "689",
+      "ten_chu_thu_muc": "Phạm Thị Vân",
+      "pdf_name": "2023-10-03-14-37-12-01.pdf",
+      "relative_path": "Tờ 3\\thửa 689\\Phạm Thị Vân\\2023-10-03-14-37-12-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DL 694383",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CN00 428",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Phạm Thị Vân",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031162004831",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1962",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 20/186 Chúa Hàng, phường Hồ Nam, quận Lê Chân, thành phố Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "689",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "3",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 20/186 Chúa Hàng, phường Hồ Nam, quận Lê Chân, thành phố",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "38.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "38.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "CHI NHÁNH VĂN PHÒNG ĐĂNG KÝ ĐÁT ĐAI QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Lê Chấn",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 33,
+    "source_file": "Tờ 5\\Thửa 132\\Võ Thị Thanh Ngân\\gcn.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "132",
+      "ten_chu_thu_muc": "Võ Thị Thanh Ngân",
+      "pdf_name": "gcn.pdf",
+      "relative_path": "Tờ 5\\Thửa 132\\Võ Thị Thanh Ngân\\gcn.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BS 364750",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CHOOOT 3/DH",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Võ Thị Thanh Ngân",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031304000197",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1959",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": null,
+        "status": "missing"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "132",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 8 lô 86 khu tập thể Dư Hàng - phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "40.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "40.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Bón mươi mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Tặng cho bà Võ Thị Thanh Ngân, CCCD số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 34,
+    "source_file": "Tờ 5\\Thửa 135\\Nguyễn Tuấn Ngọc\\2022-04-12-15-38-46-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "135",
+      "ten_chu_thu_muc": "Nguyễn Tuấn Ngọc",
+      "pdf_name": "2022-04-12-15-38-46-01.pdf",
+      "relative_path": "Tờ 5\\Thửa 135\\Nguyễn Tuấn Ngọc\\2022-04-12-15-38-46-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DE 528062",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CS.00261",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Tuấn Ngọc",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031092016850",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1973",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 1 lô 88 công nhân Dư Hàng, phường Dư Hàng, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "135",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 1 lô 88 công nhân Dư Hàng, phường Dư Hàng, quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "52.5",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "52.5",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "SỞ TÀI NGUYÊN VÀ MÔI TRƯỜNG THÀNH PHỐ HẢI PHÒNG",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": "28/02/2022",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Tài Ngưyên",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Tặng cho ông nguyễn Tuấn Ngọc, CCCD số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 35,
+    "source_file": "Tờ 5\\Thửa 147\\Vũ ĐÌnh Hoàng\\2023-12-29-13-35-01-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "147",
+      "ten_chu_thu_muc": "Vũ ĐÌnh Hoàng",
+      "pdf_name": "2023-12-29-13-35-01-01.pdf",
+      "relative_path": "Tờ 5\\Thửa 147\\Vũ ĐÌnh Hoàng\\2023-12-29-13-35-01-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": null,
+        "status": "missing"
+      },
+      "so_vao_so": {
+        "value": "CN 00 514",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Vũ Đình Hoàng",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "034085016025",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1985",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 12A15 ĐNA",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "147",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 12A15 ĐNA",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "60.4",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "60.4",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "CHI NHÁNH VĂN PHÒNG ĐĂNG KÝ ĐẤT ĐAI QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Lê Chân",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": null,
+        "status": "not_applicable"
+      }
+    }
+  },
+  {
+    "stt": 36,
+    "source_file": "Tờ 5\\Thửa 242\\Trần Thị Hồng\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "242",
+      "ten_chu_thu_muc": "Trần Thị Hồng",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 5\\Thửa 242\\Trần Thị Hồng\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DP 750760",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CN12",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Trần Thị Hồng",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "035174000764",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1974",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": null,
+        "status": "missing"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "242",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 43/159 Chùa Hàng, Phường Dư Hàng, Quận Lê Chần, Hải Phòng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "33.6",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "33.6",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "CHI NHÁNH VĂN PHÒNG ĐĂNG KÝ ĐẤT ĐAI QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Lê Chây",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Giám Đốc",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "có thẩm quyền",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 37,
+    "source_file": "Tờ 5\\Thửa 275\\Lâm Thị Sinh\\2023-06-28-10-46-09-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "275",
+      "ten_chu_thu_muc": "Lâm Thị Sinh",
+      "pdf_name": "2023-06-28-10-46-09-01.pdf",
+      "relative_path": "Tờ 5\\Thửa 275\\Lâm Thị Sinh\\2023-06-28-10-46-09-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DL 694424",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CTT.OV4:55",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Lâm Thị Sinh",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031170018256",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1970",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Tổ 8, phường Vĩnh Niệm, quận Lê Chân thành phố hải phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "275",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Tổ 8, phường Vĩnh Niệm, quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "60.5",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "60.5",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng chung",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Xác nhận của cơ quan",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 38,
+    "source_file": "Tờ 5\\Thửa 390\\Đặng Thế Dũng\\2022-04-08-16-50-50-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "390",
+      "ten_chu_thu_muc": "Đặng Thế Dũng",
+      "pdf_name": "2022-04-08-16-50-50-01.pdf",
+      "relative_path": "Tờ 5\\Thửa 390\\Đặng Thế Dũng\\2022-04-08-16-50-50-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "CN 737281",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CN 737281",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Đặng Thế Dũng",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "030147246",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1980",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 164/52 Miếu Hai Xã, phường Dư Hàng, quận Lê Chân, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "390",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 164/52 Miếu Hai Xã, phường Dư Hàng, quận Lê Chân,",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "35.1",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "35.1",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Ba mươi năm phẩy một mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "11/12/2014",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Phạm Tiên Du",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho ông Đặng Thế Dũng, CMND số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 39,
+    "source_file": "Tờ 5\\Thửa 47\\Lưu Trung Quân\\2023-12-01-14-38-56-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "47",
+      "ten_chu_thu_muc": "Lưu Trung Quân",
+      "pdf_name": "2023-12-01-14-38-56-01.pdf",
+      "relative_path": "Tờ 5\\Thửa 47\\Lưu Trung Quân\\2023-12-01-14-38-56-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BĐ 101145",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": null,
+        "status": "missing"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Lưu Trung Quân",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1958",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "b)",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "47",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 86 Chợ Cột Đèn - phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "53.7",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "53.7",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Năm mươi ba phẩy bẩy mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Phạm Thị Cuyết",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Tặng cho ông Lưu Trung Quân, CCCD số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 40,
+    "source_file": "Tờ 5\\Thửa 540\\Trịnh Văn Hiếu\\2023-09-09-10-09-11-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "540",
+      "ten_chu_thu_muc": "Trịnh Văn Hiếu",
+      "pdf_name": "2023-09-09-10-09-11-01.pdf",
+      "relative_path": "Tờ 5\\Thửa 540\\Trịnh Văn Hiếu\\2023-09-09-10-09-11-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DL 694176",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CHOO.42A/DH",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Trịnh Văn Hiếu",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031082003033",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1982",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": "Vũ Thị Hoà",
+        "status": "value"
+      },
+      "cccd_chu_2": {
+        "value": "031888144",
+        "status": "value"
+      },
+      "nam_sinh_chu_2": {
+        "value": "1983",
+        "status": "value"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 18 Iô 114 công nhân Dư Hàng, phường Dư Hàng quận Lê Chân, thành phố Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "540",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 18 Iô 114 công nhân Dư Hàng, phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "27.1",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "27.1",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUÂN LÊ CHÂN THUẬN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": "09/05/2023",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Xác nhận của cơ Nội dung thay đổi và cơ sở pháp lý quan có thẩm quyền",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 41,
+    "source_file": "Tờ 5\\Thửa 69\\Trần Việt hùng\\2023-04-14-15-27-16-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "69",
+      "ten_chu_thu_muc": "Trần Việt hùng",
+      "pdf_name": "2023-04-14-15-27-16-01.pdf",
+      "relative_path": "Tờ 5\\Thửa 69\\Trần Việt hùng\\2023-04-14-15-27-16-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BP 425774",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CHOD 1.69.IDH",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Trần Việt Hùng",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1979",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "b)",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "69",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Hải Phòng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "34.3",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "34.3",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Ba mươi bốn phẩy ba mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "19/12/2013",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho bà nguyễn thị minh hằng, CCCCD",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 42,
+    "source_file": "Tờ 5\\thửa 362\\Nguyễn Văn Hiển\\2023-03-08-10-47-34-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "362",
+      "ten_chu_thu_muc": "Nguyễn Văn Hiển",
+      "pdf_name": "2023-03-08-10-47-34-01.pdf",
+      "relative_path": "Tờ 5\\thửa 362\\Nguyễn Văn Hiển\\2023-03-08-10-47-34-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "CU 464478",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "(1.9.00009",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Văn Hiển",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1959",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 22/61 Nguyễn Công Trứ, phường hàng kênh, quận lê chân - thành phố hải phòng.",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "362",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 22/61 Nguyễn Công Trứ, phường hàng kênh, quận lê chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "49.6",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "49.6",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "49,6m; (Bằng chữ: Bốn mươi chín phẩy sáu mét vuông);\"",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở đô thi",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "17/01/2020",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phi",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Xác nhận của cơ quan",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 43,
+    "source_file": "Tờ 5\\thửa 389\\Vũ Đức Hiệp\\2022-07-20-07-50-54-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "5",
+      "so_thua": "389",
+      "ten_chu_thu_muc": "Vũ Đức Hiệp",
+      "pdf_name": "2022-07-20-07-50-54-01.pdf",
+      "relative_path": "Tờ 5\\thửa 389\\Vũ Đức Hiệp\\2022-07-20-07-50-54-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DD 614379",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH00.231",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Vũ Đức Hiệp",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031087007661",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1987",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "25 Lê Thánh Tông, phường Máy Chai, quân Ngô Quyền, Nam thành phố hải phòng,",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "389",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "5",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 162/52 Miếu Hai Xã, phường Dư Hàng, quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "44.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "44.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Bốn mươi bốn mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng chung",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho ông Vũ Đức Hiệp, CCCD số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 44,
+    "source_file": "Tờ 7\\Thửa 129\\Thừa kế Nguyễn Đắc Năm\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "7",
+      "so_thua": "129",
+      "ten_chu_thu_muc": "Thừa kế Nguyễn Đắc Năm",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 7\\Thửa 129\\Thừa kế Nguyễn Đắc Năm\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DP 528140",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH.00.594",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Thừa Kế Nguyễn Đắc Năm",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031062004502",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1962",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 24 Hồ Sen, phường Dư Hàng, quận Lê Chân thành phố hải phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "129",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "7",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 24 Hồ Sen, phường Dư Hàng, quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "28.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "28.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "28, Amỉ, (Bằng chữ, Ha Phương Dự Hàng, quân Lê Chân Trị",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng chung",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "3. Công trình xây dựng khác: -). 4. Rừng sản xuất là rừng trồng: - I 5. Cây lâu năm: -]- 6. Ghi chú",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": "28/06/2024",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Để thừa kế cho ông Nguyễn Đắc Năm, ngày sinh 26/01/1962",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 45,
+    "source_file": "Tờ 7\\Thửa 131\\Đỗ Thị Minh Hằng\\2024-04-01-17-22-43-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "7",
+      "so_thua": "131",
+      "ten_chu_thu_muc": "Đỗ Thị Minh Hằng",
+      "pdf_name": "2024-04-01-17-22-43-01.pdf",
+      "relative_path": "Tờ 7\\Thửa 131\\Đỗ Thị Minh Hằng\\2024-04-01-17-22-43-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DI 804121",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH.CDAI4",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Đỗ Thị Minh Hằng",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "022041000032",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1941",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": "Nguyễn Thị Lý",
+        "status": "value"
+      },
+      "cccd_chu_2": {
+        "value": "030105672",
+        "status": "value"
+      },
+      "nam_sinh_chu_2": {
+        "value": "1949",
+        "status": "value"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 86 Hàng Gà, phường Cát Dài, quận Lê Chân, thành phố Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "131",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "7",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 86 Hàng Gà, phường Cát Dài, quận Lê Chân, thành phố Hải Phòng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "63.7",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "63.7",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại độ thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": "20/10/2022",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "quyền sử dụng đất, quyền sở hữu tài sản gắn liền với đất; chuyển quyền sử dụng đất, quyến sở hữu tài sản gắn liền với đất của vợ hoặc chồng thành của chung vợ và chống; tăng thêm diện tích do nhận chuyển nhượng, thừa kế, tặng cho quyền sử dụng đất đã có Giấy chứng nhận 1. Thành phần hồ sơ: Loại STT Tên giấy tờ giấy tờ lượng Bản Giấy chứng nhận hoặc quyết định giao đất 1 chính",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 46,
+    "source_file": "Tờ 7\\Thửa 204\\Nguyễn Đức Vinh\\b.pdf",
+    "folder_meta": {
+      "to_ban_do": "7",
+      "so_thua": "204",
+      "ten_chu_thu_muc": "Nguyễn Đức Vinh",
+      "pdf_name": "b.pdf",
+      "relative_path": "Tờ 7\\Thửa 204\\Nguyễn Đức Vinh\\b.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DN 451651",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CHQĐ.492",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Đức Vinh",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031060013742",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1932",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": null,
+        "status": "missing"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "204",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "7",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 01 Miếu Hai Xã, phường Dư Hàng, quận Lê Chân,",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "77.2",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "77.2",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": null,
+        "status": "missing"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": "TM. Ủy ban nhân dân QUẬN LÊ CHÂN",
+        "status": "value"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Xuân Ngọc",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Tặng cho ông Nguyễn Đức Vinh, CCCCD số 031060013742",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 47,
+    "source_file": "Tờ 7\\Thửa 217\\Nguyễn THị Hưng\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "7",
+      "so_thua": "217",
+      "ten_chu_thu_muc": "Nguyễn THị Hưng",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 7\\Thửa 217\\Nguyễn THị Hưng\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "SL 100181",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CHOW/7/-DH",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Thị Hưng",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031189001980",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1943",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": null,
+        "status": "missing"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "217",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "7",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 7/20 Miếu Hai Xã - phường Dư Hàng - quận Lê Chân",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "23.70",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "41.70",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Bốn mươi mốt phảy bẩy mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho bà Đào Thị Thu Huyền, CCCD số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 48,
+    "source_file": "Tờ 7\\Thửa 290\\Nguyễn Ngọc Anh\\GCN.pdf",
+    "folder_meta": {
+      "to_ban_do": "7",
+      "so_thua": "290",
+      "ten_chu_thu_muc": "Nguyễn Ngọc Anh",
+      "pdf_name": "GCN.pdf",
+      "relative_path": "Tờ 7\\Thửa 290\\Nguyễn Ngọc Anh\\GCN.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "IS 001611",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH.000076",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Ngọc Anh",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1959",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 132 Hồ Sen, phường Dư Hàng, quận Lê Chân, thành phố hải phòng Các đông sử dụng theo Hợp đóng ủy quyền, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "290",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "7",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 5/3/22 Miếu Hai Xã, phường Dư Hàng, quận Lê Chân,",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "60.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "60.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Sáu mưci mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng chung",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhà nước công nhận quyền sử dụng đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": "14/06/2019",
+        "status": "value"
+      },
+      "nguoi_ky_qd": {
+        "value": "Phạm Văn Tân",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Xác nhận của cơ Nội dung thay đổi và cơ sở pháp lý cuan có thàm quyền Để thừa kế cho ông nguyễn văn lân, cccd số Ngày 25../.5..2023 MẤT ĐÀI TẾ 031053013311, địa chỉ tại số 315 gác 2 Lý Thường Kiệt,",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 49,
+    "source_file": "Tờ 7\\Thửa 350\\Phạm Ngọc Nhiên\\2022-05-12-09-42-37-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "7",
+      "so_thua": "350",
+      "ten_chu_thu_muc": "Phạm Ngọc Nhiên",
+      "pdf_name": "2022-05-12-09-42-37-01.pdf",
+      "relative_path": "Tờ 7\\Thửa 350\\Phạm Ngọc Nhiên\\2022-05-12-09-42-37-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "DC 389849",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": "CH00 249",
+        "status": "value"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Phạm Ngọc Nhiên",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": "031782935",
+        "status": "value"
+      },
+      "nam_sinh_chu_1": {
+        "value": "1958",
+        "status": "value"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "tại: Số 2/11 Miếu Hai Xã, phường Dư Hàng quận lê chân, Hải Phòng",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Vợ chồng / Đồng sở hữu",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "350",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "7",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 2/11 Miếu Hai Xã, phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "60.0",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "60.0",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "60,0m', (Bằng chữ:Sáu mươi mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhượng đất được công nhận QSDĐ như giao đất",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": "1:200",
+        "status": "value"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho ông phạm ngọc nhiên, CCCD số",
+        "status": "value"
+      }
+    }
+  },
+  {
+    "stt": 50,
+    "source_file": "Tờ 7\\thửa 425 (tách từ thửa 90)\\Nguyễn Thị Châu Giang, Nguyễn Việt Cường\\2022-04-13-15-09-25-01.pdf",
+    "folder_meta": {
+      "to_ban_do": "7",
+      "so_thua": "425",
+      "ten_chu_thu_muc": "Nguyễn Thị Châu Giang, Nguyễn Việt Cường",
+      "pdf_name": "2022-04-13-15-09-25-01.pdf",
+      "relative_path": "Tờ 7\\thửa 425 (tách từ thửa 90)\\Nguyễn Thị Châu Giang, Nguyễn Việt Cường\\2022-04-13-15-09-25-01.pdf"
+    },
+    "fields_29": {
+      "so_phat_hanh": {
+        "value": "BY 337062",
+        "status": "value"
+      },
+      "so_vao_so": {
+        "value": null,
+        "status": "missing"
+      },
+      "ma_vach": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_1": {
+        "value": "Nguyễn Thị Châu Giang, Nguyễn Việt Cường",
+        "status": "value"
+      },
+      "cccd_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "nam_sinh_chu_1": {
+        "value": null,
+        "status": "missing"
+      },
+      "ho_ten_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "cccd_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "nam_sinh_chu_2": {
+        "value": null,
+        "status": "not_applicable"
+      },
+      "dia_chi_thuong_tru": {
+        "value": "Số 197 Hàng Kênh - phương hàng kênh-quan lê chân",
+        "status": "value"
+      },
+      "loai_chu": {
+        "value": "Cá nhân",
+        "status": "value"
+      },
+      "so_thua": {
+        "value": "425",
+        "status": "value"
+      },
+      "to_ban_do": {
+        "value": "7",
+        "status": "value"
+      },
+      "dia_chi_thua": {
+        "value": "Số 40A/9.Dư Hang - phường Dư Hàng",
+        "status": "value"
+      },
+      "dien_tich_cap": {
+        "value": "36.3",
+        "status": "value"
+      },
+      "dien_tich_rieng": {
+        "value": "36.3",
+        "status": "value"
+      },
+      "dien_tich_chung": {
+        "value": "0.0",
+        "status": "value"
+      },
+      "dien_tich_chu": {
+        "value": "Ba mươi sáu phầy ba mét vuông)",
+        "status": "value"
+      },
+      "muc_dich_su_dung": {
+        "value": "Đất ở tại đô thị",
+        "status": "value"
+      },
+      "ma_muc_dich": {
+        "value": "ODT",
+        "status": "value"
+      },
+      "thoi_han_su_dung": {
+        "value": "Lâu dài",
+        "status": "value"
+      },
+      "hinh_thuc_su_dung": {
+        "value": "Sử dụng riêng",
+        "status": "value"
+      },
+      "nguon_goc_su_dung": {
+        "value": "Nhận chuyển nhương",
+        "status": "value"
+      },
+      "noi_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "ngay_cap": {
+        "value": null,
+        "status": "missing"
+      },
+      "nguoi_ky_qd": {
+        "value": "Nguyễn Văn Phiệt",
+        "status": "value"
+      },
+      "chuc_vu_nguoi_ky": {
+        "value": "Chủ Tịch",
+        "status": "value"
+      },
+      "ty_le_ban_do": {
+        "value": null,
+        "status": "missing"
+      },
+      "thong_tin_bien_dong": {
+        "value": "Chuyển nhượng cho ông Cao Minh Tuệ, CCCD số",
+        "status": "value"
+      }
+    }
+  }
+]

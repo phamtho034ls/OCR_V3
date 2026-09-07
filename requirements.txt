@@ -1,0 +1,42 @@
+# Requirements cho OCR Pipeline sổ đỏ/sổ hồng
+# GPU: CUDA 12.x (RTX series)
+# Python: 3.10+
+
+# ─── Core Web Framework ──────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+pydantic>=2.7.0
+
+# ─── Image Processing ────────────────────────────────────────────────────────
+opencv-python>=4.9.0
+Pillow>=10.0.0
+numpy>=1.26.0
+
+# ─── PDF Processing ──────────────────────────────────────────────────────────
+PyMuPDF>=1.24.0
+
+# ─── OCR Detection (PaddleOCR) ───────────────────────────────────────────────
+# Cho Windows + CUDA 12.x, cài theo hướng dẫn:
+# pip install paddlepaddle-gpu==2.6.2.post120 -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html
+# Sau đó cài paddleocr:
+paddleocr>=2.7.3
+
+# ─── OCR Recognition (VietOCR) ───────────────────────────────────────────────
+vietocr>=0.3.8
+
+# ─── Deep Learning (VietOCR backend) ─────────────────────────────────────────
+# PyTorch với CUDA 12.1 (tương thích CUDA 12.x):
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+torch>=2.1.0
+torchvision>=0.16.0
+
+# ─── Fuzzy Matching (địa danh + label anchor) ────────────────────────────────
+rapidfuzz>=3.9.0
+
+# ─── Testing ─────────────────────────────────────────────────────────────────
+pytest>=8.0.0
+httpx>=0.27.0      # Required by FastAPI TestClient
+
+# ─── Utilities ───────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0

@@ -1,0 +1,63 @@
+{
+  "mau_A": {
+    "description": "Mẫu cũ - watermark vàng nhạt",
+    "channel_strategy": "green_or_gray",
+    "comment": "Ưu tiên kênh Green, nếu không hiệu quả dùng Grayscale",
+    "clahe": {
+      "clip_limit": 2.0,
+      "tile_grid_size": [8, 8]
+    },
+    "background_color_range": {
+      "lower_hsv": [20, 20, 180],
+      "upper_hsv": [40, 80, 255],
+      "comment": "Màu vàng nhạt của watermark mẫu A"
+    },
+    "adaptive_threshold": {
+      "method": "ADAPTIVE_THRESH_GAUSSIAN_C",
+      "block_size": 15,
+      "c_value": 8
+    }
+  },
+  "mau_B": {
+    "description": "Sổ hồng TT17/2009 - watermark hồng",
+    "channel_strategy": "blue",
+    "comment": "Kênh Blue giúp tách chữ đen khỏi nền hồng hiệu quả nhất",
+    "clahe": {
+      "clip_limit": 3.0,
+      "tile_grid_size": [8, 8]
+    },
+    "background_color_range": {
+      "lower_hsv": [140, 20, 180],
+      "upper_hsv": [170, 80, 255],
+      "comment": "Màu hồng của watermark mẫu B"
+    },
+    "adaptive_threshold": {
+      "method": "ADAPTIVE_THRESH_GAUSSIAN_C",
+      "block_size": 11,
+      "c_value": 6
+    }
+  },
+  "seal_mask": {
+    "red_seal": {
+      "lower1_hsv": [0, 80, 80],
+      "upper1_hsv": [10, 255, 255],
+      "lower2_hsv": [160, 80, 80],
+      "upper2_hsv": [180, 255, 255],
+      "comment": "Dấu mộc đỏ (2 range do đỏ bao quanh 0/180 độ trong HSV)"
+    },
+    "blue_seal": {
+      "lower_hsv": [90, 80, 80],
+      "upper_hsv": [130, 255, 255],
+      "comment": "Dấu mộc xanh dương"
+    },
+    "morphology_kernel_size": 5,
+    "dilate_iterations": 2
+  },
+  "quality_check": {
+    "min_blur_laplacian_variance": 50.0,
+    "comment": "Laplacian variance < 50 → ảnh quá mờ, cảnh báo",
+    "min_brightness_mean": 50,
+    "max_brightness_mean": 220,
+    "comment2": "Quá tối (<50) hoặc quá sáng (>220) → cảnh báo"
+  }
+}
