@@ -108,7 +108,11 @@ class TestLabelAnchorExtractor:
     """Test cases cho LabelAnchorExtractor."""
 
     def setup_method(self):
-        config_path = str(Path(__file__).parent.parent / "configs" / "template_labels.json")
+        candidate_paths = [
+            Path(__file__).resolve().parent.parent / "backend" / "configs" / "template_labels.json",
+            Path(__file__).resolve().parent.parent / "configs" / "template_labels.json",
+        ]
+        config_path = str(next(p for p in candidate_paths if p.exists()))
         self.extractor = LabelAnchorExtractor(config_path)
 
     def test_extract_mau_a_basic_fields(self):
@@ -218,7 +222,11 @@ class TestPageGrouper:
     """Test cases cho PageGrouper."""
 
     def setup_method(self):
-        config_path = str(Path(__file__).parent.parent / "configs" / "template_labels.json")
+        candidate_paths = [
+            Path(__file__).resolve().parent.parent / "backend" / "configs" / "template_labels.json",
+            Path(__file__).resolve().parent.parent / "configs" / "template_labels.json",
+        ]
+        config_path = str(next(p for p in candidate_paths if p.exists()))
         self.grouper = PageGrouper(config_path)
 
     def test_extract_id_found(self):

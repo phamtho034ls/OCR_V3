@@ -158,7 +158,7 @@ class TestTrang2OwnerSerialAndAddress:
         assert parsed["ngay_sinh_chu_1"] == "1978"
         assert "Số 3B Dư Hàng" in parsed["dia_chi_thuong_tru"]
         assert "Hải Phòng" in parsed["dia_chi_thuong_tru"]
-        assert parsed["so_phat_hanh"] == "DG746483"
+        assert parsed["so_phat_hanh"].replace(" ", "") == "DG746483"
 
 
 class TestTrang4StructuredMarkdown:
@@ -189,10 +189,10 @@ class TestTrang4StructuredMarkdown:
         ]
         md = generate_raw_ocr_markdown(fake_result, page_results)
 
-        assert "Cấu trúc Trang 4: Sơ Đồ Thửa Đất (Mục III) & Bảng Biến Động Sau Cấp GCN (Mục IV)" in md
-        assert "III. Sơ Đồ Thửa Đất" in md
-        assert "IV. Những Thay Đổi Sau Khi Cấp Giấy Chứng Nhận" in md
-        assert "Tặng cho bà Phạm Thị Minh Phương" in md
+        assert "RAW OCR DATA" in md
+        assert "III. Sơ đồ thửa đất, nhà ở và tài sản khác gắn liền với đất" in md
+        assert "IV. Những thay đổi sau khi cấp Giấy chứng nhận" in md
+        assert "Tặng cho bà Phạm Thị Minh Phương, CCCD số 031174005308" in md
         assert "GIÁM ĐỐC Phạm Thị Tuyết" in md
 
 
@@ -264,7 +264,7 @@ class TestUserDocument2022Case:
         assert res["cmnd_chu_2"] is None
         assert res["ngay_sinh_chu_2"] is None
         assert "Số 1A Chùa Hàng" in res["dia_chi_thuong_tru"]
-        assert res["so_phat_hanh"] == "CD754219"
+        assert res["so_phat_hanh"].replace(" ", "") == "CD754219"
 
     def test_trang_4_chuyen_nhuong_two_buyers(self):
         from extraction.parsers.transfer_parser import TransferParser

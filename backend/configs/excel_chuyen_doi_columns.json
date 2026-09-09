@@ -1,0 +1,1034 @@
+[
+  {
+    "col": 1,
+    "code": "STT",
+    "label": "Số thứ tự",
+    "section": "Chung",
+    "section_key": "chung",
+    "sample": "1"
+  },
+  {
+    "col": 2,
+    "code": "DDK_maXa",
+    "label": "Mã xã",
+    "section": "Đơn đăng ký",
+    "section_key": "ddk",
+    "sample": "26740"
+  },
+  {
+    "col": 3,
+    "code": "DDK_maDon",
+    "label": "Mã đơn",
+    "section": "Đơn đăng ký",
+    "section_key": "ddk",
+    "sample": "DON_1"
+  },
+  {
+    "col": 4,
+    "code": "DDK_ngayTiepNhan",
+    "label": "Ngày tiếp nhận",
+    "section": "Đơn đăng ký",
+    "section_key": "ddk",
+    "sample": "2026-01-15 00:00:00"
+  },
+  {
+    "col": 5,
+    "code": "DDK_coQuyenQuanLy",
+    "label": "Có quyền quản lý đất",
+    "section": "Đơn đăng ký",
+    "section_key": "ddk",
+    "sample": ""
+  },
+  {
+    "col": 6,
+    "code": "DDK_coQuyenSuDung",
+    "label": "Có quyền sử dụng",
+    "section": "Đơn đăng ký",
+    "section_key": "ddk",
+    "sample": "1"
+  },
+  {
+    "col": 7,
+    "code": "DDK_coQuyenSoHuu",
+    "label": "Có quyền sở hữu",
+    "section": "Đơn đăng ký",
+    "section_key": "ddk",
+    "sample": "1"
+  },
+  {
+    "col": 8,
+    "code": "DDK_thoiDiemDangKyLanDau",
+    "label": "Thời điểm đăng ký lần đầu",
+    "section": "Đơn đăng ký",
+    "section_key": "ddk",
+    "sample": "2026-01-15 00:00:00"
+  },
+  {
+    "col": 9,
+    "code": "DDK_thoiDiemDangKy",
+    "label": "Thời điểm đăng ký",
+    "section": "Đơn đăng ký",
+    "section_key": "ddk",
+    "sample": "2026-01-15 00:00:00"
+  },
+  {
+    "col": 10,
+    "code": "DDK_capGiayNguoiDaiDien",
+    "label": "Là đơn đăng ký cấp giấy cho người đại diện khai trình",
+    "section": "Đơn đăng ký",
+    "section_key": "ddk",
+    "sample": ""
+  },
+  {
+    "col": 11,
+    "code": "GCN_soPhatHanh",
+    "label": "Số phát hành",
+    "section": "Giấy chứng nhận",
+    "section_key": "gcn",
+    "sample": "BT-0001"
+  },
+  {
+    "col": 12,
+    "code": "GCN_soVaoSo",
+    "label": "Số vào sổ",
+    "section": "Giấy chứng nhận",
+    "section_key": "gcn",
+    "sample": "VS-0001/2026"
+  },
+  {
+    "col": 13,
+    "code": "GCN_soVaoSoCu",
+    "label": "Số vào sổ cũ",
+    "section": "Giấy chứng nhận",
+    "section_key": "gcn",
+    "sample": ""
+  },
+  {
+    "col": 14,
+    "code": "GCN_ngayCap",
+    "label": "Ngày cấp",
+    "section": "Giấy chứng nhận",
+    "section_key": "gcn",
+    "sample": "2026-01-15 00:00:00"
+  },
+  {
+    "col": 15,
+    "code": "GCN_tenNguoiKy",
+    "label": "Người ký",
+    "section": "Giấy chứng nhận",
+    "section_key": "gcn",
+    "sample": "Nguyễn Văn A"
+  },
+  {
+    "col": 16,
+    "code": "GCN_maVach",
+    "label": "Mã vạch",
+    "section": "Giấy chứng nhận",
+    "section_key": "gcn",
+    "sample": "BV001"
+  },
+  {
+    "col": 17,
+    "code": "GCN_donViCap",
+    "label": "Đơn vị cấp",
+    "section": "Giấy chứng nhận",
+    "section_key": "gcn",
+    "sample": "UBND Quận 1"
+  },
+  {
+    "col": 18,
+    "code": "GCN_daCongNhanPhapLy",
+    "label": "Đã công nhận PL",
+    "section": "Giấy chứng nhận",
+    "section_key": "gcn",
+    "sample": "1"
+  },
+  {
+    "col": 19,
+    "code": "GCN_ghiChuTrang1",
+    "label": "Ghi chú trang 1",
+    "section": "Giấy chứng nhận",
+    "section_key": "gcn",
+    "sample": ""
+  },
+  {
+    "col": 20,
+    "code": "GCN_ghiChuTrang2",
+    "label": "Ghi chú trang 2",
+    "section": "Giấy chứng nhận",
+    "section_key": "gcn",
+    "sample": ""
+  },
+  {
+    "col": 21,
+    "code": "CHU_loaiGiayChungNhan",
+    "label": "Loại đối tượng",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "Cá nhân"
+  },
+  {
+    "col": 22,
+    "code": "CHU_loaiDoiTuongSuDungDat",
+    "label": "Loại đối tượng sử dụng đất",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "GDC"
+  },
+  {
+    "col": 23,
+    "code": "CHU_hoTen",
+    "label": "Họ tên chủ",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "Nguyễn Văn An"
+  },
+  {
+    "col": 24,
+    "code": "CHU_ngaySinh",
+    "label": "Ngày sinh",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "1980-03-15 00:00:00"
+  },
+  {
+    "col": 25,
+    "code": "CHU_soDienThoai",
+    "label": "Số điện thoại",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "0901234567"
+  },
+  {
+    "col": 26,
+    "code": "CHU_gioiTinh",
+    "label": "Giới tính",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "1"
+  },
+  {
+    "col": 27,
+    "code": "CHU_maSoThue",
+    "label": "Mã số thuế",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": ""
+  },
+  {
+    "col": 28,
+    "code": "CHU_danToc",
+    "label": "Dân tộc",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "1"
+  },
+  {
+    "col": 29,
+    "code": "CHU_quocTich",
+    "label": "Quốc tịch",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "VNM"
+  },
+  {
+    "col": 30,
+    "code": "CHU_diaChiChiTiet",
+    "label": "Địa chỉ chi tiết",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": ""
+  },
+  {
+    "col": 31,
+    "code": "CHU_soNha",
+    "label": "Số nhà",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "12"
+  },
+  {
+    "col": 32,
+    "code": "CHU_tenDuongPho",
+    "label": "Tên đường phố",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "Cộng hòa"
+  },
+  {
+    "col": 33,
+    "code": "CHU_tenTDP",
+    "label": "Tên tổ dân phố",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "TDP 4"
+  },
+  {
+    "col": 34,
+    "code": "CHU_tenXa",
+    "label": "Xã",
+    "section": "Thông tin chủ sử dụng/đại diện",
+    "section_key": "chu",
+    "sample": "Phường Bảy Hiền"
+  },
+  {
+    "col": 35,
+    "code": "CHU_tenHuyen",
+    "label": "Huyện",
+    "section": "Giấy tờ tùy thân (Chủ)",
+    "section_key": "gt_chu",
+    "sample": ""
+  },
+  {
+    "col": 36,
+    "code": "CHU_tenTinh",
+    "label": "Tỉnh",
+    "section": "Giấy tờ tùy thân (Chủ)",
+    "section_key": "gt_chu",
+    "sample": "TP Hồ Chí Minh"
+  },
+  {
+    "col": 37,
+    "code": "GT_loaiGiayTo",
+    "label": "Loại giấy tờ",
+    "section": "Giấy tờ tùy thân (Chủ)",
+    "section_key": "gt_chu",
+    "sample": "CCCD"
+  },
+  {
+    "col": 38,
+    "code": "GT_soGiayTo",
+    "label": "Số giấy tờ",
+    "section": "Giấy tờ tùy thân (Chủ)",
+    "section_key": "gt_chu",
+    "sample": "12345678901"
+  },
+  {
+    "col": 39,
+    "code": "GT_ngayCap",
+    "label": "Ngày cấp",
+    "section": "Giấy tờ tùy thân (Chủ)",
+    "section_key": "gt_chu",
+    "sample": "2020-05-10 00:00:00"
+  },
+  {
+    "col": 40,
+    "code": "GT_noiCap",
+    "label": "Nơi cấp",
+    "section": "Giấy tờ tùy thân (Chủ)",
+    "section_key": "gt_chu",
+    "sample": "CA TP.HCM"
+  },
+  {
+    "col": 41,
+    "code": "VC_hoTen",
+    "label": "Họ tên chủ",
+    "section": "Giấy tờ tùy thân (Chủ)",
+    "section_key": "gt_chu",
+    "sample": ""
+  },
+  {
+    "col": 42,
+    "code": "VC_ngaySinh",
+    "label": "Ngày sinh",
+    "section": "Thông tin vợ/chồng",
+    "section_key": "vc",
+    "sample": ""
+  },
+  {
+    "col": 43,
+    "code": "VC_soDienThoai",
+    "label": "Số điện thoại",
+    "section": "Thông tin vợ/chồng",
+    "section_key": "vc",
+    "sample": ""
+  },
+  {
+    "col": 44,
+    "code": "VC_gioiTinh",
+    "label": "Giới tính",
+    "section": "Thông tin vợ/chồng",
+    "section_key": "vc",
+    "sample": ""
+  },
+  {
+    "col": 45,
+    "code": "VC_maSoThue",
+    "label": "Mã số thuế",
+    "section": "Thông tin vợ/chồng",
+    "section_key": "vc",
+    "sample": ""
+  },
+  {
+    "col": 46,
+    "code": "VC_danToc",
+    "label": "Dân tộc",
+    "section": "Thông tin vợ/chồng",
+    "section_key": "vc",
+    "sample": ""
+  },
+  {
+    "col": 47,
+    "code": "VC_quocTich",
+    "label": "Quốc tịch",
+    "section": "Thông tin vợ/chồng",
+    "section_key": "vc",
+    "sample": ""
+  },
+  {
+    "col": 48,
+    "code": "VC_diaChiChiTiet",
+    "label": "Địa chỉ chi tiết",
+    "section": "Thông tin vợ/chồng",
+    "section_key": "vc",
+    "sample": ""
+  },
+  {
+    "col": 49,
+    "code": "VC_soNha",
+    "label": "Số nhà",
+    "section": "Thông tin vợ/chồng",
+    "section_key": "vc",
+    "sample": ""
+  },
+  {
+    "col": 50,
+    "code": "VC_tenDuongPho",
+    "label": "Tên đường phố",
+    "section": "Giấy tờ tùy thân (Vợ/Chồng)",
+    "section_key": "gt_vc",
+    "sample": ""
+  },
+  {
+    "col": 51,
+    "code": "VC_tenTDP",
+    "label": "Tên tổ dân phố",
+    "section": "Giấy tờ tùy thân (Vợ/Chồng)",
+    "section_key": "gt_vc",
+    "sample": ""
+  },
+  {
+    "col": 52,
+    "code": "VC_tenXa",
+    "label": "Xã",
+    "section": "Giấy tờ tùy thân (Vợ/Chồng)",
+    "section_key": "gt_vc",
+    "sample": ""
+  },
+  {
+    "col": 53,
+    "code": "VC_tenHuyen",
+    "label": "Huyện",
+    "section": "Giấy tờ tùy thân (Vợ/Chồng)",
+    "section_key": "gt_vc",
+    "sample": ""
+  },
+  {
+    "col": 54,
+    "code": "VC_tenTinh",
+    "label": "Tỉnh",
+    "section": "Giấy tờ tùy thân (Vợ/Chồng)",
+    "section_key": "gt_vc",
+    "sample": ""
+  },
+  {
+    "col": 55,
+    "code": "GT_VC_loaiGiayTo",
+    "label": "Loại giấy tờ",
+    "section": "Giấy tờ tùy thân (Vợ/Chồng)",
+    "section_key": "gt_vc",
+    "sample": ""
+  },
+  {
+    "col": 56,
+    "code": "GT_VC_soGiayTo",
+    "label": "Số giấy tờ",
+    "section": "Giấy tờ tùy thân (Vợ/Chồng)",
+    "section_key": "gt_vc",
+    "sample": ""
+  },
+  {
+    "col": 57,
+    "code": "GT_VC_ngayCap",
+    "label": "Ngày cấp",
+    "section": "Giấy tờ tùy thân",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 58,
+    "code": "GT_VC_noiCap",
+    "label": "Nơi cấp",
+    "section": "Giấy tờ tùy thân",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 59,
+    "code": "TC_tenToChuc",
+    "label": "Tên tổ chức",
+    "section": "Thông tin tổ chức",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 60,
+    "code": "TC_maSoThue",
+    "label": "Mã số thuế",
+    "section": "Thông tin tổ chức",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 61,
+    "code": "TC_loaiToChuc",
+    "label": "Loại tổ chức",
+    "section": "Thông tin tổ chức",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 62,
+    "code": "TC_maDoanhNghiep",
+    "label": "Mã số tổ chức, doanh nghiệp",
+    "section": "Thông tin tổ chức",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 63,
+    "code": "TC_diaChi",
+    "label": "Địa chỉ",
+    "section": "Thông tin tổ chức",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 64,
+    "code": "TL_loaiBanDoDiaChinh",
+    "label": "Loại bản đồ địa chính",
+    "section": "Tài liệu đo đạc",
+    "section_key": "chung",
+    "sample": "1"
+  },
+  {
+    "col": 65,
+    "code": "TL_donViDoDac",
+    "label": "Đơn vị đo đạc",
+    "section": "Tài liệu đo đạc",
+    "section_key": "chung",
+    "sample": "Cty ĐĐ ABC"
+  },
+  {
+    "col": 66,
+    "code": "TL_phuongPhapDo",
+    "label": "Phương pháp đo",
+    "section": "Tài liệu đo đạc",
+    "section_key": "chung",
+    "sample": "Toàn đạc điện tử"
+  },
+  {
+    "col": 67,
+    "code": "TL_mucDoChinhXac",
+    "label": "Mức độ chính xác",
+    "section": "Tài liệu đo đạc",
+    "section_key": "chung",
+    "sample": "Cao"
+  },
+  {
+    "col": 68,
+    "code": "TL_tyLeDoDac",
+    "label": "Tỷ lệ đo đạc",
+    "section": "Tài liệu đo đạc",
+    "section_key": "chung",
+    "sample": "1/500"
+  },
+  {
+    "col": 69,
+    "code": "TL_ngayHoanThanh",
+    "label": "Ngày hoàn thành",
+    "section": "Tài liệu đo đạc",
+    "section_key": "chung",
+    "sample": "2025-12-10 00:00:00"
+  },
+  {
+    "col": 70,
+    "code": "TD_loaiThuaDat",
+    "label": "Loại thửa đất",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": ""
+  },
+  {
+    "col": 71,
+    "code": "TD_soThuTuThua",
+    "label": "Số thứ tự thửa",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "100"
+  },
+  {
+    "col": 72,
+    "code": "TD_soHieuToBanDo",
+    "label": "Số hiệu tờ bản đồ",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "5"
+  },
+  {
+    "col": 73,
+    "code": "TD_soThuTuThuaCu",
+    "label": "Số thứ tự thửa cũ",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": ""
+  },
+  {
+    "col": 74,
+    "code": "TD_soHieuToBanDoCu",
+    "label": "Số hiệu tờ bản đồ cũ",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": ""
+  },
+  {
+    "col": 75,
+    "code": "TD_dienTich",
+    "label": "Diện tích thửa đất",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "200.5"
+  },
+  {
+    "col": 76,
+    "code": "TD_dienTichPhapLy",
+    "label": "Diện tích pháp lý",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "200.5"
+  },
+  {
+    "col": 77,
+    "code": "TD_diaChiChiTiet",
+    "label": "Địa chỉ chi tiết",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": ""
+  },
+  {
+    "col": 78,
+    "code": "TD_soNha",
+    "label": "Số nhà",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "12"
+  },
+  {
+    "col": 79,
+    "code": "TD_tenDuongPho",
+    "label": "Tên đường phố",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "Cộng Hòa"
+  },
+  {
+    "col": 80,
+    "code": "TD_tenTDP",
+    "label": "Tên tổ dân phố",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "TDP 4"
+  },
+  {
+    "col": 81,
+    "code": "TD_laDoiTuongChiemDat",
+    "label": "Là đối tượng chiếm đất",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": ""
+  },
+  {
+    "col": 82,
+    "code": "TD_inSoLieuCu",
+    "label": "Là in theo số liệu cũ",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": ""
+  },
+  {
+    "col": 83,
+    "code": "TD_maMucDichSuDung",
+    "label": "Mã mục đích sử dụng đất",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "ODT"
+  },
+  {
+    "col": 84,
+    "code": "TD_maMucDichSuDungQuyHoach",
+    "label": "Mã mục đích sử dụng đất quy hoạch",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": ""
+  },
+  {
+    "col": 85,
+    "code": "TD_maMucDichSuDungPhu",
+    "label": "Mục đích sử dụng phụ",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": ""
+  },
+  {
+    "col": 86,
+    "code": "TD_dienTichMDSD",
+    "label": "Diện tích MĐSD",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "200.5"
+  },
+  {
+    "col": 87,
+    "code": "TD_ngayHetHanSuDung",
+    "label": "Ngày hết hạn sử dụng",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": ""
+  },
+  {
+    "col": 88,
+    "code": "TD_thoiHanSuDung",
+    "label": "Thời hạn sử dụng",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "Lâu dài"
+  },
+  {
+    "col": 89,
+    "code": "TD_nguonGoc",
+    "label": "Nguồn gốc sử dụng đất",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "CNQ-KTT"
+  },
+  {
+    "col": 90,
+    "code": "TD_nguonGocChuyenQuyen",
+    "label": "Nguồn gốc chuyển quyền",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": ""
+  },
+  {
+    "col": 91,
+    "code": "TD_dienTichNguonGoc",
+    "label": "Diện tích NGSD",
+    "section": "Thửa đất",
+    "section_key": "thua_dat",
+    "sample": "200.5"
+  },
+  {
+    "col": 92,
+    "code": "NHA_loaiNhaRiengLe",
+    "label": "Loại nhà riêng lẻ",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "0"
+  },
+  {
+    "col": 93,
+    "code": "NHA_loaiQuyenSoHuuNhaRiengLe",
+    "label": "Là loại quyền sở hữu nhà riêng lẻ",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "0"
+  },
+  {
+    "col": 94,
+    "code": "NHA_tenNha",
+    "label": "Tên nhà / Tên chung cư",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "Nhà riêng"
+  },
+  {
+    "col": 95,
+    "code": "NHA_diaChiChiTiet",
+    "label": "Địa chỉ chi tiết",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": ""
+  },
+  {
+    "col": 96,
+    "code": "NHA_soNha",
+    "label": "Số nhà",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "12"
+  },
+  {
+    "col": 97,
+    "code": "NHA_tenDuongPho",
+    "label": "Tên đường phố",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "Cộng Hòa"
+  },
+  {
+    "col": 98,
+    "code": "NHA_tenTDP",
+    "label": "Tên tổ dân phố",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "TDP 4"
+  },
+  {
+    "col": 99,
+    "code": "NHA_dienTichSan",
+    "label": "Diện tích sàn",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "320"
+  },
+  {
+    "col": 100,
+    "code": "NHA_dienTichSanPhu",
+    "label": "Diện tích sàn phụ",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": ""
+  },
+  {
+    "col": 101,
+    "code": "NHA_dienTichSuDung",
+    "label": "Diện tích sử dụng",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "280"
+  },
+  {
+    "col": 102,
+    "code": "NHA_dienTichXayDung",
+    "label": "Diện tích xây dựng",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "120"
+  },
+  {
+    "col": 103,
+    "code": "NHA_capHang",
+    "label": "Cấp hạng",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "IV"
+  },
+  {
+    "col": 104,
+    "code": "NHA_ketCau",
+    "label": "Kết cấu nhà",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "Bê tông cốt thép"
+  },
+  {
+    "col": 105,
+    "code": "NHA_soTang",
+    "label": "Số tầng",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "3"
+  },
+  {
+    "col": 106,
+    "code": "NHA_soTangHam",
+    "label": "Số tầng hầm",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "0"
+  },
+  {
+    "col": 107,
+    "code": "NHA_tongSoCan",
+    "label": "Tổng số căn",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": ""
+  },
+  {
+    "col": 108,
+    "code": "NHA_namXayDung",
+    "label": "Năm xây dựng",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "2015"
+  },
+  {
+    "col": 109,
+    "code": "NHA_namHoanThanh",
+    "label": "Năm hoàn thành",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "2016"
+  },
+  {
+    "col": 110,
+    "code": "NHA_thoiHanSoHuu",
+    "label": "Thời hạn sở hữu",
+    "section": "Nhà Riêng Lẻ/Nhà Chung Cư",
+    "section_key": "nha_rieng",
+    "sample": "Lâu dài"
+  },
+  {
+    "col": 111,
+    "code": "HM_tenHangMuc",
+    "label": "Tên hạng mục",
+    "section": "Hạng Mục Sở Hữu Chung Của Chung Cư",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 112,
+    "code": "HM_viTriTang",
+    "label": "Vị trí tầng hạng mục",
+    "section": "Hạng Mục Sở Hữu Chung Của Chung Cư",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 113,
+    "code": "HM_dienTich",
+    "label": "Diện tích sàn hạng mục",
+    "section": "Hạng Mục Sở Hữu Chung Của Chung Cư",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 114,
+    "code": "HM_ghiChu",
+    "label": "Ghi chú hạng mục",
+    "section": "Hạng Mục Sở Hữu Chung Của Chung Cư",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 115,
+    "code": "CH_loaiCanHo",
+    "label": "Loại căn hộ",
+    "section": "Căn Hộ",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 116,
+    "code": "CH_tangSo",
+    "label": "Tầng số",
+    "section": "Căn Hộ",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 117,
+    "code": "CH_soHieuCanHo",
+    "label": "Số hiệu căn hộ",
+    "section": "Căn Hộ",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 118,
+    "code": "CH_loaiQuyenSoHuuCanHo",
+    "label": "Là loại chuyển quyền sở hữu",
+    "section": "Căn Hộ",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 119,
+    "code": "CH_dienTichSan",
+    "label": "Diện tích sàn căn hộ",
+    "section": "Căn Hộ",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 120,
+    "code": "CH_dienTichSuDung",
+    "label": "Diện tích sử dụng căn hộ",
+    "section": "Căn Hộ",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 121,
+    "code": "CLN_tenCayLauNam",
+    "label": "Tên cây lâu năm",
+    "section": "Cây Lâu Năm",
+    "section_key": "cay",
+    "sample": ""
+  },
+  {
+    "col": 122,
+    "code": "CLN_loaiCayTrong",
+    "label": "Loại cây trồng",
+    "section": "Cây Lâu Năm",
+    "section_key": "cay",
+    "sample": ""
+  },
+  {
+    "col": 123,
+    "code": "CLN_dienTich",
+    "label": "Diện tích cây lâu năm",
+    "section": "Cây Lâu Năm",
+    "section_key": "cay",
+    "sample": ""
+  },
+  {
+    "col": 124,
+    "code": "RT_tenRung",
+    "label": "Tên rừng",
+    "section": "Rừng Trồng",
+    "section_key": "rung",
+    "sample": ""
+  },
+  {
+    "col": 125,
+    "code": "RT_loaiCayRung",
+    "label": "Loại cây rừng",
+    "section": "Rừng Trồng",
+    "section_key": "rung",
+    "sample": ""
+  },
+  {
+    "col": 126,
+    "code": "RT_dienTich",
+    "label": "Diện tích rừng",
+    "section": "Rừng Trồng",
+    "section_key": "rung",
+    "sample": ""
+  },
+  {
+    "col": 127,
+    "code": "HS_duongDanHSQ",
+    "label": "Tên file quét",
+    "section": "Hồ sơ",
+    "section_key": "chung",
+    "sample": "HSQ/TH1.pdf,HSQ/TH2.pdf"
+  },
+  {
+    "col": 128,
+    "code": "COL_128",
+    "label": "",
+    "section": "Hồ sơ",
+    "section_key": "chung",
+    "sample": ""
+  },
+  {
+    "col": 129,
+    "code": "COL_129",
+    "label": "",
+    "section": "Hồ sơ",
+    "section_key": "chung",
+    "sample": ""
+  }
+]

@@ -1,0 +1,605 @@
+"""
+API Router /api/v1/batch: Quản lý quét thư mục hàng loạt và theo dõi tiến độ thời gian thực.
+Hỗ trợ cả:
+1. Quét thư mục trên máy chủ theo đường dẫn.
+2. Tải nhiều file / cả thư mục từ máy khách lên xử lý theo lô.
+"""
+import time
+import uuid
+import logging
+import json
+import multiprocessing as mp
+import os
+import queue
+import threading
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi.responses import JSONResponse
+
+from ....bootstrap import DEFAULT_OUTPUT_DIR, get_container
+from ....infrastructure.memory import cleanup_memory
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/batch", tags=["Batch"])
+
+# In-memory store lưu trạng thái các batch job đang chạy
+batch_jobs: Dict[str, Dict[str, Any]] = {}
+
+# PaddleOCR/PaddlePaddle giữ native allocations theo shape ảnh và không trả hết
+# bộ nhớ cho Windows khi chỉ ``del`` model trong cùng process. Vì vậy batch chạy
+# trong worker process riêng và worker được thay mới sau một số hồ sơ hữu hạn.
+def _read_worker_file_limit() -> int:
+    """Đọc cấu hình an toàn; giữ chunk trong khoảng đã kiểm chứng 1..50 file."""
+    try:
+        return min(50, max(1, int(os.getenv("OCR_BATCH_WORKER_MAX_FILES", "20"))))
+    except (TypeError, ValueError):
+        logger.warning("OCR_BATCH_WORKER_MAX_FILES không hợp lệ; dùng mặc định 20")
+        return 20
+
+
+BATCH_WORKER_MAX_FILES = _read_worker_file_limit()
+_batch_execution_lock = threading.Lock()
+
+
+def _trim_batch_jobs(max_items: int = 20) -> None:
+    """Batch hoàn tất chỉ còn summary; giới hạn số batch lưu trong RAM."""
+    while len(batch_jobs) > max_items:
+        batch_jobs.pop(next(iter(batch_jobs)), None)
+
+
+def _sample_worker_memory(batch_id: str, worker_pid: Optional[int]) -> None:
+    """Ghi RSS/private/USS của worker để quan sát native-memory thực tế."""
+    if not worker_pid:
+        return
+    try:
+        import psutil
+
+        proc = psutil.Process(worker_pid)
+        info = proc.memory_info()
+        full = proc.memory_full_info()
+        rss_mb = round(info.rss / (1024 * 1024), 1)
+        private_mb = round(getattr(info, "private", info.rss) / (1024 * 1024), 1)
+        uss_mb = round(getattr(full, "uss", info.rss) / (1024 * 1024), 1)
+        job = batch_jobs.get(batch_id)
+        if job is None:
+            return
+        job["worker_rss_mb"] = rss_mb
+        job["worker_private_mb"] = private_mb
+        job["worker_uss_mb"] = uss_mb
+        job["peak_worker_private_mb"] = max(
+            float(job.get("peak_worker_private_mb", 0.0)), private_mb
+        )
+    except Exception:
+        pass
+
+
+def _persist_result(output_dir: Path, batch_id: str, index: int, result: Dict[str, Any]) -> str:
+    """Lưu payload đầy đủ xuống đĩa; RAM chỉ giữ summary."""
+    result_dir = output_dir / "batches" / batch_id / "results"
+    result_dir.mkdir(parents=True, exist_ok=True)
+    path = result_dir / f"result_{index:06d}.json"
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, separators=(",", ":"))
+    return str(path)
+
+
+def _export_batch_checkpoint_excel(output_dir: Path, batch_id: str) -> Optional[Path]:
+    """
+    Đọc tất cả các result_*.json đã lưu của batch trên đĩa và xuất/cập nhật file Excel 129 cột.
+    Xử lý streaming theo từng file để tránh giữ toàn bộ dữ liệu trong RAM.
+    """
+    from ....infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
+    from ....application.projections.cadastral_129_mapper import Cadastral129Mapper
+    from ....infrastructure.exporters.excel_129_exporter import Excel129Exporter
+
+    batch_results_dir = output_dir / "batches" / batch_id / "results"
+    if not batch_results_dir.exists():
+        return None
+
+    result_files = sorted(list(batch_results_dir.glob("result_*.json")))
+    if not result_files:
+        return None
+
+    all_129_rows = []
+    curr_stt = 1
+    for rf in result_files:
+        try:
+            with open(rf, "r", encoding="utf-8") as f:
+                doc_res = json.load(f)
+            file_name = doc_res.get("file_name", rf.stem)
+            raw_md = doc_res.get("raw_ocr_markdown", "")
+            if raw_md:
+                parsed = RawMarkdownExcelExporter.parse_raw_markdown(raw_md)
+                merged_dict = parsed.get("merged_dict", {})
+                rows = Cadastral129Mapper.map_merged_to_rows(
+                    merged_dict, start_stt=curr_stt, file_name=file_name
+                )
+            else:
+                rows = doc_res.get("chuyen_doi_rows", [])
+
+            for r in rows:
+                if not r.get("file_name"):
+                    r["file_name"] = file_name
+            all_129_rows.extend(rows)
+            curr_stt += len(rows)
+            del doc_res
+        except Exception as e_rf:
+            logger.warning(f"Lỗi đọc {rf.name} để xuất checkpoint Excel: {e_rf}")
+
+    if not all_129_rows:
+        return None
+
+    out_excel = output_dir / "batches" / batch_id / f"BaoCao_129Cot_{batch_id}.xlsx"
+    out_excel.parent.mkdir(parents=True, exist_ok=True)
+    Excel129Exporter.export(mapped_rows=all_129_rows, output_path=str(out_excel))
+    del all_129_rows
+    return out_excel
+
+
+class ScanDirectoryRequest(BaseModel):
+    directory_path: str = Field(..., description="Đường dẫn thư mục chứa PDF/Ảnh trên máy chủ")
+    sample_count: int = Field(0, description="Số file mẫu cần quét (0 = tất cả file)")
+    split_a3: bool = Field(True, description="Tự động cắt đôi trang A3 scan đôi")
+    smart_gcn_filter: bool = Field(True, description="Chỉ xử lý trang phôi Sổ Đỏ")
+
+
+def _run_batch_worker_chunk(
+    batch_id: str,
+    work_items: List[tuple],
+    split_a3: bool,
+    smart_gcn_filter: bool,
+    output_dir_str: str,
+    result_queue,
+) -> None:
+    """Xử lý tối đa một chunk trong process con; process kết thúc sẽ thu hồi native heap."""
+    try:
+        container = get_container(save_crops_to_disk=True)
+        uc = container.process_document_uc
+        output_dir = Path(output_dir_str)
+
+        for idx, file_path_str in work_items:
+            f_path = Path(file_path_str)
+            result_queue.put({"type": "started", "stt": idx, "file_name": f_path.name})
+            t_file = time.time()
+            try:
+                doc_id = f"batch_{batch_id}_{idx}_{f_path.stem}"
+                res = uc.execute(
+                    document_path=str(f_path),
+                    document_id=doc_id,
+                    split_a3=split_a3,
+                    smart_gcn_filter=smart_gcn_filter,
+                    stt=idx,
+                )
+                m_data = res.get("merged", {})
+                result_path = _persist_result(output_dir, batch_id, idx, res)
+                owner = m_data.get("nguoi_su_dung", {})
+                parcel = m_data.get("thua_dat", {})
+                summary = {
+                    "stt": idx,
+                    "file_name": f_path.name,
+                    "status": "success",
+                    "elapsed_seconds": round(time.time() - t_file, 2),
+                    "mau": m_data.get("mau", "unknown"),
+                    "so_phat_hanh": m_data.get("so_phat_hanh", ""),
+                    "so_vao_so": m_data.get("so_vao_so", ""),
+                    "ma_vach": m_data.get("ma_vach", ""),
+                    "ten_chu": owner.get("ten") or owner.get("ho_ten_chu_1", ""),
+                    "cmnd": owner.get("cmnd_chu_1", ""),
+                    "so_thua": parcel.get("so_thua", ""),
+                    "to_ban_do": parcel.get("to_ban_do", ""),
+                    "dien_tich": parcel.get("dien_tich_cap", ""),
+                    "dia_chi_thua": parcel.get("dia_chi", ""),
+                    "document_id": doc_id,
+                    "result_path": result_path,
+                }
+                result_queue.put({"type": "result", "summary": summary})
+                del res, m_data, owner, parcel
+            except Exception as file_error:
+                logger.exception("[Batch %s] Lỗi xử lý file %s", batch_id, f_path.name)
+                result_queue.put({
+                    "type": "result",
+                    "summary": {
+                        "stt": idx,
+                        "file_name": f_path.name,
+                        "status": "error",
+                        "error": str(file_error),
+                        "elapsed_seconds": round(time.time() - t_file, 2),
+                    },
+                })
+            finally:
+                cleanup_memory(force_os_trim=False)
+
+        result_queue.put({"type": "done"})
+    except BaseException as worker_error:
+        logger.exception("[Batch %s] Worker process lỗi", batch_id)
+        try:
+            result_queue.put({"type": "fatal", "error": str(worker_error)})
+        except Exception:
+            pass
+    finally:
+        cleanup_memory(force_os_trim=False)
+
+
+def _save_batch_checkpoint(
+    batch_id: str,
+    output_dir: Path,
+    results: List[Dict[str, Any]],
+    total_files: int,
+    started_at: float,
+) -> None:
+    """Ghi summary và Excel một lần sau khi worker process đã kết thúc."""
+    processed_count = len(results)
+    cp_dir = output_dir / "batches" / batch_id
+    cp_dir.mkdir(parents=True, exist_ok=True)
+    cp_path = cp_dir / "checkpoint_summary.json"
+    try:
+        with cp_path.open("w", encoding="utf-8") as checkpoint_file:
+            json.dump({
+                "batch_id": batch_id,
+                "processed_count": processed_count,
+                "total_files": total_files,
+                "last_checkpoint_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "elapsed_seconds": round(time.time() - started_at, 1),
+                "results": results,
+            }, checkpoint_file, ensure_ascii=False, indent=2)
+    except Exception as checkpoint_error:
+        logger.warning("[Batch %s] Không thể lưu checkpoint: %s", batch_id, checkpoint_error)
+
+    excel_path = None
+    try:
+        excel_path = _export_batch_checkpoint_excel(output_dir, batch_id)
+    except Exception as excel_error:
+        logger.error("[Batch %s] Lỗi xuất Excel checkpoint: %s", batch_id, excel_error)
+
+    job = batch_jobs[batch_id]
+    job["last_checkpoint_idx"] = processed_count
+    job["last_checkpoint_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    job["last_checkpoint_message"] = (
+        f"Đã lưu checkpoint {processed_count}/{total_files}; worker OCR cũ đã kết thúc và RAM native đã được hệ điều hành thu hồi."
+    )
+    if excel_path and excel_path.exists():
+        job["checkpoint_excel_url"] = f"/api/v1/batch/{batch_id}/download-excel"
+        job["checkpoint_excel_name"] = f"BaoCao_129Cot_{batch_id}.xlsx"
+    cleanup_memory(force_os_trim=True)
+
+
+def _run_batch_scan_job(batch_id: str, target_files: List[Path], split_a3: bool, smart_gcn_filter: bool):
+    """Điều phối các worker OCR ngắn hạn để native memory không tích lũy qua toàn bộ batch."""
+    output_dir = Path(DEFAULT_OUTPUT_DIR)
+    started_at = time.time()
+    results: List[Dict[str, Any]] = []
+    acquired = False
+
+    try:
+        while not acquired:
+            if batch_jobs.get(batch_id, {}).get("cancel_requested"):
+                batch_jobs[batch_id]["status"] = "cancelled"
+                return
+            acquired = _batch_execution_lock.acquire(timeout=0.5)
+            if not acquired:
+                batch_jobs[batch_id]["current_file"] = "Đang chờ worker OCR hiện tại hoàn tất..."
+
+        ctx = mp.get_context("spawn")
+        indexed_files = [(index, str(path)) for index, path in enumerate(target_files, 1)]
+
+        for chunk_start in range(0, len(indexed_files), BATCH_WORKER_MAX_FILES):
+            if batch_jobs[batch_id].get("cancel_requested"):
+                batch_jobs[batch_id]["status"] = "cancelled"
+                break
+
+            chunk = indexed_files[chunk_start:chunk_start + BATCH_WORKER_MAX_FILES]
+            result_queue = ctx.Queue()
+            worker = ctx.Process(
+                target=_run_batch_worker_chunk,
+                args=(batch_id, chunk, split_a3, smart_gcn_filter, str(output_dir), result_queue),
+                name=f"ocr-batch-{batch_id}-{chunk_start // BATCH_WORKER_MAX_FILES + 1}",
+            )
+            worker.start()
+            batch_jobs[batch_id]["worker_pid"] = worker.pid
+            completed_indices = set()
+            fatal_error = None
+
+            def handle_message(message: Dict[str, Any]) -> None:
+                nonlocal fatal_error
+                message_type = message.get("type")
+                if message_type == "started":
+                    batch_jobs[batch_id]["current_file"] = message.get("file_name", "")
+                elif message_type == "result":
+                    summary = message["summary"]
+                    if summary["stt"] not in completed_indices:
+                        completed_indices.add(summary["stt"])
+                        results.append(summary)
+                        results.sort(key=lambda item: item.get("stt", 0))
+                    batch_jobs[batch_id]["results"] = results
+                    batch_jobs[batch_id]["processed_count"] = len(results)
+                    batch_jobs[batch_id]["elapsed_seconds"] = round(time.time() - started_at, 1)
+                elif message_type == "fatal":
+                    fatal_error = message.get("error") or "Worker OCR dừng bất thường"
+
+            while worker.is_alive():
+                if batch_jobs[batch_id].get("cancel_requested"):
+                    worker.terminate()
+                    break
+                try:
+                    handle_message(result_queue.get(timeout=0.5))
+                except queue.Empty:
+                    pass
+                _sample_worker_memory(batch_id, worker.pid)
+
+            worker.join(timeout=10)
+            if worker.is_alive():
+                worker.terminate()
+                worker.join(timeout=5)
+
+            while True:
+                try:
+                    handle_message(result_queue.get_nowait())
+                except queue.Empty:
+                    break
+            result_queue.close()
+            result_queue.join_thread()
+            batch_jobs[batch_id].pop("worker_pid", None)
+
+            if batch_jobs[batch_id].get("cancel_requested"):
+                batch_jobs[batch_id]["status"] = "cancelled"
+                break
+
+            # Nếu worker chết giữa chunk, ghi lỗi cho các file chưa có kết quả để
+            # tiến độ không bị treo và chunk kế tiếp vẫn có thể chạy bằng process mới.
+            if worker.exitcode not in (0, None) or fatal_error:
+                reason = fatal_error or f"Worker OCR kết thúc với exit code {worker.exitcode}"
+                logger.error("[Batch %s] %s", batch_id, reason)
+                for idx, file_path_str in chunk:
+                    if idx not in completed_indices:
+                        results.append({
+                            "stt": idx,
+                            "file_name": Path(file_path_str).name,
+                            "status": "error",
+                            "error": reason,
+                            "elapsed_seconds": 0.0,
+                        })
+                results.sort(key=lambda item: item.get("stt", 0))
+                batch_jobs[batch_id]["results"] = results
+                batch_jobs[batch_id]["processed_count"] = len(results)
+
+            _save_batch_checkpoint(batch_id, output_dir, results, len(target_files), started_at)
+
+        if batch_jobs[batch_id]["status"] != "cancelled":
+            batch_jobs[batch_id]["status"] = "done"
+            batch_jobs[batch_id]["current_file"] = "Hoàn thành"
+        batch_jobs[batch_id]["total_time_seconds"] = round(time.time() - started_at, 1)
+        batch_jobs[batch_id]["elapsed_seconds"] = round(time.time() - started_at, 1)
+    except Exception as exc:
+        logger.error("Lỗi tiến trình batch %s: %s", batch_id, exc, exc_info=True)
+        batch_jobs[batch_id]["status"] = "error"
+        batch_jobs[batch_id]["error"] = str(exc)
+    finally:
+        batch_jobs.get(batch_id, {}).pop("worker_pid", None)
+        if acquired:
+            _batch_execution_lock.release()
+        cleanup_memory(force_os_trim=True)
+
+
+@router.post("/scan-directory", summary="Khởi chạy quét thư mục trên máy chủ")
+async def scan_directory(req: ScanDirectoryRequest, background_tasks: BackgroundTasks):
+    """
+    Quét thư mục máy chủ và thực thi OCR từng file trong background.
+    """
+    dir_p = Path(req.directory_path)
+    if not dir_p.exists() or not dir_p.is_dir():
+        raise HTTPException(status_code=400, detail=f"Thư mục không tồn tại: {req.directory_path}")
+
+    # Thu thập toàn bộ file PDF và ảnh (dùng set để tránh lặp file trên Windows case-insensitive)
+    found_files = set()
+    for ext in ["*.pdf", "*.png", "*.jpg", "*.jpeg"]:
+        found_files.update(dir_p.rglob(ext))
+        found_files.update(dir_p.rglob(ext.upper()))
+    all_files = sorted(list(found_files), key=lambda p: str(p).lower())
+
+    if not all_files:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy file PDF hoặc ảnh nào trong thư mục {req.directory_path}")
+
+    target_files = all_files[:req.sample_count] if req.sample_count > 0 else all_files
+
+    batch_id = f"dir_{uuid.uuid4().hex[:8]}"
+    _trim_batch_jobs()
+    batch_jobs[batch_id] = {
+        "batch_id": batch_id,
+        "status": "processing",
+        "directory_path": str(dir_p),
+        "total_files": len(target_files),
+        "processed_count": 0,
+        "current_file": "Đang khởi tạo...",
+        "elapsed_seconds": 0.0,
+        "results": [],
+        "chuyen_doi_rows": [],
+        "worker_rss_mb": 0.0,
+        "worker_private_mb": 0.0,
+        "worker_uss_mb": 0.0,
+        "peak_worker_private_mb": 0.0,
+        "cancel_requested": False
+    }
+
+    background_tasks.add_task(
+        _run_batch_scan_job,
+        batch_id,
+        target_files,
+        req.split_a3,
+        req.smart_gcn_filter
+    )
+
+    return JSONResponse(content={
+        "batch_id": batch_id,
+        "status": "processing",
+        "total_files": len(target_files),
+        "message": f"Bắt đầu quét {len(target_files)} hồ sơ trong thư mục."
+    })
+
+
+@router.get("/{batch_id}", summary="Lấy tiến trình và kết quả batch job")
+async def get_batch_progress(batch_id: str):
+    """Truy vấn tiến trình real-time của tác vụ quét thư mục."""
+    if batch_id not in batch_jobs:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch job: {batch_id}")
+
+    bj = batch_jobs[batch_id]
+    total = bj.get("total_files", 0)
+    proc = bj.get("processed_count", 0)
+    elapsed = bj.get("elapsed_seconds", 0.0)
+    pct = round((proc / total) * 100, 1) if total > 0 else 0.0
+    speed = round(proc / (elapsed / 60), 1) if elapsed > 5 and proc > 0 else 0.0
+
+    return JSONResponse(content={
+        "batch_id": batch_id,
+        "status": bj.get("status", "unknown"),
+        "total_files": total,
+        "processed_count": proc,
+        "progress_percent": pct,
+        "current_file": bj.get("current_file", ""),
+        "elapsed_seconds": elapsed,
+        "speed_files_per_min": speed,
+        "last_checkpoint_idx": bj.get("last_checkpoint_idx", 0),
+        "last_checkpoint_time": bj.get("last_checkpoint_time", ""),
+        "checkpoint_excel_url": bj.get("checkpoint_excel_url"),
+        "checkpoint_excel_name": bj.get("checkpoint_excel_name"),
+        "last_checkpoint_message": bj.get("last_checkpoint_message"),
+        "worker_rss_mb": bj.get("worker_rss_mb", 0.0),
+        "worker_private_mb": bj.get("worker_private_mb", 0.0),
+        "worker_uss_mb": bj.get("worker_uss_mb", 0.0),
+        "peak_worker_private_mb": bj.get("peak_worker_private_mb", 0.0),
+        "results": bj.get("results", []),
+        "chuyen_doi_rows": bj.get("chuyen_doi_rows", []),
+        "error": bj.get("error")
+    })
+
+
+@router.get("/{batch_id}/download-excel", summary="Tải file Excel 129 cột checkpoint hiện tại")
+async def download_batch_excel(batch_id: str):
+    """
+    Tải file Excel 129 cột được xuất tự động sau mỗi 20 file hoặc khi hoàn thành.
+    Người dùng có thể tải về bất cứ lúc nào trong khi quét mà không cần đợi chạy hết.
+    """
+    # Endpoint tải file không được khởi tạo model OCR trong process FastAPI.
+    output_dir = Path(DEFAULT_OUTPUT_DIR)
+    excel_path = output_dir / "batches" / batch_id / f"BaoCao_129Cot_{batch_id}.xlsx"
+
+    if not excel_path.exists():
+        _export_batch_checkpoint_excel(output_dir, batch_id)
+
+    if not excel_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chưa có file Excel cho batch {batch_id}. Vui lòng thử lại sau khi có ít nhất 1 hồ sơ hoàn tất."
+        )
+
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path=str(excel_path),
+        filename=f"BaoCao_129Cot_{batch_id}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+@router.post("/{batch_id}/cancel", summary="Hủy tác vụ quét thư mục")
+async def cancel_batch_scan(batch_id: str):
+    """Yêu cầu dừng tiến trình quét hàng loạt."""
+    if batch_id not in batch_jobs:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch job: {batch_id}")
+
+    batch_jobs[batch_id]["cancel_requested"] = True
+    return JSONResponse(content={
+        "batch_id": batch_id,
+        "message": "Đã gửi yêu cầu hủy quét thư mục."
+    })
+
+
+@router.get("/{batch_id}/export-129-excel", summary="Chuyển đổi on-demand từ Markdown đã lưu sang file Excel 129 cột")
+@router.post("/{batch_id}/convert-markdown-to-129-excel", summary="Chuyển đổi on-demand từ Markdown đã lưu sang file Excel 129 cột")
+async def convert_batch_markdown_to_129_excel(batch_id: str):
+    """
+    Theo yêu cầu: Trong quá trình quét không lưu Excel và không giữ dữ liệu 129 cột trong RAM.
+    Khi người dùng bấm xuất, endpoint này đọc Markdown đã lưu từ SQLite / file đĩa và chuyển đổi sang Excel 129 cột.
+    """
+    # Chuyển đổi Excel chỉ cần dữ liệu trên đĩa, không được lazy-load model OCR.
+    output_dir = Path(DEFAULT_OUTPUT_DIR)
+    batch_results_dir = output_dir / "batches" / batch_id / "results"
+
+    from ....infrastructure.persistence.sqlite_raw_store import get_sqlite_raw_store
+    from ....infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
+    from ....application.projections.cadastral_129_mapper import Cadastral129Mapper
+    from ....infrastructure.exporters.excel_129_exporter import Excel129Exporter
+    from fastapi.responses import FileResponse
+
+    store = get_sqlite_raw_store()
+    all_129_rows = []
+    curr_stt = 1
+
+    # 1. Đọc từ các file kết quả đã lưu trên đĩa của batch
+    if batch_results_dir.exists():
+        result_files = sorted(list(batch_results_dir.glob("result_*.json")))
+        for rf in result_files:
+            try:
+                with open(rf, "r", encoding="utf-8") as f:
+                    doc_res = json.load(f)
+                file_name = doc_res.get("file_name", rf.stem)
+                raw_md = doc_res.get("raw_ocr_markdown", "")
+                if raw_md:
+                    parsed = RawMarkdownExcelExporter.parse_raw_markdown(raw_md)
+                    merged_dict = parsed.get("merged_dict", {})
+                    rows = Cadastral129Mapper.map_merged_to_rows(
+                        merged_dict, start_stt=curr_stt, file_name=file_name
+                    )
+                else:
+                    rows = doc_res.get("chuyen_doi_rows", [])
+
+                for r in rows:
+                    if not r.get("file_name"):
+                        r["file_name"] = file_name
+                all_129_rows.extend(rows)
+                curr_stt += len(rows)
+            except Exception as e_rf:
+                logger.warning(f"Lỗi đọc {rf.name}: {e_rf}")
+
+    # 2. Nếu không tìm thấy trong batch directory, đọc từ SQLite raw_ocr_records
+    if not all_129_rows:
+        records = store.list_records(limit=2000, offset=0)
+        for r in records:
+            rec = store.get_record(r["id"])
+            if not rec:
+                continue
+            raw_md = rec.get("raw_markdown", "")
+            file_name = rec.get("file_name", "") or r.get("file_name", "")
+            parsed = RawMarkdownExcelExporter.parse_raw_markdown(raw_md)
+            merged_dict = parsed.get("merged_dict", {})
+            rows = Cadastral129Mapper.map_merged_to_rows(
+                merged_dict, start_stt=curr_stt, file_name=file_name
+            )
+            for row in rows:
+                if not row.get("file_name"):
+                    row["file_name"] = file_name
+            all_129_rows.extend(rows)
+            curr_stt += len(rows)
+
+    if not all_129_rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Không tìm thấy dữ liệu Markdown thô cho batch: {batch_id}"
+        )
+
+    # Xuất file Excel 129 cột
+    out_excel = output_dir / "batches" / batch_id / f"BaoCao_129Cot_{batch_id}.xlsx"
+    out_excel.parent.mkdir(parents=True, exist_ok=True)
+    Excel129Exporter.export(mapped_rows=all_129_rows, output_path=str(out_excel))
+
+    # Xóa sạch khỏi RAM sau khi xuất
+    del all_129_rows
+    cleanup_memory(force_os_trim=True)
+
+    return FileResponse(
+        path=str(out_excel),
+        filename=f"BaoCao_129Cot_{batch_id}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )

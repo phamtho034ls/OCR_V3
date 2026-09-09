@@ -25,6 +25,19 @@ os.environ.setdefault("TRANSFORMERS_CACHE", r"D:\Tho\OCR\.cache\huggingface\tran
 os.environ.setdefault("TORCH_HOME", r"D:\Tho\OCR\.cache\torch")
 os.environ.setdefault("PADDLE_HOME", r"D:\Tho\OCR\.cache\paddle")
 
+# Cấu hình tự động nạp DLL GPU cho NVIDIA cuDNN & cuBLAS trên Windows
+try:
+    from pathlib import Path
+    _site_pkgs = Path(__file__).parent / ".venv" / "Lib" / "site-packages"
+    for _sub in [r"nvidia\cudnn\bin", r"nvidia\cublas\bin"]:
+        _dll_dir = (_site_pkgs / _sub).resolve()
+        if _dll_dir.exists():
+            if hasattr(os, "add_dll_directory"):
+                os.add_dll_directory(str(_dll_dir))
+            os.environ["PATH"] = str(_dll_dir) + os.pathsep + os.environ.get("PATH", "")
+except Exception:
+    pass
+
 import argparse
 import json
 import logging
@@ -44,9 +57,13 @@ try:
 except Exception:
     pass
 
-# Thêm thư mục gốc vào sys.path
+# Thêm thư mục gốc và backend/src vào sys.path
 PROJECT_ROOT = Path(__file__).parent
-sys.path.insert(0, str(PROJECT_ROOT))
+for _p in [(PROJECT_ROOT / "backend" / "src"), (PROJECT_ROOT / "backend"), PROJECT_ROOT]:
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+CONFIGS_DIR = (PROJECT_ROOT / "backend" / "configs") if (PROJECT_ROOT / "backend" / "configs").exists() else (PROJECT_ROOT / "configs")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,7 +84,7 @@ def cmd_serve(args):
     logger.info(f"Docs: http://{args.host}:{args.port}/docs")
 
     uvicorn.run(
-        "api.main:app",
+        "backend.api.main:app",
         host=args.host,
         port=args.port,
         reload=args.reload,
@@ -99,13 +116,13 @@ def cmd_ocr(args):
     pipeline = {
         "ingestion": Ingestion(),
         "deskew": Deskew(),
-        "color_profile": ColorProfile(str(PROJECT_ROOT / "configs" / "color_profiles.json")),
-        "seal_mask": SealMask(str(PROJECT_ROOT / "configs" / "color_profiles.json")),
+        "color_profile": ColorProfile(str(CONFIGS_DIR / "color_profiles.json")),
+        "seal_mask": SealMask(str(CONFIGS_DIR / "color_profiles.json")),
         "detector": PaddleOCRDetector(use_gpu=use_gpu),
         "recognizer": VietOCRRecognizer(device="cuda:0" if use_gpu else "cpu"),
         "classifier": TemplateClassifier(),
-        "page_grouper": PageGrouper(str(PROJECT_ROOT / "configs" / "template_labels.json")),
-        "extractor": LabelAnchorExtractor(str(PROJECT_ROOT / "configs" / "template_labels.json")),
+        "page_grouper": PageGrouper(str(CONFIGS_DIR / "template_labels.json")),
+        "extractor": LabelAnchorExtractor(str(CONFIGS_DIR / "template_labels.json")),
         "cross_validator": CrossValidate(),
         "diagram_extractor": DiagramExtractor(),
         "address_normalizer": AddressNormalizer(),

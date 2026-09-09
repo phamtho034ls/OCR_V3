@@ -1,0 +1,347 @@
+{
+  "mau_A": {
+    "_meta": {
+      "description": "Mẫu cũ trước 2009 - UBND CHỨNG NHẬN, 1 trang, watermark vàng",
+      "diagram_region": "top_right",
+      "pages": 1
+    },
+    "ho_ten": {
+      "label": "Tên người sử dụng đất",
+      "aliases": [
+        "I- Tên người sử dụng đất",
+        "I- Ten nguroi sir dung dat",
+        "Tên người sử dụng",
+        "Ten nguoi su dung",
+        "I- Ten nguroi",
+        "Ông",
+        "Bà"
+      ]
+    },
+    "cmnd": {
+      "label": "Số CMTND",
+      "direction": "right",
+      "aliases": [
+        "Số CMND",
+        "Số CMTND",
+        "S6 CMTND",
+        "S6 CMND",
+        "CMND số",
+        "CMTND",
+        "CCCD"
+      ]
+    },
+    "ngay_sinh": {
+      "label": "Sinh năm",
+      "direction": "right",
+      "aliases": [
+        "Sinh nam",
+        "Năm sinh",
+        "Nam sinh",
+        "Ngày sinh"
+      ]
+    },
+    "dia_chi_thuong_tru": {
+      "label": "Địa chỉ thường trú",
+      "aliases": [
+        "Địa chỉ thường trú:",
+        "Dia chi thuong tru",
+        "Dja chi thuong tru",
+        "Dja chi thubng trd"
+      ]
+    },
+    "so_thua": {
+      "label": "1. Thửa đất số",
+      "aliases": [
+        "1. Thửa đất số:",
+        "1.Thua dat so",
+        "1.Thia dat so",
+        "1.Thua dat s",
+        "Thửa đất số:"
+      ]
+    },
+    "to_ban_do": {
+      "label": "2. Tờ bản đồ số",
+      "aliases": [
+        "2. Tờ bản đồ số:",
+        "2.To ban do so",
+        "2.T ban d6 s",
+        "2.T ban d6 s02",
+        "Tờ bản đồ số:"
+      ]
+    },
+    "dia_chi_thua": {
+      "label": "3. Địa chỉ thửa đất",
+      "aliases": [
+        "3. Địa chỉ thửa đất:",
+        "3.Dia chi thua dat",
+        "3.Dja chi thia dat",
+        "3.Dja chi thura dat",
+        "Địa chỉ thửa đất:"
+      ]
+    },
+    "dien_tich": {
+      "label": "4. Diện tích",
+      "aliases": [
+        "4. Diện tích:",
+        "4.Dien tich",
+        "4.Dien tfch",
+        "Diện tích:"
+      ]
+    },
+    "dien_tich_bang_chu": {
+      "label": "Bằng chữ",
+      "aliases": [
+        "Bằng chữ:",
+        "Bang chu:",
+        "Bang cht",
+        "Bang chi",
+        "bang chu"
+      ]
+    },
+    "hinh_thuc_su_dung": {
+      "label": "5. Hình thức sử dụng",
+      "aliases": [
+        "5. Hình thức sử dụng:",
+        "5.Hinh thuc su dung",
+        "5.Hinh thc s dung",
+        "5.Hnh thc s dung"
+      ]
+    },
+    "muc_dich_su_dung": {
+      "label": "6. Mục đích sử dụng",
+      "aliases": [
+        "6. Mục đích sử dụng:",
+        "6.Muc dich su dung",
+        "6.Muc dfch s dung",
+        "6.Muc dich s dung"
+      ]
+    },
+    "thoi_han": {
+      "label": "7. Thời hạn sử dụng",
+      "aliases": [
+        "7. Thời hạn sử dụng:",
+        "7.Thoi han su dung",
+        "7.Thi han si dung",
+        "7.Thi han su dung"
+      ]
+    },
+    "nguon_goc": {
+      "label": "8. Nguồn gốc sử dụng",
+      "aliases": [
+        "8. Nguồn gốc sử dụng:",
+        "8.Nguon goc su dung",
+        "8.Nguon goc s dung",
+        "8.Ngubn goc su dung"
+      ]
+    },
+    "so_vao_so": {
+      "label": "Số vào sổ cấp GCN",
+      "direction": "right",
+      "aliases": [
+        "Số vào sổ cấp GCN",
+        "Số vào sổ cấp",
+        "Số vào sổ",
+        "So vao so cap GCN",
+        "So vao so",
+        "Vào sổ cấp GCN",
+        "S6 vao so"
+      ]
+    },
+    "so_phat_hanh": {
+      "label": "Số phát hành",
+      "aliases": [
+        "Số AB",
+        "SoAB",
+        "So AB",
+        "S6AB"
+      ]
+    },
+    "ngay_cap": {
+      "label": "Ngày tháng năm cấp",
+      "aliases": [
+        "Ngày cấp",
+        "Ngay cap",
+        "Ngày ký",
+        "Ngay ky"
+      ]
+    },
+    "bien_dong": {
+      "label": "VI- Những thay đổi sau khi cấp",
+      "aliases": [
+        "Nội dung thay đổi và cơ sở pháp lý",
+        "Những thay đổi sau khi cấp",
+        "Nhirng thay doi sau khi cap",
+        "Chuyển nhượng cho"
+      ]
+    }
+  },
+  "mau_B": {
+    "_meta": {
+      "description": "Mẫu TT17/2009 sổ hồng - nhiều trang, watermark hồng, có bảng kẻ",
+      "diagram_region": "dedicated_page",
+      "pages": "multi",
+      "page_roles": {
+        "cover": 0,
+        "content": 1,
+        "diagram": 2,
+        "changes": 3
+      }
+    },
+    "ho_ten": {
+      "label": "I - Người sử dụng đất, chủ sở hữu",
+      "aliases": [
+        "I - Người sử dụng đất",
+        "I- Người sử dụng",
+        "I-Ngui sir dung dat",
+        "I-Ngui sir dung",
+        "Họ và tên:"
+      ]
+    },
+    "cmnd": {
+      "label": "CMND số",
+      "direction": "right",
+      "aliases": [
+        "CMND số:",
+        "CMND s",
+        "CMTND số",
+        "CCCD số",
+        "Số CMND"
+      ]
+    },
+    "ngay_sinh": {
+      "label": "Năm sinh",
+      "direction": "right",
+      "aliases": [
+        "Năm sinh:",
+        "Nam sinh:",
+        "Ngày sinh:",
+        "Sinh năm:"
+      ]
+    },
+    "dia_chi_thuong_tru": {
+      "label": "Địa chỉ thường trú",
+      "aliases": [
+        "Địa chỉ thường trú:",
+        "Dia chi thuong tru",
+        "Dia chi thung tri"
+      ]
+    },
+    "so_phat_hanh": {
+      "label": "Mã số phát hành",
+      "aliases": [
+        "Số phát hành",
+        "Mã số",
+        "CD"
+      ]
+    },
+    "so_thua": {
+      "label": "a) Thửa đất số",
+      "aliases": [
+        "a) Thửa đất số:",
+        "aThura dat s",
+        "a) Thửa đất số"
+      ]
+    },
+    "to_ban_do": {
+      "label": "Tờ bản đồ số",
+      "aliases": [
+        "Tờ bản đồ số:",
+        "To ban do so",
+        "To ban d6 s"
+      ]
+    },
+    "dia_chi": {
+      "label": "b) Địa chỉ",
+      "aliases": [
+        "b) Địa chỉ:",
+        "bDja chi",
+        "Địa chỉ thửa đất:",
+        "Địa chỉ:"
+      ]
+    },
+    "dien_tich": {
+      "label": "c) Diện tích",
+      "aliases": [
+        "c) Diện tích:",
+        "cDien tich",
+        "Diện tích:"
+      ]
+    },
+    "dien_tich_bang_chu": {
+      "label": "bằng chữ",
+      "aliases": [
+        "bằng chữ:",
+        "Bang chu:",
+        "bang chi",
+        "bang chu:"
+      ]
+    },
+    "hinh_thuc_su_dung": {
+      "label": "d) Hình thức sử dụng",
+      "aliases": [
+        "d) Hình thức sử dụng:",
+        "d)Hinh-thtesidung",
+        "Hình thức sử dụng:"
+      ]
+    },
+    "muc_dich_su_dung": {
+      "label": "đ) Mục đích sử dụng",
+      "aliases": [
+        "đ) Mục đích sử dụng:",
+        "d Muc dich sir dung",
+        "Mục đích sử dụng:"
+      ]
+    },
+    "thoi_han": {
+      "label": "e) Thời hạn sử dụng",
+      "aliases": [
+        "e) Thời hạn sử dụng:",
+        "e Thi han sur dung",
+        "Thời hạn sử dụng:"
+      ]
+    },
+    "nguon_goc": {
+      "label": "g) Nguồn gốc sử dụng",
+      "aliases": [
+        "g) Nguồn gốc sử dụng:",
+        "g Nguon goc sir dung",
+        "Nguồn gốc sử dụng:"
+      ]
+    },
+    "so_vao_so": {
+      "label": "Số vào sổ cấp GCN",
+      "direction": "right",
+      "aliases": [
+        "Vào sổ cấp GCN số:",
+        "Vào sổ cấp GCN:",
+        "Số vào sổ cấp GCN",
+        "So vao so cap GCN"
+      ]
+    },
+    "ngay_cap": {
+      "label": "Ngày tháng năm cấp",
+      "aliases": [
+        "Ngày cấp",
+        "Ngay cap",
+        "Ngày ký",
+        "Ngay ky"
+      ]
+    }
+  },
+  "_extension_guide": {
+    "description": "Để thêm mẫu mới (mẫu C, D...), thêm key mau_C vào đây với cùng cấu trúc",
+    "required_keys": [
+      "_meta",
+      "so_thua",
+      "to_ban_do",
+      "dien_tich",
+      "muc_dich_su_dung"
+    ],
+    "optional_keys": [
+      "so_phat_hanh_regex",
+      "hinh_thuc_su_dung",
+      "thoi_han",
+      "nguon_goc"
+    ]
+  }
+}

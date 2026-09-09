@@ -70,7 +70,11 @@ class TestColorProfile:
     """Test cases cho ColorProfile."""
 
     def setup_method(self):
-        config_path = str(Path(__file__).parent.parent / "configs" / "color_profiles.json")
+        candidate_paths = [
+            Path(__file__).resolve().parent.parent / "backend" / "configs" / "color_profiles.json",
+            Path(__file__).resolve().parent.parent / "configs" / "color_profiles.json",
+        ]
+        config_path = str(next(p for p in candidate_paths if p.exists()))
         self.cp = ColorProfile(config_path)
 
     def test_process_mau_a_returns_grayscale(self):
@@ -105,7 +109,11 @@ class TestSealMask:
     """Test cases cho SealMask."""
 
     def setup_method(self):
-        config_path = str(Path(__file__).parent.parent / "configs" / "color_profiles.json")
+        candidate_paths = [
+            Path(__file__).resolve().parent.parent / "backend" / "configs" / "color_profiles.json",
+            Path(__file__).resolve().parent.parent / "configs" / "color_profiles.json",
+        ]
+        config_path = str(next(p for p in candidate_paths if p.exists()))
         self.sm = SealMask(config_path)
 
     def _make_image_with_red_seal(self):

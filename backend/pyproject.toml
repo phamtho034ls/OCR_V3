@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocr-so-do-backend"
+version = "2.0.0"
+description = "Hệ thống OCR Giấy chứng nhận quyền sử dụng đất (Sổ đỏ / Sổ hồng) - Backend Production"
+authors = [{ name = "Tho Pham", email = "phamtho034ls@gmail.com" }]
+license = { text = "Proprietary" }
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.7.0",
+    "python-multipart>=0.0.9",
+    "opencv-python==4.10.0.84",
+    "opencv-contrib-python==4.10.0.84",
+    "opencv-python-headless==4.10.0.84",
+    "Pillow>=10.0.0",
+    "numpy>=1.26.0",
+    "PyMuPDF>=1.24.0",
+    "paddlepaddle==2.6.2",
+    "paddleocr==2.8.1",
+    "albumentations==1.4.2",
+    "vietocr>=0.3.8",
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "rapidfuzz>=3.9.0",
+    "openpyxl>=3.1.0",
+    "pandas>=2.2.0",
+    "python-dotenv>=1.0.0",
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "httpx>=0.27.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
