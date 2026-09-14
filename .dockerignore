@@ -1,0 +1,28 @@
+# Virtual environments & Dependencies
+.venv/
+venv/
+env/
+node_modules/
+frontend/node_modules/
+
+# Cache & Build artifacts
+.cache/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+frontend/dist/
+
+# Logs & Temp files
+*.log
+scratch/
+temp/
+
+# Output folders
+output/
+outputs/
+
+# Git
+.git/
+.gitignore
+.env

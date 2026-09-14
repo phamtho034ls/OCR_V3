@@ -1,26 +1,33 @@
-# Dockerfile cho Backend Production
+# Dockerfile cho Backend Production (FastAPI + OCR Pipeline)
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# Cài đặt các thư viện hệ thống cần thiết cho OpenCV và PyMuPDF
+# Cài đặt các thư viện hệ thống cần thiết cho OpenCV, PyMuPDF và PostgreSQL
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
+    libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Cài đặt dependencies Python
-COPY backend/pyproject.toml .
-RUN pip install --no-cache-dir -U pip setuptools wheel
-RUN pip install --no-cache-dir -e .
+COPY requirements.txt .
+RUN pip install --no-cache-dir -U pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy mã nguồn backend
-COPY backend/src /app/src
-COPY configs /app/configs
+# Copy toàn bộ mã nguồn backend và cấu hình vào image
+COPY backend /app/backend
+COPY backend/configs /app/configs
+COPY run.py /app/run.py
 
-ENV PYTHONPATH=/app/src
+# Khai báo biến môi trường cho module import
+ENV PYTHONPATH=/app/backend/src:/app/backend:/app \
+    PYTHONUNBUFFERED=1
+
 EXPOSE 8000
 
-CMD ["uvicorn", "ocr_so_do.interfaces.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Khởi chạy server FastAPI đầy đủ tính năng
+CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

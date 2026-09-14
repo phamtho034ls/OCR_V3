@@ -1,4 +1,5 @@
 services:
+  # ── 1. CƠ SỞ DỮ LIỆU POSTGRESQL (ĐỘC LẬP HOÀN TOÀN) ────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: ocr_sodo_postgres
@@ -6,6 +7,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ocr_password
       POSTGRES_DB: ocr_so_do
+    # Cổng kết nối riêng biệt cho Docker: 5434 (Host) -> 5432 (Container)
+    # Không xung đột với PostgreSQL 18 trên máy chủ đang chạy cổng 5433
     ports:
       - "5434:5432"
     volumes:
@@ -17,11 +20,14 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ── 2. BACKEND API & OCR PIPELINE ──────────────────────────────────────────
   backend:
     build:
-      context: ..
+      context: .
       dockerfile: deployments/docker/Dockerfile.backend
     container_name: ocr_sodo_backend
+    # Cổng kết nối riêng biệt cho Docker Backend: 8008 (Host) -> 8000 (Container)
+    # Không xung đột với Backend chạy cục bộ đang dùng cổng 8000
     ports:
       - "8008:8000"
     environment:
@@ -34,6 +40,9 @@ services:
       - HF_HOME=/app/.cache/huggingface
       - TORCH_HOME=/app/.cache/torch
       - PADDLE_HOME=/app/.cache/paddle
+    # CHÚ Ý: Không mount thư mục mã nguồn máy chủ (src) vào container để việc
+    # sửa code trên máy không ảnh hưởng đến Docker đang chạy.
+    # Chỉ khi nào chạy "docker compose build" thì code mới được cập nhật vào image.
     volumes:
       - ocr_outputs:/app/output
       - ocr_cache:/app/.cache
@@ -42,17 +51,21 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── 3. FRONTEND REACT + NGINX PROXY ────────────────────────────────────────
   frontend:
     build:
-      context: ..
+      context: .
       dockerfile: deployments/docker/Dockerfile.frontend
     container_name: ocr_sodo_frontend
+    # Cổng kết nối riêng biệt cho Docker Frontend: 8088 (Host) -> 80 (Container)
+    # Không xung đột với cổng 80 hay cổng 8080 / 5173
     ports:
       - "8088:80"
     depends_on:
       - backend
     restart: unless-stopped
 
+# Volume lưu trữ dữ liệu bền vững độc lập
 volumes:
   ocr_pgdata:
     name: ocr_sodo_pgdata
