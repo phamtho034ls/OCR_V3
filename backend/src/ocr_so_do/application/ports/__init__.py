@@ -39,6 +39,9 @@ class ArtifactStorePort(ABC):
     def save_crop(self, job_id: str, crop_image: np.ndarray, filename: str) -> str:
         pass
 
+    def save_crop_metadata(self, job_id: str, filename: str, metadata: Dict[str, Any]) -> str:
+        return ""
+
     @abstractmethod
     def get_artifact_path(self, job_id: str, relative_path: str) -> Optional[str]:
         pass

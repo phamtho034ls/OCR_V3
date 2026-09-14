@@ -21,15 +21,17 @@ import {
   ExternalLink,
   FileCode,
   Copy,
-  X
+  X,
+  Database,
 } from 'lucide-react';
 import { BatchItemSummary, BatchProgressResponse } from '../../shared/types';
 
 interface BatchScanPageProps {
   onView129Table: (rows: Record<string, any>[]) => void;
+  onOpenPgStorage?: () => void;
 }
 
-export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table }) => {
+export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, onOpenPgStorage }) => {
   const [scanMode, setScanMode] = useState<'client_folder' | 'server_path'>('client_folder');
 
   // Client Folder Upload State
@@ -747,6 +749,17 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table }) 
                   >
                     <Download size={14} />
                     <span>Tải Excel Checkpoint ({lastCheckpointIdx} hồ sơ)</span>
+                  </button>
+                )}
+
+                {onOpenPgStorage && (
+                  <button
+                    onClick={onOpenPgStorage}
+                    className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 border border-indigo-200"
+                    title="Mở Kho Dữ Liệu PostgreSQL để xem, lọc và quản lý hồ sơ"
+                  >
+                    <Database size={14} />
+                    <span>Kho Dữ Liệu PG</span>
                   </button>
                 )}
 

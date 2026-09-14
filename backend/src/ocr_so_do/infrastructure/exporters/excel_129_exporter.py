@@ -75,6 +75,12 @@ class Excel129Exporter(CadastralExporterPort):
             template_path=tmpl or str(DEFAULT_TEMPLATE_PATH)
         )
 
+    CORE_ALERT_FIELDS = {
+        "GCN_soPhatHanh", "GCN_soVaoSo", "GCN_ngayCap",
+        "CHU_hoTen", "GT_soGiayTo",
+        "TD_soThuTuThua", "TD_soHieuToBanDo", "TD_dienTich", "TD_maMucDichSuDung", "TD_diaChiChiTiet"
+    }
+
     @classmethod
     def export_static(
         cls,
@@ -116,6 +122,7 @@ class Excel129Exporter(CadastralExporterPort):
         align_left = Alignment(horizontal="left", vertical="center")
         align_center = Alignment(horizontal="center", vertical="center")
         align_right = Alignment(horizontal="right", vertical="center")
+        core_alert_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
 
         # Ghi các dòng dữ liệu mới
         for r_idx, row_dict in enumerate(mapped_rows, start=5):
@@ -138,6 +145,10 @@ class Excel129Exporter(CadastralExporterPort):
                         cell.number_format = "#,##0.0" if isinstance(val, float) else "#,##0"
                 else:
                     cell.alignment = align_left
+
+                # Cảnh báo mềm màu vàng nhạt cho ô thiếu trường cốt lõi (Priority 5)
+                if code in cls.CORE_ALERT_FIELDS and (val is None or str(val).strip() == "" or str(val).lower() == "nan"):
+                    cell.fill = core_alert_fill
 
             sheet.row_dimensions[r_idx].height = 20
 

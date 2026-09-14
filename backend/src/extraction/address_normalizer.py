@@ -354,7 +354,18 @@ class AddressNormalizer:
             r"^(tỉnh|thành phố|tp\.?)\s*", "", last_part, flags=re.IGNORECASE
         ).strip()
 
-        matched, score = self.fuzzy_match_province(clean_last)
+        matched, score = None, 0.0
+        try:
+            from ..ocr_so_do.domain.rules.address.dmn_vn_normalizer import DmnVnNormalizer
+            p_res = DmnVnNormalizer().match_province(clean_last)
+            if p_res:
+                matched, score = p_res.clean_name, p_res.score
+        except Exception:
+            pass
+
+        if not matched:
+            matched, score = self.fuzzy_match_province(clean_last)
+
         if matched and score >= self.province_fuzzy_threshold:
             if matched != clean_last:
                 logger.info(

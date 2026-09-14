@@ -14,6 +14,7 @@ from ..projections.cadastral_129_mapper import Cadastral129Mapper as ExcelChuyen
 from extraction.gcn_merger import GCNMerger
 from ...domain.rules.raw_markdown.generator import RawMarkdownGenerator
 from ...infrastructure.persistence.sqlite_raw_store import get_sqlite_raw_store
+from ...infrastructure.persistence.postgres_store import get_postgres_store
 from ...infrastructure.memory import cleanup_memory
 
 logger = logging.getLogger(__name__)
@@ -27,9 +28,12 @@ class ProcessDocumentUseCase:
         self,
         document_path: str,
         document_id: str,
+        file_name: Optional[str] = None,
         split_a3: bool = True,
         smart_gcn_filter: bool = True,
-        stt: int = 1
+        stt: int = 1,
+        batch_id: Optional[str] = None,
+        folder_result: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Thực thi xử lý OCR toàn bộ các trang của 1 tài liệu.
@@ -38,6 +42,9 @@ class ProcessDocumentUseCase:
         doc_p = Path(document_path)
         if not doc_p.exists():
             raise FileNotFoundError(f"Không tìm thấy file: {document_path}")
+
+        display_name = file_name or doc_p.name
+        stem_name = Path(display_name).stem
 
         # Streaming ingestion: chỉ giữ một ảnh trang trong RAM mỗi lần.
         page_results = []
@@ -54,13 +61,13 @@ class ProcessDocumentUseCase:
                     job_id=page_job_id,
                     page_index=p_idx
                 )
-                p_res["file_name"] = f"{doc_p.stem}_p{p_idx + 1}.png"
+                p_res["file_name"] = f"{stem_name}_p{p_idx + 1}.png"
                 page_results.append(p_res)
             except Exception as e_p:
                 logger.error(f"[{document_id}] Lỗi xử lý trang {p_idx + 1}: {e_p}", exc_info=True)
                 page_results.append({
                     "page_index": p_idx,
-                    "file_name": f"{doc_p.stem}_p{p_idx + 1}.png",
+                    "file_name": f"{stem_name}_p{p_idx + 1}.png",
                     "error": str(e_p),
                     "ocr_results": [],
                     "raw_fields": {},
@@ -82,13 +89,13 @@ class ProcessDocumentUseCase:
                     p_res = self.orchestrator.process_page(
                         image=page_img, job_id=page_job_id, page_index=p_idx
                     )
-                    p_res["file_name"] = f"{doc_p.stem}_p{p_idx + 1}.png"
+                    p_res["file_name"] = f"{stem_name}_p{p_idx + 1}.png"
                     page_results.append(p_res)
                 except Exception as e_p:
                     logger.error(f"[{document_id}] Lỗi xử lý trang {p_idx + 1}: {e_p}", exc_info=True)
                     page_results.append({
                         "page_index": p_idx,
-                        "file_name": f"{doc_p.stem}_p{p_idx + 1}.png",
+                        "file_name": f"{stem_name}_p{p_idx + 1}.png",
                         "error": str(e_p), "ocr_results": [], "raw_fields": {}, "crops": []
                     })
                 finally:
@@ -101,10 +108,15 @@ class ProcessDocumentUseCase:
         merged = GCNMerger.merge(page_results, bo_gcn_id=document_id)
         elapsed = round(time.time() - t_start, 2)
         merged["tong_thoi_gian_sec"] = elapsed
-        merged["file_nguon"] = doc_p.name
+        merged["file_nguon"] = display_name
+        merged["file_name"] = display_name
         merged["so_trang"] = page_count
         merged["job_id"] = document_id
         merged["document_id"] = document_id
+
+        # Đảm bảo danh_sach_thua có mặt ở cả cấp merged lẫn thua_dat
+        if merged.get("thua_dat", {}).get("danh_sach_thua"):
+            merged["danh_sach_thua"] = merged["thua_dat"]["danh_sach_thua"]
 
         # Bổ sung mã vạch nếu ở trang sau
         if not merged.get("ma_vach"):
@@ -117,7 +129,7 @@ class ProcessDocumentUseCase:
         merged["pages"] = [
             {
                 "page_index": p.get("page_index", i),
-                "file_name": p.get("file_name", f"{doc_p.stem}_p{i+1}.png"),
+                "file_name": p.get("file_name", f"{stem_name}_p{i+1}.png"),
                 "preview_url": p.get("preview_url", ""),
                 "mau": p.get("mau", p.get("template", "")),
                 "so_phat_hanh": p.get("so_phat_hanh", ""),
@@ -156,14 +168,14 @@ class ProcessDocumentUseCase:
 
         # Projection 129 cột
         chuyen_doi_rows = ExcelChuyenDoiMapper.map_merged_to_rows(
-            merged, start_stt=stt, file_name=doc_p.name
+            merged, start_stt=stt, file_name=display_name
         )
         merged["chuyen_doi_rows"] = chuyen_doi_rows
 
         # Sinh Markdown dữ liệu thô (Raw OCR Data) toàn văn cho tài liệu
         doc_raw_md = RawMarkdownGenerator.generate_document_raw_markdown(
             document_id=document_id,
-            file_name=doc_p.name,
+            file_name=display_name,
             template=merged.get("mau", main_p.get("mau", "unknown")),
             page_results=page_results,
             merged_data=merged
@@ -181,24 +193,60 @@ class ProcessDocumentUseCase:
         except Exception as e_f:
             logger.warning(f"[{document_id}] Không thể ghi raw_ocr.md ra đĩa: {e_f}")
 
-        # Lưu vào bảng SQLite raw_ocr_records để tra cứu tập trung
+        # Lưu vào PostgreSQL để tra cứu tập trung và quản lý bền vững
+        try:
+            pg_store = get_postgres_store()
+            nsd = merged.get("nguoi_su_dung", {})
+            thua = merged.get("thua_dat", {})
+            src_p = str(doc_p.resolve())
+            src_f = str(doc_p.parent.resolve())
+            f_res = folder_result or batch_id or doc_p.parent.name or "single_scans"
+
+            pg_store.save_record(
+                doc_id=document_id,
+                file_name=display_name,
+                raw_markdown=doc_raw_md,
+                batch_id=batch_id,
+                source_path=src_p,
+                source_folder=src_f,
+                folder_result=f_res,
+                template=merged.get("mau", main_p.get("mau", "unknown")),
+                total_pages=len(page_results),
+                so_phat_hanh=merged.get("so_phat_hanh", ""),
+                so_vao_so=merged.get("so_vao_so", ""),
+                ma_vach=merged.get("ma_vach", ""),
+                ten_chu=nsd.get("ten") or nsd.get("ho_ten_chu_1", ""),
+                cmnd=nsd.get("cmnd_chu_1") or nsd.get("cmnd", ""),
+                so_thua=thua.get("so_thua", ""),
+                to_ban_do=thua.get("to_ban_do", ""),
+                dien_tich=thua.get("dien_tich_cap", ""),
+                dia_chi=thua.get("dia_chi", ""),
+                structured_data=merged,
+                chuyen_doi_rows=chuyen_doi_rows,
+                status="success",
+                elapsed_seconds=elapsed,
+            )
+        except Exception as e_pg:
+            logger.warning(f"[{document_id}] Không thể lưu vào PostgreSQL: {e_pg}")
+
+        # Đồng thời lưu vào SQLite làm cache dự phòng nếu cần
         try:
             raw_store = get_sqlite_raw_store()
             raw_store.save_record(
                 doc_id=document_id,
-                file_name=doc_p.name,
+                file_name=display_name,
                 template=merged.get("mau", main_p.get("mau", "unknown")),
                 total_pages=len(page_results),
                 raw_markdown=doc_raw_md
             )
         except Exception as e_sql:
-            logger.warning(f"[{document_id}] Không thể lưu raw_ocr vào SQLite: {e_sql}")
+            logger.debug(f"[{document_id}] SQLite backup notice: {e_sql}")
 
-        cleanup_memory(force_os_trim=True)
+        cleanup_memory(force_os_trim=False)
 
         return {
             "document_id": document_id,
-            "file_name": doc_p.name,
+            "file_name": display_name,
             "merged": merged,
             "page_results": page_results,
             "raw_ocr_markdown": doc_raw_md,

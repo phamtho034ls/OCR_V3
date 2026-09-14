@@ -40,6 +40,18 @@ class FilesystemArtifactStore(ArtifactStorePort):
             return f"/output/{job_id}/crops/{filename}"
         return ""
 
+    def save_crop_metadata(self, job_id: str, filename: str, metadata: dict) -> str:
+        crops_dir = self.base_dir / job_id / "crops"
+        crops_dir.mkdir(parents=True, exist_ok=True)
+        meta_path = crops_dir / filename
+        try:
+            import json
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, ensure_ascii=False, indent=2)
+            return f"/output/{job_id}/crops/{filename}"
+        except Exception:
+            return ""
+
     def get_artifact_path(self, job_id: str, relative_path: str) -> Optional[str]:
         target = (self.base_dir / job_id / relative_path).resolve()
         # Ngăn ngừa path traversal

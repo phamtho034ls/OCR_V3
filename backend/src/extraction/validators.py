@@ -56,6 +56,50 @@ SECTION_HEADER_KEYWORDS = [
     "BẢNG LIỆT KÊ", "BANG LIET KE", "SƠ ĐỒ THỬA ĐẤT", "SO DO THUA DAT"
 ]
 
+# Mã phát hành/serial thường bị OCR ghép vào cuối địa chỉ. Không giới hạn
+# đúng 2 chữ cái vì thực tế có hồ sơ bị nhận thành một chữ cái (ví dụ H275322).
+# Chỉ nhận phần chữ kèm ít nhất 5 chữ số để không xóa số nhà, tổ, ngõ...
+SERIAL_TAIL_RE = re.compile(
+    r"(?:[,;]\s*|\s+)(?:[A-Za-zÀ-ỹĐđ]{1,4}\s+)?[A-Za-zÀ-ỹĐđ]{1,4}\s*[-./:]?\s*\d{5,}\s*$|(?:[,;]\s*)\d{5,}\s*$",
+    re.IGNORECASE,
+)
+
+
+def strip_serial_tail(value: str) -> str:
+    """Bỏ mã phát hành bị ghép ở cuối địa chỉ, giữ phần địa chỉ trước đó."""
+    cleaned = value
+    previous = None
+    while cleaned and cleaned != previous:
+        previous = cleaned
+        cleaned = SERIAL_TAIL_RE.sub("", cleaned).strip(" -:;,.")
+    return cleaned
+
+
+def truncate_address_after_province(value: str) -> str:
+    """Giữ địa chỉ đến hết tên tỉnh/thành, bỏ mọi dữ liệu dính phía sau."""
+    cleaned = value.strip()
+    cleaned = re.sub(
+        r"\b(?:tỉnh|tinh|tin[hg]|ủnh|únh)\s+(?:lạng\s*sơn|lang\s*sơn|lang\s*sem|lang\s*sm|lược\s*sơn|ling\s*sơn|lăng\s*sơn)\b",
+        "tỉnh Lạng Sơn",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"([,;]\s*)(?:lạng\s*sơn|lang\s*sơn|lang\s*sem|lang\s*sm|lược\s*sơn|ling\s*sơn|lăng\s*sơn)\b",
+        r"\1tỉnh Lạng Sơn",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    match = re.search(
+        r"\b(?:tỉnh|tinh|tin[hg]|thành\s*phố|thanh\s*pho|tp\.?)\s+[^,;\n\r]+(?:[,;].*)?$",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        province_part = re.split(r"[,;]", match.group(0), maxsplit=1)[0]
+        cleaned = cleaned[:match.start()] + province_part
+    return cleaned.strip(" -:;,." )
+
 
 class GCNValidators:
     """Bộ kiểm định và chuẩn hóa trường dữ liệu GCN chuẩn."""
@@ -112,17 +156,21 @@ class GCNValidators:
         if any(bw in s_clean.lower() for bw in REGISTRY_BLACKLIST) or s_clean.upper().startswith(("MND", "CMND", "CCCD")):
             return False, None, f"Số vào sổ chứa từ khóa không hợp lệ: '{s_clean}'"
 
-        # Chuẩn hóa nhầm lẫn quang học OCR cho mã sổ dạng CH/CS (O->0, S->5, l->1, D->0)
-        m_ch = re.match(r"^(C[HNS])\s*([0-9A-Za-z\.\-_]+)$", s_clean, re.IGNORECASE)
+        # Chuẩn hóa nhầm lẫn quang học OCR cho mã sổ dạng CH/CS (O->0, S->5, l->1, D->0, G->6, %->9)
+        m_ch = re.search(r'(?:GCN|GƠN|sổ)?\s*(C[HNS])\s*([0-9A-Za-z\.\-_%]+)', s_clean, re.IGNORECASE)
         if m_ch:
             prefix = m_ch.group(1).upper()
             body = m_ch.group(2)
-            repl = {'O': '0', 'o': '0', 'S': '5', 's': '5', 'I': '1', 'l': '1', 'i': '1', 'B': '8', 'q': '9', 'D': '0'}
+            repl = {'O': '0', 'o': '0', 'S': '5', 's': '5', 'I': '1', 'l': '1', 'i': '1', 'L': '1', 'B': '8', 'q': '9', 'D': '0', 'G': '6', 'U': '0', 'u': '0', 'C': '0', 'c': '0', '%': '9'}
             norm_body = "".join(repl.get(c, c) for c in body)
-            if not norm_body.startswith("."):
-                norm_body = norm_body.replace(".", "").replace("-", "").replace("_", "")
-            if re.search(r"\d", norm_body):
-                s_clean = f"{prefix}{norm_body}"
+            norm_body = re.sub(r"[.\-_]", "", norm_body)
+            m_dig = re.fullmatch(r"(\d{3,8})", norm_body)
+            if m_dig:
+                s_clean = f"{prefix}{m_dig.group(1)}"
+            else:
+                # Không cắt phần số ở trước một chữ cái còn sót lại của OCR.
+                # Candidate không thuần số sẽ bị đánh dấu review/thất bại.
+                return False, s_clean, f"Số vào sổ sai định dạng: '{s_clean}'"
 
         if len(s_clean) < 3 or s_clean.upper() in {"CN", "GI", "CHT", "SO", "SỐ", "GCN", "CH", "CS", "CẤP"}:
             return False, s_clean, f"Số vào sổ quá ngắn hoặc chỉ là mã viết tắt: '{s_clean}'"
@@ -138,7 +186,11 @@ class GCNValidators:
         if any(kw in s_clean.upper() for kw in AGENCY_KEYWORDS):
             return False, s_clean, f"Số vào sổ chứa từ khóa cơ quan hành chính: '{s_clean}'"
 
-        return True, s_clean, None
+        compact = re.sub(r"\s+", "", s_clean).upper()
+        if not re.fullmatch(r"(?:[A-Z]{1,4})?\d{3,8}(?:/[A-Z0-9-]+)?", compact):
+            return False, s_clean, f"Số vào sổ sai định dạng: '{s_clean}'"
+
+        return True, compact, None
 
     @staticmethod
     def validate_barcode(barcode_str: Any) -> Tuple[bool, Optional[str], Optional[str]]:
@@ -446,18 +498,29 @@ class GCNValidators:
         # Bỏ tiền tố "Địa chỉ thường trú:", "Địa chỉ thửa đất:", "thừa đất:", "thửa đất:"
         s = re.sub(r'^(?:[đd][ịj]a\s*ch[ỉií]\s*(?:th[uư][oờ]ng\s*tr[uú]|th[ửừuưaâáàảãạ\s]*[đd][ấa\s]*t)?)\s*[:\.]?\s*', '', s, flags=re.IGNORECASE).strip()
         s = re.sub(r'^(?:th[ửừuưaâáàảãạ\s]*[đd][ấa\s]*t)\s*[:\.]?\s*', '', s, flags=re.IGNORECASE).strip()
-        
+        # Bỏ tiền tố rác OCR từ nhãn "Địa chỉ thường trú": "Định chỉ trường rữ", "Địa chỉ trường rữ"
+        s = re.sub(r'^(?:[đd][ịj]nh\s*ch[ỉií]\s*tr[uư][oờ]ng\s*r[ữư]|địa\s*chỉ\s*trường\s*rữ)\s*[:\.]?\s*', '', s, flags=re.IGNORECASE).strip()
+        # Cắt bỏ phần tràn sang đơn đăng ký / kê khai
+        s = re.sub(r'[,;]?\s*\(\s*Kê\s*khai\s*theo.*$', '', s, flags=re.IGNORECASE).strip()
+        s = re.sub(r'[,;]?\s*2\.\s*Giấy\s*chứng\s*nhận\s*đã\s*cấp.*$', '', s, flags=re.IGNORECASE).strip()
+
         # Cắt bỏ khi gặp tiêu đề section tiếp theo
         for kw in SECTION_HEADER_KEYWORDS:
             idx = s.upper().find(kw)
             if idx != -1:
                 s = s[:idx].strip(" ,;.-")
 
+        # Cắt mã phát hành bị dính ở cuối địa chỉ (ví dụ `..., H275322`).
+        s = strip_serial_tail(s)
+
         # Cắt bỏ dấu kết thúc tài liệu -/-
         s = re.sub(r'\s*[\-\/]{2,}\s*$', '', s).strip()
         
         # Chuẩn hóa tiền tố "Số ..."
         s = re.sub(r'\bS[oố60]\s*(\d+)', r'Số \1', s)
+
+        # Cắt lại sau chuẩn hóa để loại mọi phần thừa sau tỉnh/thành.
+        s = truncate_address_after_province(s)
 
         # Loại bỏ các chuỗi rác dạng đầu mục như "b)", "a)", "1.", "-"
         if len(s) < 6 or re.match(r'^[a-zA-Z0-9\-_./\(\)]+$', s):
@@ -695,6 +758,16 @@ class GCNValidators:
         """
         s = GCNValidators.clean_text(origin_str)
 
+        BAD_ORIGIN_KEYWORDS = [
+            "QUYỀN SỞ HỮU", "QUYEN SO HUU", "TÀI SẢN KHÁC", "TAI SAN KHAC",
+            "NGƯỜI SỬ DỤNG ĐẤT", "NGUOI SU DUNG DAT", "HỘ ÔNG", "HO ONG",
+            "HỘ BÀ", "HO BA", "SINH NĂM", "SINH NAM", "CMND", "CCCD",
+            "ĐỊA CHỈ THƯỜNG TRÚ", "DIA CHI THUONG TRU", "THỬA ĐẤT SỐ", "THUA DAT SO",
+            "TỜ BẢN ĐỒ", "TO BAN DO", "SƠ ĐỒ", "SO DO", "GIẤY CHỨNG NHẬN", "GIAY CHUNG NHAN",
+            "NGƯỜI NHẬN HỒ SƠ", "NGUOI NHAN HO SO", "KÝ VÀ GHI RÕ HỌ TÊN", "KY VA GHI RO HO TEN",
+            "TÀI SẢN GẮN LIỀN", "TAI SAN GAN LIEN", "SỐ THỨ TỰ", "SO THU TU"
+        ]
+
         def _is_bad(txt: str) -> bool:
             if not txt:
                 return True
@@ -703,49 +776,162 @@ class GCNValidators:
                 return True
             if len(low) < 8:
                 return True
+            txt_up = txt.upper()
+            if any(bw in txt_up for bw in BAD_ORIGIN_KEYWORDS):
+                return True
             return False
 
-        # Danh mục các nguồn gốc pháp lý chuẩn
-        ORIGIN_RULES = [
-            (r"công\s*nhận\s*qsdđ\s*như\s*giao.*không\s*thu\s*tiền", "Công nhận QSDĐ như giao đất không thu tiền sử dụng đất", "CNQ-KTT"),
-            (r"công\s*nhận\s*qsdđ\s*như\s*giao.*có\s*thu\s*tiền", "Công nhận QSDĐ như giao đất có thu tiền sử dụng đất", "GT"),
-            (r"nhà\s*nước\s*giao\s*đất\s*không\s*thu\s*tiền", "Nhà nước giao đất không thu tiền sử dụng đất", "GKT"),
-            (r"nhà\s*nước\s*giao\s*đất\s*có\s*thu\s*tiền", "Nhà nước giao đất có thu tiền sử dụng đất", "GT"),
-            (r"nhà\s*nước\s*công\s*nhận", "Nhà nước công nhận quyền sử dụng đất", "CN"),
-            (r"nhận\s*chuyển\s*nhượng", "Nhận chuyển nhượng quyền sử dụng đất", "NCN"),
-            (r"thừa\s*kế", "Được thừa kế quyền sử dụng đất", "TK"),
-            (r"tặng\s*cho", "Được tặng cho quyền sử dụng đất", "TC"),
-        ]
+        def _ocr_tokens(value: str) -> str:
+            """Accent-insensitive tokens tolerate split/reordered OCR table cells."""
+            value = re.sub(r"\s*Đến\s*\d{1,2}\/\d{4}\s*", " ", value, flags=re.IGNORECASE)
+            value = unicodedata.normalize("NFD", value.lower().replace("đ", "d"))
+            value = "".join(ch for ch in value if unicodedata.category(ch) != "Mn")
+            return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+        def _has_all(tokens: str, *words: str) -> bool:
+            token_set = set(tokens.split())
+            return all(word in token_set for word in words)
+
+        def _classify(value: str) -> Tuple[Optional[str], Optional[str]]:
+            tokens = _ocr_tokens(value)
+            if not tokens:
+                return None, None
+
+            # Payment wording can be split across cells or appear before "Công nhận".
+            is_no_fee = _has_all(tokens, "thu", "tien") and ("khong" in tokens.split() or "khng" in tokens.split())
+            is_fee = _has_all(tokens, "thu", "tien") and "co" in tokens.split() and not is_no_fee
+            is_recognition = _has_all(tokens, "cong", "nhan")
+            is_like_grant = "giao" in tokens.split()
+            is_state = _has_all(tokens, "nha", "nuoc")
+
+            if is_recognition and is_like_grant and is_no_fee:
+                return "Công nhận QSDĐ như giao đất không thu tiền sử dụng đất", "CNQ-KTT"
+            if is_recognition and is_like_grant and is_fee:
+                return "Công nhận QSDĐ như giao đất có thu tiền sử dụng đất", "GT"
+            if is_state and is_like_grant and is_no_fee:
+                return "Nhà nước giao đất không thu tiền sử dụng đất", "GKT"
+            if is_state and is_like_grant and is_fee:
+                return "Nhà nước giao đất có thu tiền sử dụng đất", "GT"
+            if _has_all(tokens, "nhan", "chuyen", "nhuong"):
+                return "Nhận chuyển nhượng quyền sử dụng đất", "NCN"
+            if _has_all(tokens, "thua", "ke"):
+                return "Được thừa kế quyền sử dụng đất", "TK"
+            if _has_all(tokens, "tang", "cho"):
+                return "Được tặng cho quyền sử dụng đất", "TC"
+            if (is_state and "thue" in tokens.split()) or _has_all(tokens, "cho", "thue"):
+                return "Nhà nước cho thuê đất", "TD"
+            if is_state and is_recognition:
+                return "Nhà nước công nhận quyền sử dụng đất", "CN"
+            # Keep a generic recognition only when OCR retained the legal QSDĐ phrase.
+            if is_recognition and ("qsdd" in tokens.split() or _has_all(tokens, "quyen", "su", "dung", "dat")):
+                return "Nhà nước công nhận quyền sử dụng đất", "CN"
+            return None, None
 
         found_norm: Optional[str] = None
         found_code: Optional[str] = None
 
-        # 1. Kiểm tra chuỗi origin_str nếu hợp lệ
+        # Never accept an arbitrary Vietnamese sentence as a legal origin.
         if s and not _is_bad(s):
-            s_clean = re.sub(r"\s*Đến\s*\d{1,2}\/\d{4}\s*", " ", s, flags=re.IGNORECASE)
-            s_clean = re.sub(r"\s+", " ", s_clean).strip()
-            for pat, norm_name, code in ORIGIN_RULES:
-                if re.search(pat, s_clean, re.IGNORECASE):
-                    found_norm = norm_name
-                    found_code = code
-                    break
-            if not found_norm and len(s_clean) >= 10:
-                found_norm = s_clean
-                found_code = "CN"
+            found_norm, found_code = _classify(s)
 
-        # 2. Nếu chưa có và có full_context -> tìm trong full_context
+        # Context is only a recovery source; callers must decide whether it is safe to
+        # apply one value to more than one parcel.
         if not found_norm and full_context:
-            for pat, norm_name, code in ORIGIN_RULES:
-                if re.search(pat, full_context, re.IGNORECASE):
-                    found_norm = norm_name
-                    found_code = code
-                    break
+            found_norm, found_code = _classify(str(full_context))
 
         if found_norm:
             return True, found_norm, found_code or "", None
 
         if s and _is_bad(s):
-            return False, s, None, f"Nguồn gốc sử dụng chứa từ khóa tiêu đề bảng/rác: '{s}'"
+            return False, None, None, f"Nguồn gốc sử dụng chứa từ khóa tiêu đề bảng/thông tin chủ: '{s}'"
 
-        return False, s, None, f"Nguồn gốc sử dụng không hợp lệ: '{s}'"
+        return False, None, None, f"Nguồn gốc sử dụng không hợp lệ: '{s}'"
 
+    @staticmethod
+    def validate_area(area_val: Any) -> Tuple[bool, Optional[float], Optional[str]]:
+        """
+        Kiểm định diện tích thửa đất.
+        Phải là số thực dương > 0.
+        Ngưỡng hợp lý: 0.5 <= S <= 1,000,000 m2.
+        Returns: (is_valid, normalized_float, error_reason)
+        """
+        if area_val is None:
+            return False, None, "Diện tích trống"
+        
+        s = str(area_val).strip()
+        if s.startswith('-') or re.search(r'-\s*\d', s):
+            return False, None, f"Diện tích không được là số âm: '{area_val}'"
+
+        s_clean = re.sub(r'(?:m2|m²|m\b|\(m2\)|\(m²\))', '', s, flags=re.IGNORECASE).strip()
+        s_clean = re.sub(r'[^\d,\.]', '', s_clean).replace(',', '.')
+        
+        try:
+            val = float(s_clean)
+        except (ValueError, TypeError):
+            return False, None, f"Diện tích không phải số hợp lệ: '{area_val}'"
+            
+        if val <= 0:
+            return False, None, f"Diện tích phải > 0, nhận được: {val}"
+        if val < 0.5:
+            return False, val, f"Diện tích quá nhỏ (< 0.5 m²): {val}"
+        if val > 5_000_000:
+            return False, val, f"Diện tích quá lớn (> 5,000,000 m²): {val}"
+            
+        return True, round(val, 2), None
+
+    @staticmethod
+    def validate_issuing_authority(auth_str: Any) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Kiểm định cơ quan cấp Giấy chứng nhận (UBND, Sở TN&MT, VPĐKĐĐ).
+        Làm sạch triệt để tiền tố 'TM.', 'Kính gửi:'.
+        Returns: (is_valid, normalized_name, error_reason)
+        """
+        s = GCNValidators.clean_text(auth_str)
+        if not s:
+            return False, None, "Cơ quan cấp trống"
+            
+        # Loại bỏ tiền tố ký thay hoặc kính gửi
+        s = re.sub(r'^(?:TM\s*\.?\s*|Kính\s*g[ửữ]i\s*[:\.]?\s*)+', '', s, flags=re.IGNORECASE).strip()
+        s = re.sub(r'\bUBND\b', 'Ủy ban nhân dân', s, flags=re.IGNORECASE)
+        s = re.sub(r'(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UY\s*BAN\s*NHAN\s*DAN)', 'Ủy ban nhân dân', s, flags=re.IGNORECASE)
+        
+        VALID_AUTH_KEYWORDS = ["ủy ban nhân dân", "ubnd", "sở tài nguyên", "văn phòng đăng ký", "chi nhánh"]
+        if not any(kw in s.lower() for kw in VALID_AUTH_KEYWORDS):
+            return False, s, f"Tên đơn vị cấp không chứa cơ quan hành chính hợp lệ: '{s}'"
+            
+        s = re.sub(r'(\bHuyện\b|\bhuyện\b|\bHuy\.\.\.\.\b)', 'huyện', s, flags=re.IGNORECASE)
+        s = re.sub(r'\s+', ' ', s).strip(' .:-,')
+        # Cắt bỏ các đoạn gạch chấm rác OCR viết tay cuối dòng (ví dụ: 'Huy...... Bình..... Của.')
+        s = re.sub(r'[\.]{2,}.*$', '', s).strip(' .:-,')
+
+        # Chuẩn hóa địa danh hành chính phổ biến nếu OCR thiếu dấu hoặc thiếu từ 'huyện'
+        if re.search(r'Ủy\s*ban\s*nhân\s*dân\s*(?:huyện\s*)?b[iì]nh\s*gia\b', s, re.IGNORECASE):
+            s = "Ủy ban nhân dân huyện Bình Gia"
+        
+        if len(s) < 10:
+            return False, s, f"Tên đơn vị cấp quá ngắn: '{s}'"
+            
+        return True, s, None
+
+    @staticmethod
+    def validate_address(addr_str: Any) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Kiểm định địa chỉ (thường trú hoặc thửa đất).
+        Returns: (is_valid, normalized_addr, error_reason)
+        """
+        s = GCNValidators.clean_address(addr_str)
+        if not s:
+            return False, None, "Địa chỉ trống"
+            
+        if len(s) < 8:
+            return False, s, f"Địa chỉ quá ngắn: '{s}'"
+            
+        ADMIN_WORDS = [
+            "thôn", "thon", "tổ", "to", "xã", "xa", "phường", "phuong",
+            "thị trấn", "thi tran", "huyện", "huyen", "quận", "quan",
+            "tỉnh", "tinh", "tp", "thành phố", "đồng", "dong", "khu"
+        ]
+        if not any(w in s.lower() for w in ADMIN_WORDS):
+            return False, s, f"Địa chỉ không chứa thành tố hành chính: '{s}'"
+            
+        return True, s, None

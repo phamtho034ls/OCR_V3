@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from .routers import documents, jobs, exports, batch
+from .routers import documents, jobs, exports, batch, pg_storage
 
 app = FastAPI(
     title="OCR Sổ Đỏ / Sổ Hồng - Backend Production",
@@ -30,6 +30,7 @@ app.include_router(documents.router, prefix=api_v1_prefix)
 app.include_router(jobs.router, prefix=api_v1_prefix)
 app.include_router(exports.router, prefix=api_v1_prefix)
 app.include_router(batch.router, prefix=api_v1_prefix)
+app.include_router(pg_storage.router, prefix=api_v1_prefix)
 
 
 @app.get("/health", tags=["System"])

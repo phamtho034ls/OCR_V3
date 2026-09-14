@@ -186,3 +186,73 @@ export interface BatchProgressResponse {
   error?: string;
 }
 
+export interface PgRecordSummary {
+  id: string;
+  batch_id?: string;
+  file_name: string;
+  source_path?: string;
+  source_folder?: string;
+  folder_result?: string;
+  template?: string;
+  total_pages: number;
+  so_phat_hanh?: string;
+  so_vao_so?: string;
+  ma_vach?: string;
+  ten_chu?: string;
+  cmnd?: string;
+  so_thua?: string;
+  to_ban_do?: string;
+  dien_tich?: string;
+  dia_chi?: string;
+  status: string;
+  elapsed_seconds?: number;
+  created_at: string;
+  content_length?: number;
+  batch_total_files?: number;
+}
+
+export interface PgBatchSummary {
+  batch_id: string;
+  folder_name: string;
+  source_path?: string;
+  output_dir?: string;
+  total_files: number;
+  processed_count: number;
+  success_count: number;
+  error_count: number;
+  status: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface PgFolderOption {
+  name: string;
+  count: number;
+  date: string;
+}
+
+export interface PgSourceOption {
+  path: string;
+  count: number;
+}
+
+export interface PgFilterOptions {
+  folders: PgFolderOption[];
+  sources: PgSourceOption[];
+  batches: any[];
+}
+
+export interface PgStats {
+  connected: boolean;
+  host?: string;
+  port?: number;
+  database?: string;
+  total_batches?: number;
+  total_records?: number;
+  success_records?: number;
+  error_records?: number;
+  total_folders?: number;
+  error?: string;
+}
+
+

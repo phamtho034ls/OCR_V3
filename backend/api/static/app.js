@@ -369,6 +369,9 @@ function renderSingleResult(data, duration, filename) {
 
   // Hiển thị Crop Gallery (ảnh cắt trước VietOCR)
   renderCropGallery(data);
+
+  // Bảng Danh Sách Đa Thửa Đất (Hỗ trợ sổ có nhiều thửa trên cùng 1 tờ)
+  renderMultiParcelTable(data);
 }
 
 function renderAuditTable(data) {
@@ -1267,7 +1270,7 @@ function getVisibleColumns() {
 
 async function loadChuyenDoiColumns() {
   try {
-    const res = await fetch("/chuyen-doi/columns");
+    const res = await fetch("/api/v1/exports/columns-129");
     if (!res.ok) throw new Error("Không thể tải cấu hình cột");
     const data = await res.json();
     chuyenDoiColumns = data.columns || [];
@@ -1474,7 +1477,7 @@ async function loadVinhYen50ChuyenDoi() {
     if (chuyenDoiColumns.length === 0) {
       await loadChuyenDoiColumns();
     }
-    const res = await fetch("/chuyen-doi/load-from-markdown-db");
+    const res = await fetch("/api/v1/raw-ocr/to-129-rows?limit=2000");
     if (!res.ok) throw new Error("Không thể tải dữ liệu Markdown từ DB");
     const data = await res.json();
     chuyenDoiRows = data.rows || [];
@@ -1654,7 +1657,7 @@ async function exportChuyenDoiExcel() {
       });
     }
 
-    const res = await fetch("/chuyen-doi/export", {
+    const res = await fetch("/api/v1/exports/excel-129", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1766,5 +1769,202 @@ function renderModalSectionFields(secKey) {
       }).join("")}
     </div>
   `;
+}
+
+// ─── Đa Thửa Đất & Export Single Hồ Sơ ──────────────────────────────────────
+let currentParcelList = [];
+
+function toggleParcelView(mode) {
+  const tableContainer = document.getElementById("table-thua-dat-container");
+  const btnTable = document.getElementById("btn-parcel-table");
+  const btnForm = document.getElementById("btn-parcel-form");
+  if (!tableContainer || !btnTable || !btnForm) return;
+
+  if (mode === "table") {
+    tableContainer.classList.remove("hidden");
+    btnTable.className = "px-2.5 py-1 rounded-md font-semibold bg-white text-slate-800 shadow-sm transition";
+    btnForm.className = "px-2.5 py-1 rounded-md font-medium text-slate-600 hover:text-slate-900 transition";
+  } else {
+    tableContainer.classList.add("hidden");
+    btnForm.className = "px-2.5 py-1 rounded-md font-semibold bg-white text-slate-800 shadow-sm transition";
+    btnTable.className = "px-2.5 py-1 rounded-md font-medium text-slate-600 hover:text-slate-900 transition";
+  }
+}
+
+function selectParcelRow(index) {
+  if (!currentParcelList || !currentParcelList[index]) return;
+  const p = currentParcelList[index];
+
+  if (document.getElementById("f-so-thua")) document.getElementById("f-so-thua").value = p.so_thua || "";
+  if (document.getElementById("f-to-ban-do")) document.getElementById("f-to-ban-do").value = p.to_ban_do || "";
+  if (document.getElementById("f-dien-tich")) document.getElementById("f-dien-tich").value = p.dien_tich_cap || p.dien_tich_rieng || p.dien_tich || "";
+  if (document.getElementById("f-dien-tich-rieng")) document.getElementById("f-dien-tich-rieng").value = p.dien_tich_rieng || "";
+  if (document.getElementById("f-dien-tich-chung")) document.getElementById("f-dien-tich-chung").value = p.dien_tich_chung || "0";
+  if (document.getElementById("f-muc-dich")) document.getElementById("f-muc-dich").value = p.muc_dich_su_dung || p.muc_dich || "";
+  if (document.getElementById("f-thoi-han")) document.getElementById("f-thoi-han").value = p.thoi_han || "";
+  if (document.getElementById("f-nguon-goc")) document.getElementById("f-nguon-goc").value = p.nguon_goc || "";
+  if (p.dia_chi && document.getElementById("f-dia-chi-thua")) {
+    document.getElementById("f-dia-chi-thua").value = p.dia_chi;
+  }
+
+  // Highlight dòng được chọn
+  document.querySelectorAll("#tbody-danh-sach-thua tr").forEach((tr, idx) => {
+    if (idx === index) {
+      tr.className = "bg-brand-50 font-semibold transition";
+    } else {
+      tr.className = "hover:bg-slate-50 transition";
+    }
+  });
+}
+
+function renderMultiParcelTable(data) {
+  const tbody = document.getElementById("tbody-danh-sach-thua");
+  const badge = document.getElementById("badge-so-thua");
+  const tfootCount = document.getElementById("tfoot-tong-so-thua");
+  const tfootArea = document.getElementById("tfoot-tong-dien-tich");
+  if (!tbody) return;
+
+  tbody.innerHTML = "";
+
+  // Thu thập danh sách thửa
+  let list = [];
+  if (Array.isArray(data.thua_dat?.danh_sach_thua) && data.thua_dat.danh_sach_thua.length > 0) {
+    list = data.thua_dat.danh_sach_thua;
+  } else if (Array.isArray(data.danh_sach_thua) && data.danh_sach_thua.length > 0) {
+    list = data.danh_sach_thua;
+  } else if (Array.isArray(data.chuyen_doi_rows) && data.chuyen_doi_rows.length > 0) {
+    list = data.chuyen_doi_rows.map((row, idx) => ({
+      stt: row.THUADAT_STT || String(idx + 1),
+      so_thua: row.THUADAT_SOTHUADAT || "",
+      to_ban_do: row.THUADAT_SOTOBANDO || "",
+      dia_chi: row.THUADAT_DIACHITHUADAT || "",
+      dien_tich_rieng: row.THUADAT_DIENTICHRIENG || row.THUADAT_DIENTICH || "",
+      dien_tich_chung: row.THUADAT_DIENTICHCHUNG || "0",
+      muc_dich_su_dung: row.THUADAT_MUCDICHSUDUNG || "",
+      thoi_han: row.THUADAT_THOIHAN || "",
+      nguon_goc: row.THUADAT_NGUONGOC || ""
+    }));
+  } else if (data.thua_dat?.so_thua) {
+    list = [{
+      stt: "1",
+      so_thua: data.thua_dat.so_thua,
+      to_ban_do: data.thua_dat.to_ban_do,
+      dia_chi: data.thua_dat.dia_chi || "",
+      dien_tich_rieng: data.thua_dat.dien_tich_rieng || data.thua_dat.dien_tich_cap || "",
+      dien_tich_chung: data.thua_dat.dien_tich_chung || "0",
+      muc_dich_su_dung: data.thua_dat.muc_dich_su_dung || "",
+      thoi_han: data.thoi_han || data.thua_dat.thoi_han || "",
+      nguon_goc: data.thua_dat.nguon_goc || ""
+    }];
+  }
+
+  currentParcelList = list;
+
+  if (list.length > 0) {
+    let totalArea = 0;
+    list.forEach((item, idx) => {
+      const numStr = String(item.dien_tich_rieng || item.dien_tich || "0").replace(",", ".");
+      const dt = parseFloat(numStr) || 0;
+      totalArea += dt;
+
+      const tr = document.createElement("tr");
+      tr.className = idx === 0 ? "bg-brand-50/60 transition" : "hover:bg-slate-50 transition";
+      tr.onclick = () => selectParcelRow(idx);
+      tr.style.cursor = "pointer";
+
+      tr.innerHTML = `
+        <td class="py-2.5 px-3 text-center text-slate-500 font-mono">${item.stt || idx + 1}</td>
+        <td class="py-2.5 px-3 font-bold text-brand-700">${escHtml(item.so_thua || "-")}</td>
+        <td class="py-2.5 px-3 font-medium">${escHtml(item.to_ban_do || "-")}</td>
+        <td class="py-2.5 px-3 text-slate-600 max-w-[200px] truncate" title="${escHtml(item.dia_chi || data.thua_dat?.dia_chi || '')}">${escHtml(item.dia_chi || data.thua_dat?.dia_chi || "-")}</td>
+        <td class="py-2.5 px-3 text-right font-bold text-emerald-700">${escHtml(item.dien_tich_rieng || item.dien_tich || "-")}</td>
+        <td class="py-2.5 px-3 text-right text-slate-500">${escHtml(item.dien_tich_chung || "0")}</td>
+        <td class="py-2.5 px-3 text-slate-700 max-w-[150px] truncate" title="${escHtml(item.muc_dich_su_dung || '')}">${escHtml(item.muc_dich_su_dung || "-")}</td>
+        <td class="py-2.5 px-3 text-slate-600 max-w-[120px] truncate" title="${escHtml(item.thoi_han || '')}">${escHtml(item.thoi_han || "-")}</td>
+        <td class="py-2.5 px-3 text-slate-600 max-w-[140px] truncate" title="${escHtml(item.nguon_goc || '')}">${escHtml(item.nguon_goc || "-")}</td>
+        <td class="py-2.5 px-3 text-center">
+          <button type="button" onclick="event.stopPropagation(); selectParcelRow(${idx})" class="text-[11px] px-2 py-0.5 rounded bg-brand-50 hover:bg-brand-100 text-brand-700 font-semibold border border-brand-200">
+            Xem
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    if (tfootCount) tfootCount.innerText = list.length;
+    if (tfootArea) tfootArea.innerText = totalArea > 0 ? `${totalArea.toFixed(1)} m²` : "-";
+
+    if (badge) {
+      badge.innerText = `Sổ ${list.length} thửa đất`;
+      badge.classList.remove("hidden");
+    }
+
+    // Nếu sổ có từ 2 thửa trở lên, mặc định bật xem bảng
+    if (list.length > 1) {
+      toggleParcelView("table");
+    } else {
+      toggleParcelView("form");
+    }
+  } else {
+    if (badge) badge.classList.add("hidden");
+    toggleParcelView("form");
+  }
+}
+
+async function exportSingleExcel() {
+  if (!currentResult) {
+    alert("Chưa có kết quả OCR để xuất");
+    return;
+  }
+  let rows = currentResult.chuyen_doi_rows;
+  if (!rows || rows.length === 0) {
+    if (currentResult.chuyen_doi_row && Object.keys(currentResult.chuyen_doi_row).length > 0) {
+      rows = [currentResult.chuyen_doi_row];
+    } else {
+      alert("Không tìm thấy dữ liệu chuẩn 129 cột của hồ sơ này");
+      return;
+    }
+  }
+  try {
+    const fn = `GCN_${currentResult.so_phat_hanh || currentResult.job_id || "HoSo"}.xlsx`;
+    const res = await fetch("/api/v1/exports/excel-129", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rows: rows,
+        filename: fn
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Lỗi khi xuất Excel");
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fn;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    alert(`Lỗi xuất Excel: ${e.message}`);
+  }
+}
+
+function exportSingleJSON() {
+  if (!currentResult) {
+    alert("Chưa có kết quả OCR để xuất");
+    return;
+  }
+  const fn = `GCN_${currentResult.so_phat_hanh || currentResult.job_id || "HoSo"}.json`;
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentResult, null, 2));
+  const downloadAnchor = document.createElement('a');
+  downloadAnchor.setAttribute("href", dataStr);
+  downloadAnchor.setAttribute("download", fn);
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
 }
 

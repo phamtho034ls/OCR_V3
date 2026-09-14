@@ -1,13 +1,30 @@
-import React, { useState } from 'react';
-import { FileSpreadsheet, Upload, FolderUp, Layers, FileCode } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { FileSpreadsheet, Upload, FolderUp, Layers, Database } from 'lucide-react';
 import { DataConversionPage } from '../pages/data-conversion/DataConversionPage';
 import { DocumentUploadPage } from '../pages/document-upload/DocumentUploadPage';
 import { BatchScanPage } from '../pages/batch-scan/BatchScanPage';
 import { RawMarkdownPage } from '../pages/raw-markdown/RawMarkdownPage';
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<'conversion' | 'batch' | 'upload' | 'raw_markdown'>('batch');
+  const [currentTab, setCurrentTab] = useState<'batch' | 'conversion' | 'raw_markdown' | 'upload'>('batch');
   const [scannedRows, setScannedRows] = useState<Record<string, any>[]>([]);
+  const [pgStatus, setPgStatus] = useState<{ connected: boolean; host?: string; port?: number; database?: string } | null>(null);
+
+  // Kiểm tra sức khỏe kết nối PostgreSQL
+  useEffect(() => {
+    const checkPg = async () => {
+      try {
+        const res = await axios.get('/api/v1/pg/health');
+        setPgStatus(res.data);
+      } catch (err) {
+        setPgStatus({ connected: false });
+      }
+    };
+    checkPg();
+    const timer = setInterval(checkPg, 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleView129Table = (rows: Record<string, any>[]) => {
     setScannedRows(rows);
@@ -27,14 +44,28 @@ export const App: React.FC = () => {
               <h1 className="text-base font-bold text-slate-900 leading-tight">
                 HỆ THỐNG OCR SỔ ĐỎ / SỔ HỒNG
               </h1>
-
+              <p className="text-[11px] text-slate-500 font-medium">
+                Bóc tách địa chính, lưu trữ cơ sở dữ liệu PostgreSQL & xuất chuẩn 129 cột
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
-              Backend v2.0 Active
+          <div className="flex items-center gap-2.5">
+            {/* Huy hiệu kết nối PostgreSQL */}
+            {pgStatus?.connected ? (
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+                PostgreSQL: {pgStatus.database || 'ocr_so_do'} @ {pgStatus.port || 5433}
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-amber-500 mr-1.5"></span>
+                Đang kết nối PostgreSQL...
+              </span>
+            )}
+
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              Backend v2.0
             </span>
           </div>
         </div>
@@ -43,43 +74,50 @@ export const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-6 border-t border-slate-100">
           <button
             onClick={() => setCurrentTab('batch')}
-            className={`py-3 px-1 border-b-2 font-semibold text-xs flex items-center gap-2 transition ${currentTab === 'batch'
+            className={`py-3 px-1 border-b-2 font-semibold text-xs flex items-center gap-2 transition ${
+              currentTab === 'batch'
                 ? 'border-indigo-600 text-indigo-700'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
+            }`}
           >
             <FolderUp size={16} />
             <span>Quét Thư Mục Hàng Loạt</span>
-            <span className="bg-indigo-100 text-indigo-800 text-[10px] px-2 py-0.5 rounded-full font-bold">Mới</span>
+            <span className="bg-indigo-100 text-indigo-800 text-[10px] px-2 py-0.5 rounded-full font-bold">Auto-Save PG</span>
           </button>
+
           <button
             onClick={() => setCurrentTab('conversion')}
-            className={`py-3 px-1 border-b-2 font-semibold text-xs flex items-center gap-2 transition ${currentTab === 'conversion'
+            className={`py-3 px-1 border-b-2 font-semibold text-xs flex items-center gap-2 transition ${
+              currentTab === 'conversion'
                 ? 'border-emerald-600 text-emerald-700'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
+            }`}
           >
             <FileSpreadsheet size={16} />
             <span>Bảng Chuyển Đổi Địa Chính (129 Cột)</span>
-            <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-bold">Chuẩn Mẫu</span>
+            <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-bold">Lọc Folder</span>
           </button>
+
           <button
             onClick={() => setCurrentTab('raw_markdown')}
-            className={`py-3 px-1 border-b-2 font-semibold text-xs flex items-center gap-2 transition ${currentTab === 'raw_markdown'
+            className={`py-3 px-1 border-b-2 font-semibold text-xs flex items-center gap-2 transition ${
+              currentTab === 'raw_markdown'
                 ? 'border-indigo-600 text-indigo-700'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
+            }`}
           >
-            <FileCode size={16} />
-            <span>Bảng Dữ Liệu Thô (Markdown)</span>
-            <span className="bg-indigo-100 text-indigo-800 text-[10px] px-2 py-0.5 rounded-full font-bold">SQLite</span>
+            <Database size={16} />
+            <span>Kho Dữ Liệu PostgreSQL & Lịch Sử</span>
+            <span className="bg-indigo-100 text-indigo-800 text-[10px] px-2 py-0.5 rounded-full font-bold">Xóa Chọn Lọc</span>
           </button>
+
           <button
             onClick={() => setCurrentTab('upload')}
-            className={`py-3 px-1 border-b-2 font-semibold text-xs flex items-center gap-2 transition ${currentTab === 'upload'
+            className={`py-3 px-1 border-b-2 font-semibold text-xs flex items-center gap-2 transition ${
+              currentTab === 'upload'
                 ? 'border-emerald-600 text-emerald-700'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
+            }`}
           >
             <Upload size={16} />
             <span>Nhận Dạng Đơn Lẻ</span>
@@ -89,15 +127,26 @@ export const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {currentTab === 'batch' && <BatchScanPage onView129Table={handleView129Table} />}
-        {currentTab === 'conversion' && <DataConversionPage initialRows={scannedRows} />}
-        {currentTab === 'raw_markdown' && <RawMarkdownPage />}
-        {currentTab === 'upload' && <DocumentUploadPage />}
+        {currentTab === 'batch' && (
+          <BatchScanPage
+            onView129Table={handleView129Table}
+            onOpenPgStorage={() => setCurrentTab('raw_markdown')}
+          />
+        )}
+        {currentTab === 'conversion' && (
+          <DataConversionPage initialRows={scannedRows} />
+        )}
+        {currentTab === 'raw_markdown' && (
+          <RawMarkdownPage onView129Table={handleView129Table} />
+        )}
+        {currentTab === 'upload' && (
+          <DocumentUploadPage />
+        )}
       </main>
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-400">
-        Hệ thống OCR Giấy chứng nhận quyền sử dụng đất &copy; 2026 - Backend/Frontend Production Architecture
+        Hệ thống OCR Giấy chứng nhận quyền sử dụng đất &copy; 2026 - PostgreSQL 18 Architecture
       </footer>
     </div>
   );

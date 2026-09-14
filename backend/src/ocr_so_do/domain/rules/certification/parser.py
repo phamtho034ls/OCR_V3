@@ -78,19 +78,19 @@ class CertificationParser:
             line_s = line.strip()
             if re.search(r"(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UBND|UY\s*BAN\s*NHAN\s*DAN)", line_s, re.IGNORECASE):
                 val = line_s
-                val = re.sub(r'^(?:TM\s*\.?\s*)+', 'TM. ', val)
-                if not val.startswith("TM."):
-                    val = "TM. " + val
+                val = re.sub(r'^(?:TM\s*\.?\s*|Kính\s*g[ửữ]i\s*[:\.]?\s*)+', '', val, flags=re.IGNORECASE)
                 val = re.sub(r'\bUBND\b', 'Ủy ban nhân dân', val, flags=re.IGNORECASE)
                 val = re.sub(r'(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UY\s*BAN\s*NHAN\s*DAN)', 'Ủy ban nhân dân', val, flags=re.IGNORECASE)
-                result["noi_cap"] = val
+                val = re.sub(r'^(?:Ủy\s*ban\s*nhân\s*dân\s*)+', 'Ủy ban nhân dân ', val, flags=re.IGNORECASE)
+                val = re.sub(r'[\.]{2,}.*$', '', val).strip(' .:-,')
+                result["noi_cap"] = val.strip(" .:-,")
                 break
             elif re.search(r"(?:VĂN\s*PHÒNG\s*ĐĂNG\s*KÝ\s*ĐẤT\s*ĐAI|CHI\s*NHÁNH\s*VĂN\s*PHÒNG)", line_s, re.IGNORECASE):
-                result["noi_cap"] = line_s
+                result["noi_cap"] = line_s.strip(" .:-,")
                 break
             elif re.search(r"(?:SỞ\s*TÀI\s*NGUYÊN\s*VÀ\s*MÔI\s*TRƯỜNG|SO\s*TAI\s*NGUYEN)", line_s, re.IGNORECASE):
                 val_sn = re.sub(r"^.*?(?:SỞ\s*TÀI\s*NGUYÊN|SO\s*TAI\s*NGUYEN)", "Sở Tài nguyên", line_s, flags=re.IGNORECASE)
-                result["noi_cap"] = val_sn.strip()
+                result["noi_cap"] = val_sn.strip(" .:-,")
                 break
 
         # 4. Người ký quyết định & Chức vụ

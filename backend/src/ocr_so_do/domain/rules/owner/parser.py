@@ -100,8 +100,22 @@ class OwnerParser:
             elif any(k in full_owner.lower() for k in ["vợ", "chồng", "và", "đồng sở hữu", "hộ"]):
                 result["dong_su_dung"] = "Có"
                 result["loai_chu"] = "Vợ chồng / Đồng sở hữu" if "vợ" in full_owner.lower() else "Hộ gia đình"
-
-        # 2. Extract CCCD / CMND
+        # 1.1 Detect Owner Type (Multi-Owner Router)
+        owner_type = OwnerParser._detect_owner_type(all_lines, result.get("ho_ten") or "", spouse_name)
+        result["owner_type"] = owner_type
+        if owner_type == "HoGiaDinh":
+            result["loai_chu"] = "Hộ gia đình"
+            hh = OwnerParser._extract_household_details(all_lines, result.get("ho_ten") or "")
+            result["chu_ho"] = hh["chu_ho"]
+            result["so_ho_khau"] = hh["so_ho_khau"]
+        elif owner_type == "ToChuc":
+            result["loai_chu"] = "Tổ chức / Doanh nghiệp"
+            org = OwnerParser._extract_organization_details(all_lines)
+            result["ten_to_chuc"] = org["ten_to_chuc"]
+            result["ma_so_thue"] = org["ma_so_thue"]
+            result["nguoi_dai_dien"] = org["nguoi_dai_dien"]
+        elif owner_type == "CongDong":
+            result["loai_chu"] = "Cộng đồng dân cư / Tôn giáo"
         search_lines = all_lines[owner_idx:min(owner_idx + 12, len(all_lines))] if owner_idx >= 0 else all_lines
         cccds = OwnerParser._extract_cccds(search_lines)
         if cccds:
@@ -132,6 +146,47 @@ class OwnerParser:
             result["so_phat_hanh"] = serial_res["serial"]
 
         return result
+
+    @staticmethod
+    def _detect_owner_type(all_lines: List[str], full_owner: str, spouse_name: str) -> str:
+        text = (full_owner + " " + " ".join(all_lines[:15])).lower()
+        if any(k in text for k in ["hộ gia đình", "hộ ông", "hộ bà", "hộ:", "hộ "]):
+            return "HoGiaDinh"
+        if any(k in text for k in ["công ty", "tnhh", "cổ phần", "doanh nghiệp", "ubnd", "ủy ban", "hợp tác xã", "ban quản lý"]):
+            return "ToChuc"
+        if any(k in text for k in ["cộng đồng", "tôn giáo", "chùa", "nhà thờ", "đền", "đình", "giáo họ"]):
+            return "CongDong"
+        if spouse_name or any(k in full_owner.lower() for k in ["vợ là", "chồng là", "và bà", "và ông"]):
+            return "VoChong"
+        return "CaNhan"
+
+    @staticmethod
+    def _extract_organization_details(all_lines: List[str]) -> Dict[str, Optional[str]]:
+        res: Dict[str, Optional[str]] = {"ten_to_chuc": None, "ma_so_thue": None, "nguoi_dai_dien": None}
+        for line in all_lines[:15]:
+            if any(k in line.lower() for k in ["công ty", "tnhh", "cổ phần", "doanh nghiệp", "ubnd", "hợp tác xã", "ban quản lý"]):
+                if not res["ten_to_chuc"]:
+                    res["ten_to_chuc"] = line.strip()
+            m_mst = re.search(r"\b(\d{10}(?:-\d{3})?)\b", line)
+            if m_mst and not res["ma_so_thue"]:
+                res["ma_so_thue"] = m_mst.group(1)
+            m_rep = re.search(r"(?:đại\s*diện(?:\s*bởi|\s*là)?|\bông\b|\bbà\b)\s*[:\.\-]?\s*([\w\s]{3,})", line, re.IGNORECASE)
+            if m_rep and not res["nguoi_dai_dien"] and "công ty" not in m_rep.group(1).lower():
+                res["nguoi_dai_dien"] = m_rep.group(1).strip()
+        return res
+
+    @staticmethod
+    def _extract_household_details(all_lines: List[str], full_owner: str) -> Dict[str, Optional[str]]:
+        res: Dict[str, Optional[str]] = {"chu_ho": None, "so_ho_khau": None}
+        m = re.search(r"H[oộồổỗốọ]\s*(?:gia\s*đình\s*)?(?:\bông\b|\bbà\b|\bong\b|\bba\b)?\s*[:\.\-]?\s*([\w\s]+)", full_owner, re.IGNORECASE)
+        if m:
+            res["chu_ho"] = m.group(1).strip()
+        for line in all_lines[:15]:
+            m_hk = re.search(r"(?:sổ\s*hộ\s*khẩu(?:\s*số)?|số\s*hk|hk)\s*[:\.\-]?\s*([A-Za-z0-9\/\-]+)", line, re.IGNORECASE)
+            if m_hk:
+                res["so_ho_khau"] = m_hk.group(1).strip()
+                break
+        return res
 
     @staticmethod
     def _is_valid_person_name(text: str) -> bool:
@@ -191,7 +246,7 @@ class OwnerParser:
                 continue
 
             # Check for husband/wife patterns (hỗ trợ cả Hộ / Hồ / Ho / Hộ gia đình do OCR nhận diện sai dấu)
-            m_ong = re.search(r'^(?:(?:Và\s*|chồng\s*là\s*)?(?:H[oộồổỗốọ]\s*(?:gia\s*đình\s*)?)?(?:Ông|Ong|ÔNG)(?:[a-zA-Z]|[:\.\-])?)\s*([A-ZÀ-ỸĐa-zà-ỹđ]{2,}(?:\s+[A-ZÀ-ỸĐa-zà-ỹđ]{1,})+)', line, re.IGNORECASE)
+            m_ong = re.search(r'^(?:(?:(?:V[àa]|Va)\s*|(?:chồng|chong)\s*(?:là|la)\s*)?(?:H[oộồổỗốọ]\s*(?:gia\s*đình\s*)?)?(?:Ông|Ong|ÔNG)(?:[a-zA-Z]|[:\.\-])?)\s*([A-ZÀ-ỸĐa-zà-ỹđ]{2,}(?:\s+[A-ZÀ-ỸĐa-zà-ỹđ]{1,})+)', line, re.IGNORECASE)
             if m_ong:
                 cand_name = m_ong.group(1).strip()
                 prefix = "Hộ ông: " if any(h in line.lower() for h in ["hộ", "hồ", "hổ", "ho", "họ"]) else "Ông: "
@@ -202,7 +257,7 @@ class OwnerParser:
                     spouse_name = cand_name
                     spouse_title = "Ông"
 
-            m_ba = re.search(r'^(?:(?:Và\s*|vợ\s*là\s*|chồng\s*là\s*)?(?:H[oộồổỗốọ]\s*(?:gia\s*đình\s*)?)?(?:Bà|Ba|BÀ)(?:[a-zA-Z]|[:\.\-])?)\s*([A-ZÀ-ỸĐa-zà-ỹđ]{2,}(?:\s+[A-ZÀ-ỸĐa-zà-ỹđ]{1,})+)', line, re.IGNORECASE)
+            m_ba = re.search(r'^(?:(?:(?:V[àa]|Va)\s*|(?:vợ|vo|chồng|chong)\s*(?:là|la)\s*)?(?:H[oộồổỗốọ]\s*(?:gia\s*đình\s*)?)?(?:Bà|Ba|BÀ)(?:[a-zA-Z]|[:\.\-])?)\s*([A-ZÀ-ỸĐa-zà-ỹđ]{2,}(?:\s+[A-ZÀ-ỸĐa-zà-ỹđ]{1,})+)', line, re.IGNORECASE)
             if m_ba:
                 cand_name = m_ba.group(1).strip()
                 prefix = "Hộ bà: " if any(h in line.lower() for h in ["hộ", "hồ", "hổ", "ho", "họ"]) else "Bà: "
@@ -221,12 +276,12 @@ class OwnerParser:
                     primary_owner = "Hộ: " + cand_name
                     owner_idx = idx
 
-            m_vo = re.search(r'(?:Vợ\s*là\s*bà|Vo\s*la\s*ba|và\s*vợ\s*là\s*bà|vợ\s*bà|\s+và\s+bà)\s*[:\.]?\s*([A-ZÀ-ỸĐa-zà-ỹđ]{2,}(?:\s+[A-ZÀ-ỸĐa-zà-ỹđ]{1,})+)', raw_line, re.IGNORECASE)
+            m_vo = re.search(r'(?:(?:vợ|vo)\s*(?:là|la)\s*(?:bà|ba)|(?:v[àa]|va)\s*(?:vợ|vo)\s*(?:là|la)\s*(?:bà|ba)|(?:vợ|vo)\s*(?:bà|ba)|(?:,\s*|\s+|^)(?:v[àa]|va)\s*(?:bà|ba))\s*[:\.]?\s*([A-ZÀ-ỸĐa-zà-ỹđ]{2,}(?:\s+[A-ZÀ-ỸĐa-zà-ỹđ]{1,})+)', raw_line, re.IGNORECASE)
             if m_vo and not spouse_name:
                 spouse_name = m_vo.group(1).strip()
                 spouse_title = "Bà"
 
-            m_chong = re.search(r'(?:Chồng\s*là\s*ông|Chong\s*la\s*ong|và\s*chồng\s*là\s*ông|chồng\s*ông|\s+và\s+ông)\s*[:\.]?\s*([A-ZÀ-ỸĐa-zà-ỹđ]{2,}(?:\s+[A-ZÀ-ỸĐa-zà-ỹđ]{1,})+)', raw_line, re.IGNORECASE)
+            m_chong = re.search(r'(?:(?:chồng|chong)\s*(?:là|la)\s*(?:ông|ong)|(?:v[àa]|va)\s*(?:chồng|chong)\s*(?:là|la)\s*(?:ông|ong)|(?:chồng|chong)\s*(?:ông|ong)|(?:,\s*|\s+|^)(?:v[àa]|va)\s*(?:ông|ong))\s*[:\.]?\s*([A-ZÀ-ỸĐa-zà-ỹđ]{2,}(?:\s+[A-ZÀ-ỸĐa-zà-ỹđ]{1,})+)', raw_line, re.IGNORECASE)
             if m_chong and not spouse_name:
                 spouse_name = m_chong.group(1).strip()
                 spouse_title = "Ông"
@@ -238,7 +293,7 @@ class OwnerParser:
                 line = re.sub(r"(?:\s*(?:sinh\s*n[aăâ]m|n[aăâ]m\s*sinh|s[oố]\s*cmnd|cccd|cmtnd|cmnd).*$)", "", line, flags=re.IGNORECASE).strip()
                 if not OwnerParser._is_valid_person_name(line):
                     continue
-                m = re.match(r'^(?:(?:Và\s*|vợ\s*là\s*|chồng\s*là\s*)?(?:H[oộồổỗốọ]\s*(?:gia\s*đình\s*)?)?(?:Ông|Bà|Ong|Ba|ÔNG|BÀ)(?:[a-zA-Z]|[:\.\-])?)\s*([A-ZÀ-ỸĐa-zà-ỹđ]{2,}(?:\s+[A-ZÀ-ỸĐa-zà-ỹđ]{1,})+)', line, re.IGNORECASE)
+                m = re.match(r'^(?:(?:(?:V[àa]|Va)\s*|(?:vợ|vo|chồng|chong)\s*(?:là|la)\s*)?(?:H[oộồổỗốọ]\s*(?:gia\s*đình\s*)?)?(?:Ông|Bà|Ong|Ba|ÔNG|BÀ)(?:[a-zA-Z]|[:\.\-])?)\s*([A-ZÀ-ỸĐa-zà-ỹđ]{2,}(?:\s+[A-ZÀ-ỸĐa-zà-ỹđ]{1,})+)', line, re.IGNORECASE)
                 if m:
                     primary_owner = OwnerParser._normalize_title_name(line)
                     owner_idx = idx
@@ -294,33 +349,56 @@ class OwnerParser:
     @staticmethod
     def _clean_address_string(raw: str) -> str:
         s = raw.strip()
+        # Bỏ nhãn tiền tố thường trú / thửa đất (bao gồm các biến thể lỗi OCR: Đưa chỉ, thường trữ, thương trí, ...)
         s = re.sub(
-            r"^.*?(?:(?:Địa\s*ch[ỉíĩì]|Đia\s*ch[ỉíĩì]|Đĩa\s*chỉ|Sinh\s*Chỉ|Đình\s*chỉ)\s*(?:thường|thương|thubng|mương)?\s*tr[úùứtnữ]*|b\)\s*Địa\s*chỉ|hộ\s*khẩu\s*thường\s*tr[úùứ]*)\s*[:\.,]?\s*",
+            r"^.*?(?:(?:(?:Địa|Đia|Đĩa|Đụi|Đui|D[i1]a|D[uư]i|Sinh|Đình|Đưa)\s*ch[ỉíĩìi]\s*)?(?:thường|thương|thubng|mương|mường|chường)?\s*tr[úùứtnữĩí]+[A-Za-zÀ-Ỹà-ỹ]*|b\)\s*Địa\s*chỉ|hộ\s*khẩu\s*thường\s*tr[úùứ]*)\s*[:\.,]?\s*",
             "",
             s,
             flags=re.IGNORECASE
         )
-        s = re.sub(r"^(?:(?:Và\s*bà|Và\s*ông|vợ\s*là|chồng\s*là|Bà|Ông)[^:]*:\s*)", "", s, flags=re.IGNORECASE)
-        s = re.split(r"\s+(?:Và\s*bà|Và\s*ông|vợ\s*là|chồng\s*là|sinh\s*năm|năm\s*sinh|cmnd|cccd)\s*[:\.]", s, flags=re.IGNORECASE)[0]
+        # Bỏ tiền tố nhân thân nếu có ở đầu chuỗi (ví dụ 'Và bà: ...', 'Va ba: ...')
+        s = re.sub(r"^(?:(?:(?:V[àa]|Va)\s*(?:bà|ba|ông|ong)|(?:vợ|vo|chồng|chong)\s*(?:là|la)|Bà|Ba|Ông|Ong)[^:]*:\s*)", "", s, flags=re.IGNORECASE)
+        # Cắt bỏ phần dính đuôi người đồng sở hữu hoặc nhân thân (ví dụ: ', Và ba: ...', ', Va ba: ...', 'Va bà: ...')
+        s = re.split(r"(?:,\s*|\s+)(?:(?:V[àa]|Va)\s*(?:bà|ba|ông|ong)|(?:vợ|vo|chồng|chong)\s*(?:là|la))\b", s, flags=re.IGNORECASE)[0]
+        s = re.split(r"\s+(?:sinh\s*năm|năm\s*sinh|cmnd|cccd)\s*[:\.]?", s, flags=re.IGNORECASE)[0]
         s = re.sub(r"\s*(?:Là\s*người\s*đại\s*diện|người\s*đại\s*diện|người\s*được\s*cấp).*$", "", s, flags=re.IGNORECASE).strip()
         s = re.sub(r"\s+[A-Za-zÀ-Ỹà-ỹĐđ0-9]{2}\s*\d{6}\s*$", "", s)
         s = s.strip(" -:;,.")
 
-        # Chuẩn hóa OCR địa danh
-        s = re.sub(r"\bxi\s+Vĩnh\s*Yên\b", "xã Vĩnh Yên", s, flags=re.IGNORECASE)
-        s = re.sub(r"\b11\s+Vĩnh\s*Yên\b", "xã Vĩnh Yên", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bLang\s*Sơn\b", "Lạng Sơn", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bBình\s*Giu\b", "Bình Gia", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bbuyện\b", "huyện", s, flags=re.IGNORECASE)
+        # Cắt bỏ triệt để mọi tiền tố OCR rác đứng trước đơn vị hành chính đầu tiên
+        m_admin = re.search(r'\b(Th[ôoóòõọỏơớờỡợởôốồỗộổaáàãạả]n|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]m|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]n|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]a|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]o|Thơ|Xóm|Bản|Tổ|Đồng|Khu|Số\s*\d+[\w\/\-]*|Đội|Đoàn|Phố|Đường|Xã|Phường|Thị\s*trấn)\b', s, re.IGNORECASE)
+        if m_admin:
+            s = s[m_admin.start():].strip(" -:;,.")
+
+        # Chuẩn hóa lỗi chính tả OCR của từ 'Thôn' (Thòa, Thòn, Thòm, Thỏa, Thôa, Thơn, Thơ, Thỏo, Thon -> Thôn)
+        s = re.sub(r'^(?:Thon|Thôu|Thoan|Thôan|Th[oòóỏõọôốồổỗộơớờởỡợaáàảãạ][mnao]|Thơ)\s+', 'Thôn ', s, flags=re.IGNORECASE)
+
+        # Chuẩn hóa chính tả quang học OCR địa danh
+        s = re.sub(r"\b(?:xi|xì|xĩ|xa|sĩ|pxã|23|21|13|11|X1)\s+Vĩnh\s*Y[êeèẽêu][un]?\b", "xã Vĩnh Yên", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bVĩnh\s*Yêu\b", "Vĩnh Yên", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bVinh\s*Yên\b", "Vĩnh Yên", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bBình\s*Chu\s*Anh\s*Tang\s*Sơn\b", "Bình Gia, tỉnh Lạng Sơn", s, flags=re.IGNORECASE)
+        s = re.sub(r"\b(?:buyện|buyên|bbuyện|huyên|huyền|inuyện|truyện)\b", "huyện", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bBình\s*(?:Giu|Của|Cha|Ca|Chu|Giá)\b", "Bình Gia", s, flags=re.IGNORECASE)
+        s = re.sub(r"\b(?:Lang\s*Sơn|Lang\s*Sm|Lược\s*Sơn|Ling\s*Sơn|Lăng\s*Sơn)\b", "Lạng Sơn", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bLans\b", "Lạng Sơn", s, flags=re.IGNORECASE)
         s = re.sub(r"\bThôu\b", "Thôn", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bKhuổi\s*Du[ií]\b", "Khuổi Dụi", s, flags=re.IGNORECASE)
         s = re.sub(r"\bKhuổi\s*Dui\b", "Khuổi Dụi", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bKhuổi\s*Dụ\b", "Khuổi Dụi", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bVắng\s*ún\b", "Vằng Ứn", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bVăng\s*ún\b", "Vằng Ứn", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bVằng\s*ún\b", "Vằng Ứn", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bVằng\s*ứn\b", "Vằng Ứn", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bKhuổi\s*Lướng\b", "Khuổi Luông", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bKhuổi\s*M[aâăáàảãạ]n\b", "Khuổi Màn", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bV[aàáảãạăằắẳẵặâầấẩẫậ]ng\s*[uùúủũụưừứửữựoòóỏõọ][nm]\b", "Vằng Ứn", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bV[aàáảãạăằắẳẵặâầấẩẫậ]ng\s*(?:in|án|ăn|m)\b", "Vằng Ứn", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bVàog\s*ứn\b", "Vằng Ứn", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bVùng\s*ứn\b", "Vằng Ứn", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bVàng\s*ơn\b", "Vằng Ứn", s, flags=re.IGNORECASE)
+        s = re.sub(r",\s*Lạng\s*Sơn\b", ", tỉnh Lạng Sơn", s, flags=re.IGNORECASE)
+        s = re.sub(r"(?<=[^\s,;])\s+(?=(?:xã|phường|thị\s*trấn|huyện|quận|thị\s*xã|tỉnh|thành\s*phố)\b)", ", ", s, flags=re.IGNORECASE)
         s = re.sub(r"\s*,\s*", ", ", s)
         s = re.sub(r"\s+", " ", s).strip()
+        # Nếu sau khi làm sạch chuỗi chỉ còn lại tên người (không hề có cấp hành chính thôn/xã/huyện/tỉnh/đường/phố/số nhà)
+        if s and not any(k in s.lower() for k in ["thôn", "xóm", "bản", "tổ", "làng", "phố", "đường", "xã", "phường", "thị trấn", "huyện", "quận", "thị xã", "tỉnh", "thành phố", "tp", "đồng", "khu"]):
+            return ""
         return s
 
     @staticmethod

@@ -88,6 +88,33 @@ def test_generate_raw_ocr_markdown_structure():
     assert "<details>" not in md_output
 
 
+def test_parse_raw_markdown_preserves_per_parcel_fields():
+    from ocr_so_do.infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
+
+    raw = """## I. DỮ LIỆU BÓC TÁCH THEO LOGIC (RAW EXTRACTED FIELDS)
+```text
+Thửa đất số           : 22+23
+Tờ bản đồ số          : 162
+Diện tích             : 236.0 m2 (Bằng chữ: -)
+Người ký GCN          : Nguyễn Văn A (Chủ tịch)
+[DANH SÁCH CHI TIẾT CÁC THỬA ĐẤT]
+Thửa 1: Thửa số 22 | Tờ số 162 | Diện tích: 207.9 m2 | Mục đích: LUC | Thời hạn: Lâu dài | Nguồn gốc: Nhà nước giao đất | Địa chỉ: Khu 1
+Thửa 2: Thửa số 23 | Tờ số 162 | Diện tích: 28.1 m2 | Mục đích: LUK | Thời hạn: Đến 11/2015 | Nguồn gốc: Công nhận | Địa chỉ: Khu 2
+```
+"""
+    parsed = RawMarkdownExcelExporter.parse_raw_markdown(raw)["merged_dict"]
+    parcels = parsed["thua_dat"]["danh_sach_thua"]
+
+    assert [p["so_thua"] for p in parcels] == ["22", "23"]
+    assert [p["to_ban_do"] for p in parcels] == ["162", "162"]
+    assert [p["dien_tich"] for p in parcels] == ["207.9", "28.1"]
+    assert [p["ma_muc_dich"] for p in parcels] == ["LUC", "LUK"]
+    assert [p["thoi_han"] for p in parcels] == ["Lâu dài", "Đến 11/2015"]
+    assert [p["nguon_goc"] for p in parcels] == ["Nhà nước giao đất", "Công nhận"]
+    assert [p["dia_chi"] for p in parcels] == ["Khu 1", "Khu 2"]
+    assert parsed["cap_gcn"]["nguoi_ky_qd"] == "Nguyễn Văn A"
+
+
 def test_sqlite_raw_store_crud(tmp_path):
     from ocr_so_do.infrastructure.persistence.sqlite_raw_store import SqliteRawStore
     db_file = tmp_path / "test_raw.db"

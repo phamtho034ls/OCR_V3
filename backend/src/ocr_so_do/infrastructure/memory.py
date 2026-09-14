@@ -2,9 +2,15 @@
 Infrastructure memory manager.
 Forces Python GC, releases PyTorch CUDA/MPS cache, and trims OS working set on Windows.
 """
+import os
 import gc
 import sys
 import logging
+
+# Tối ưu hóa phân bổ bộ nhớ cho PaddlePaddle (chống greedy memory pool & rò rỉ oneDNN trên CPU)
+os.environ.setdefault("FLAGS_allocator_strategy", "auto_growth")
+os.environ.setdefault("FLAGS_fraction_of_cpu_memory_to_use", "0.10")
+os.environ.setdefault("FLAGS_eager_delete_tensor_gb", "0.0")
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +55,12 @@ def cleanup_memory(force_os_trim: bool = True) -> None:
     if force_os_trim and sys.platform == "win32":
         try:
             import ctypes
-            handle = ctypes.windll.kernel32.GetCurrentProcess()
-            ctypes.windll.psapi.EmptyWorkingSet(handle)
+            kernel32 = ctypes.windll.kernel32
+            psapi = ctypes.windll.psapi
+            kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            psapi.EmptyWorkingSet.argtypes = [ctypes.c_void_p]
+            psapi.EmptyWorkingSet.restype = ctypes.c_int
+            psapi.EmptyWorkingSet(kernel32.GetCurrentProcess())
         except Exception as e:
             logger.debug(f"Không thể gọi EmptyWorkingSet trên Windows: {e}")
 

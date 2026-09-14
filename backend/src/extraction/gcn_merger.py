@@ -27,6 +27,31 @@ class GCNMerger:
     """
 
     @staticmethod
+    def _parcel_page_score(page: Dict[str, Any]) -> Tuple[int, List[Dict[str, Any]]]:
+        """Score the main parcel table and reject change-request tables."""
+        thua = page.get("thua_dat") or {}
+        ds = thua.get("danh_sach_thua") or page.get("danh_sach_thua") or []
+        if not isinstance(ds, list) or not ds:
+            return -100, []
+        text = " ".join(str(b.get("text", "")) for b in page.get("ocr_results", [])).lower()
+        score = 0
+        if re.search(r"t[oổ]ng\s*s[oố]\s*th[uủ]a|tong\s*so\s*thua", text):
+            score += 8
+        if re.search(r"di[eệ]n\s*t[ií]ch|dien\s*tich", text):
+            score += 2
+        if re.search(r"m[uụ]c\s*[dđ][ií]ch|muc\s*dich", text):
+            score += 2
+        if re.search(r"th[eờ]i\s*h[aạ]n|thoi\s*han", text):
+            score += 2
+        if re.search(r"ngu[oồ]n\s*g[oố]c|nguon\s*goc", text):
+            score += 2
+        if re.search(r"th[uủ]a\s+[dđ][aấ]t\s+c[oó]\s+thay\s+[dđ][oổ]i|thong\s*tin\s*thua\s*dat\s*moi", text):
+            score -= 10
+        if thua.get("dien_tich_cap") not in (None, ""):
+            score += 1
+        return score, ds
+
+    @staticmethod
     def merge(
         pages_results: List[Dict[str, Any]],
         bo_gcn_id: str = "GCN",
@@ -87,6 +112,17 @@ class GCNMerger:
             page_ms = pages_results[1]
         elif not page_ms:
             page_ms = page_mt
+
+        # Chọn đúng trang bảng thửa đất chính. Không lấy trang "thửa đất có
+        # thay đổi" hoặc trang phụ chỉ vì nó xuất hiện trước trong danh sách.
+        parcel_candidates = []
+        for page in pages_results:
+            score, ds = GCNMerger._parcel_page_score(page)
+            if score > -100:
+                parcel_candidates.append((score, len(ds), page))
+        if parcel_candidates:
+            parcel_candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+            page_ms = parcel_candidates[0][2]
 
         # Helper lấy giá trị & nguồn gốc (provenance) từ danh sách trang chỉ định
         def get_field_provenance(field_getter, preferred_pages: List[Dict[str, Any]]) -> Tuple[Optional[str], int, Optional[List], float]:
@@ -387,6 +423,12 @@ class GCNMerger:
         # Địa chỉ thường trú của Chủ GCN
         raw_dc_tt = get_val(lambda p: p.get("nguoi_su_dung", {}).get("dia_chi_thuong_tru") or p.get("raw_fields", {}).get("dia_chi_thuong_tru", {}).get("value"), goc_owner_pages)
         dia_chi_thuong_tru = GCNValidators.clean_address(raw_dc_tt)
+        raw_dc_tt_c2 = get_val(
+            lambda p: p.get("nguoi_su_dung", {}).get("dia_chi_thuong_tru_chu_2")
+            or p.get("raw_fields", {}).get("dia_chi_thuong_tru_chu_2", {}).get("value"),
+            goc_owner_pages,
+        )
+        dia_chi_thuong_tru_c2 = GCNValidators.clean_address(raw_dc_tt_c2)
 
         # Tách Chủ 1 & Chủ 2 của GCN gốc
         c1_curr = {"ten": "", "cccd": "", "ngay_sinh": ""}
@@ -551,15 +593,13 @@ class GCNMerger:
 
         # 3.4 Danh sách nhiều thửa đất (nếu có)
         danh_sach_thua = []
-        for p in [page_ms, page_mt] + pages_results:
-            ds = (
-                p.get("thua_dat", {}).get("danh_sach_thua")
-                or (p.get("raw_fields", {}).get("danh_sach_thua", {}).get("value") if isinstance(p.get("raw_fields", {}).get("danh_sach_thua"), dict) else p.get("raw_fields", {}).get("danh_sach_thua"))
-                or p.get("danh_sach_thua")
+        if page_ms:
+            danh_sach_thua = (
+                (page_ms.get("thua_dat") or {}).get("danh_sach_thua")
+                or (page_ms.get("raw_fields", {}).get("danh_sach_thua", {}).get("value") if isinstance(page_ms.get("raw_fields", {}).get("danh_sach_thua"), dict) else page_ms.get("raw_fields", {}).get("danh_sach_thua"))
+                or page_ms.get("danh_sach_thua")
+                or []
             )
-            if ds and isinstance(ds, list) and len(ds) > 0:
-                danh_sach_thua = ds
-                break
 
         # 3.5 Địa chỉ thửa đất (trích xuất trước để sẵn sàng dùng cho danh sách nhiều thửa)
         raw_dc_thua = get_val(
@@ -574,7 +614,7 @@ class GCNMerger:
             tb_list = [t.strip() for t in str(to_ban_do).split("+") if t.strip()] if to_ban_do else []
             danh_sach_thua = []
             for idx_p, p_st in enumerate(st_list):
-                p_tb = tb_list[idx_p % len(tb_list)] if tb_list else to_ban_do
+                p_tb = tb_list[idx_p] if len(tb_list) == len(st_list) else (tb_list[0] if len(tb_list) == 1 else "")
                 danh_sach_thua.append({
                     "so_thua": p_st,
                     "to_ban_do": p_tb,
@@ -589,7 +629,37 @@ class GCNMerger:
                     "nguon_goc_ky_hieu": None,
                 })
 
-        if not dia_chi_thua or any(k in dia_chi_thua.lower() for k in ["diện tích", "thời hạn", "mục đích", "m²", "m2"]):
+        # Kiểm tra cấu trúc bảng trước khi cho phép dùng dữ liệu tự động.
+        parcel_quality = {"status": "accepted", "reasons": []}
+        selected_text = " ".join(str(b.get("text", "")) for b in (page_ms or {}).get("ocr_results", []))
+        m_expected = re.search(r"(?:t[oổ]ng\s*s[oố]\s*th[uủ]a|tong\s*so\s*thua)\D{0,20}(\d{1,3})", selected_text, re.IGNORECASE)
+        expected_n = int(m_expected.group(1)) if m_expected else None
+        if expected_n and len(danh_sach_thua) != expected_n:
+            parcel_quality["status"] = "review"
+            parcel_quality["reasons"].append(f"row_count_mismatch:{len(danh_sach_thua)}!={expected_n}")
+        total_for_check = (page_ms or {}).get("thua_dat", {}).get("dien_tich_cap") if page_ms else None
+        try:
+            total_for_check = float(str(total_for_check).replace(",", ".")) if total_for_check not in (None, "") else None
+        except (TypeError, ValueError):
+            total_for_check = None
+        area_values = []
+        for item in danh_sach_thua:
+            try:
+                if item.get("dien_tich") not in (None, ""):
+                    area_values.append(float(str(item["dien_tich"]).replace(",", ".")))
+            except (TypeError, ValueError):
+                pass
+        if total_for_check is not None and len(area_values) == len(danh_sach_thua) and area_values:
+            if abs(sum(area_values) - total_for_check) > max(0.5, abs(total_for_check) * 0.01):
+                parcel_quality["status"] = "review"
+                parcel_quality["reasons"].append("area_sum_mismatch")
+        elif total_for_check is not None and len(area_values) != len(danh_sach_thua):
+            parcel_quality["status"] = "review"
+            parcel_quality["reasons"].append("missing_area_rows")
+        if parcel_quality["status"] == "review":
+            can_review_set.add("danh_sach_thua")
+
+        if not dia_chi_thua or any(k in dia_chi_thua.lower() for k in ["diện tích", "thời hạn", "mục đích", "m²", "m2", "uỷ ban", "uy ban", "ubnd", "chủ tịch"]):
             for ds_item in danh_sach_thua:
                 if ds_item.get("dia_chi"):
                     dia_chi_thua = ds_item["dia_chi"]
@@ -699,6 +769,20 @@ class GCNMerger:
             [page_ms, page_mt] + pages_results
         )
 
+        # Only taxonomy-recognised origins may leave the merger.  A value found
+        # outside the row table is document-level evidence, not evidence for
+        # every parcel in a multi-parcel certificate.
+        ng_valid, ng_normalized, ng_code, _ = GCNValidators.validate_land_use_origin(nguon_goc)
+        if ng_valid:
+            nguon_goc = ng_normalized or ""
+            nguon_goc_ky_hieu = ng_code or ""
+        else:
+            if nguon_goc:
+                can_review_set.add("nguon_goc")
+            nguon_goc = ""
+            nguon_goc_ky_hieu = ""
+        can_propagate_document_origin = len(danh_sach_thua) == 1 and bool(nguon_goc)
+
         # Bổ sung thông tin chung cho từng thửa trong danh_sach_thua nếu thiếu
         for p_item in danh_sach_thua:
             if not p_item.get("dia_chi"):
@@ -709,10 +793,20 @@ class GCNMerger:
                 p_item["ma_muc_dich"] = ma_muc_dich or ""
             if not p_item.get("thoi_han"):
                 p_item["thoi_han"] = thoi_han or ""
-            if not p_item.get("nguon_goc"):
-                p_item["nguon_goc"] = nguon_goc or ""
-            if not p_item.get("nguon_goc_ky_hieu"):
-                p_item["nguon_goc_ky_hieu"] = nguon_goc_ky_hieu or ""
+            item_ng_valid, item_ng, item_ng_code, _ = GCNValidators.validate_land_use_origin(
+                p_item.get("nguon_goc")
+            )
+            if item_ng_valid:
+                p_item["nguon_goc"] = item_ng or ""
+                p_item["nguon_goc_ky_hieu"] = item_ng_code or ""
+            elif can_propagate_document_origin:
+                p_item["nguon_goc"] = nguon_goc
+                p_item["nguon_goc_ky_hieu"] = nguon_goc_ky_hieu
+            else:
+                if p_item.get("nguon_goc") or len(danh_sach_thua) > 1:
+                    can_review_set.add("nguon_goc")
+                p_item["nguon_goc"] = ""
+                p_item["nguon_goc_ky_hieu"] = ""
             if not p_item.get("dien_tich_chung"):
                 p_item["dien_tich_chung"] = dien_tich_chung or "không"
 
@@ -837,6 +931,7 @@ class GCNMerger:
                 "cmnd": c1_curr["cccd"] or (raw_cmnd_goc if GCNValidators.validate_cccd(raw_cmnd_goc)[0] else ""),
                 "ngay_sinh": c1_curr["ngay_sinh"] or (raw_ngay_sinh_goc if GCNValidators.validate_birth_year(raw_ngay_sinh_goc)[0] else ""),
                 "dia_chi_thuong_tru": dia_chi_thuong_tru,
+                "dia_chi_thuong_tru_chu_2": dia_chi_thuong_tru_c2,
                 "loai_chu": loai_chu
             },
             "thua_dat": {
@@ -855,7 +950,8 @@ class GCNMerger:
                 "thoi_han": thoi_han,
                 "nguon_goc": nguon_goc,
                 "nguon_goc_ky_hieu": nguon_goc_ky_hieu,
-                "danh_sach_thua": danh_sach_thua
+                "danh_sach_thua": danh_sach_thua,
+                "parcel_quality": parcel_quality
             },
             "cap_gcn": {
                 "noi_cap": noi_cap,

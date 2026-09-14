@@ -12,6 +12,7 @@ Các nguyên tắc nghiệp vụ:
 
 import re
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -227,3 +228,63 @@ class SerialParser:
         # Sắp xếp theo thứ tự ưu tiên: Score cao nhất -> Confidence cao nhất
         candidates.sort(key=lambda c: (c["score"], c["confidence"]), reverse=True)
         return candidates[0]
+
+    @staticmethod
+    def extract_serial_from_filename(filename_or_path: Optional[str]) -> Optional[str]:
+        r"""
+        Trích xuất số phát hành chuẩn dạng [A-Z]{2}\s*\d{6} từ tên file hoặc đường dẫn.
+        Ví dụ: 'BG 846084.pdf' -> 'BG 846084', 'BG846304_p1.png' -> 'BG 846304'.
+        """
+        if not filename_or_path:
+            return None
+        name = Path(filename_or_path).stem
+        m = re.search(r'(?i)(?<![A-Za-z0-9])([A-Za-z]{2})[\s_\-]*(\d{6})(?![0-9])', name)
+        if m:
+            prefix = m.group(1).upper()
+            digits = m.group(2)
+            if prefix not in INVALID_PREFIXES:
+                return f"{prefix} {digits}"
+        return None
+
+    @staticmethod
+    def cross_validate_serial(
+        ocr_serial: Optional[str],
+        filename_or_path: Optional[str] = None,
+        barcode_str: Optional[str] = None
+    ) -> Tuple[Optional[str], float, Optional[str]]:
+        """
+        Đối chiếu chéo số phát hành:
+        - OCR serial (từ ảnh bìa/trang 1/2)
+        - Tên file gốc (filename/path)
+        - Mã vạch chân trang (barcode)
+        Returns: (final_serial, confidence, note)
+        """
+        file_serial = SerialParser.extract_serial_from_filename(filename_or_path)
+        clean_ocr = SerialParser.clean_and_normalize(ocr_serial) if ocr_serial else None
+
+        # 1. Cả OCR và tên file đều có
+        if clean_ocr and file_serial:
+            if clean_ocr.replace(" ", "") == file_serial.replace(" ", ""):
+                return clean_ocr, 1.0, None
+            # Nếu OCR trả về chuỗi dị biệt/nghi ngờ rác mà tên file rất chuẩn:
+            # Kiểm tra xem mã vạch có 6 số cuối khớp với tên file không
+            if barcode_str:
+                digits_barcode = re.sub(r'\D', '', barcode_str)
+                if file_serial[-6:] in digits_barcode:
+                    return file_serial, 0.95, f"OCR lệch ({clean_ocr}), mã vạch khớp tên file -> chọn {file_serial}"
+            # Nếu OCR chứa ký tự bất thường hoặc quá dài
+            if len(str(ocr_serial)) > 15 or not re.match(r'^[A-Z]{2}\s*\d{6}$', clean_ocr):
+                return file_serial, 0.90, f"OCR bất thường ({ocr_serial}) -> lấy từ tên file ({file_serial})"
+            # Tên file là định danh có cấu trúc do hệ thống cấp; OCR chỉ dùng
+            # để đối chiếu. Không được âm thầm ghi đè tên file bằng OCR lệch.
+            return file_serial, 0.85, f"OCR ({clean_ocr}) khác tên file ({file_serial}) -> ưu tiên tên file"
+
+        # 2. OCR không có nhưng tên file có dạng chuẩn
+        if not clean_ocr and file_serial:
+            return file_serial, 0.85, f"OCR thiếu -> lấy từ tên file ({file_serial})"
+
+        # 3. Chỉ có OCR
+        if clean_ocr:
+            return clean_ocr, 0.80, None
+
+        return None, 0.0, "Không tìm thấy số phát hành"

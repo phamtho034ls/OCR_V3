@@ -102,6 +102,42 @@ class PipelineOrchestrator:
         if not ocr_results:
             ocr_results = self.detector.detect(masked_image)
 
+        # 5b. ROI chuyên biệt cho "Số vào sổ cấp GCN" ở cuối trang 3.
+        # Trên mẫu B, dòng này thường nằm dưới khối chữ ký nên detector toàn
+        # trang dễ bỏ qua hoặc cắt ngắn. ROI được tính theo tỷ lệ ảnh để dùng
+        # được với các độ phân giải/scan khác nhau, không phụ thuộc tọa độ cố định.
+        if page_index == 2 and deskewed is not None and deskewed.size:
+            h, w = deskewed.shape[:2]
+            roi_x1 = max(0, int(w * 0.03))
+            roi_x2 = min(w, int(w * 0.80))
+            roi_y1 = max(0, int(h * 0.90))
+            roi_y2 = min(h, int(h * 0.995))
+            if roi_x2 > roi_x1 and roi_y2 > roi_y1:
+                registry_roi = deskewed[roi_y1:roi_y2, roi_x1:roi_x2]
+                registry_text, registry_conf = "", 0.0
+                rec_for_roi = getattr(self.detector, "recognize_crop", None)
+                if callable(rec_for_roi) and registry_roi.size:
+                    try:
+                        registry_text, registry_conf = rec_for_roi(registry_roi)
+                    except Exception as exc:
+                        logger.debug("[%s] Không nhận dạng được ROI số vào sổ: %s", job_id, exc)
+                ocr_results.append({
+                    "text": str(registry_text or "").strip(),
+                    "confidence": float(registry_conf or 0.0),
+                    "bbox": [
+                        [roi_x1, roi_y1], [roi_x2, roi_y1],
+                        [roi_x2, roi_y2], [roi_x1, roi_y2]
+                    ],
+                    "registry_footer_roi": True,
+                    "source": "registry_footer_roi",
+                    "ocr_candidates": {
+                        "paddle": {
+                            "text": str(registry_text or "").strip(),
+                            "confidence": float(registry_conf or 0.0),
+                        }
+                    },
+                })
+
         # 6. Barcode Detection & Recognition (Chuyên biệt cho mã vạch 13-15 số)
         rec_crop_fn = getattr(self.detector, "recognize_crop", None)
         detect_fn = getattr(self.detector, "detect", None)
@@ -175,30 +211,69 @@ class PipelineOrchestrator:
 
                 is_barcode_item = ocr_results[orig_idx].get("is_barcode_box", False) or len(re.sub(r'\D', '', viet_text)) in [13, 14, 15]
 
-                if is_barcode_item and len(re.sub(r'\D', '', viet_text)) >= 12 and viet_conf >= min_conf_viet:
+                # Với ô số (đặc biệt diện tích), không chọn VietOCR chỉ vì
+                # confidence tối thiểu.  Nhiều trường hợp VietOCR biến ``207.9``
+                # thành ``2019``. Giữ candidate có dạng số và confidence cao hơn.
+                decimal_re = re.compile(r"^\s*\d{1,7}[\.,]\d{1,4}\s*$")
+                numeric_candidates = []
+                if decimal_re.match(str(paddle_t)):
+                    numeric_candidates.append((float(paddle_c or 0.0), str(paddle_t).strip(), float(paddle_c or 0.0)))
+                if decimal_re.match(str(viet_text)):
+                    numeric_candidates.append((float(viet_conf or 0.0), str(viet_text).strip(), float(viet_conf or 0.0)))
+                numeric_override = bool(numeric_candidates and not is_barcode_item)
+                if numeric_override:
+                    _, selected_text, selected_conf = max(numeric_candidates, key=lambda item: item[0])
+                    ocr_results[orig_idx]["text"] = selected_text
+                    ocr_results[orig_idx]["confidence"] = selected_conf
+                    ocr_results[orig_idx]["ocr_candidates"] = {
+                        "paddle": {"text": paddle_t, "confidence": paddle_c},
+                        "vietocr": {"text": viet_text, "confidence": viet_conf},
+                    }
+                if not numeric_override and is_barcode_item and len(re.sub(r'\D', '', viet_text)) >= 12 and viet_conf >= min_conf_viet:
                     ocr_results[orig_idx]["text"] = viet_text.strip()
                     ocr_results[orig_idx]["confidence"] = float(viet_conf)
-                elif has_digits_paddle and not has_digits_viet and paddle_c >= 0.80:
+                elif not numeric_override and has_digits_paddle and not has_digits_viet and paddle_c >= 0.80:
                     pass
-                elif viet_text and viet_conf >= min_conf_viet:
+                elif not numeric_override and viet_text and viet_conf >= min_conf_viet:
                     ocr_results[orig_idx]["text"] = viet_text.strip()
                     ocr_results[orig_idx]["confidence"] = float(viet_conf)
 
                 final_text = ocr_results[orig_idx].get("text", "")
                 final_conf = ocr_results[orig_idx].get("confidence", 0.0)
+                if ocr_results[orig_idx].get("registry_footer_roi"):
+                    # Giữ cả hai kết quả để CertificationParser chọn candidate
+                    # đầy đủ nhất khi một engine bị cắt mất chữ số cuối.
+                    ocr_results[orig_idx]["ocr_candidates"] = {
+                        "paddle": {"text": paddle_t, "confidence": float(paddle_c or 0.0)},
+                        "vietocr": {"text": viet_text.strip() if viet_text else "", "confidence": float(viet_conf or 0.0)},
+                    }
                 pruned = prune_border_tokens(final_text, paddle_text=paddle_t)
                 ocr_results[orig_idx]["raw_text"] = final_text
                 ocr_results[orig_idx]["pruned_text"] = pruned["pruned_text"]
                 ocr_results[orig_idx]["removed_border_tokens"] = pruned["removed_tokens"]
 
-                # Lưu ảnh crop ra đĩa nếu bật cờ save_crops_to_disk
+                # Lưu ảnh crop ra đĩa nếu bật cờ save_crops_to_disk kèm metadata vị trí từng ảnh
                 crop_url = ""
-                crop_path_str = ""
+                crop_filename = f"crop_{local_i:04d}.png"
                 if self.save_crops_to_disk and self.artifact_store:
-                    crop_filename = f"crop_{local_i:04d}.png"
                     crop_url = self.artifact_store.save_crop(job_id, crop_img, crop_filename)
 
-                crops_meta.append({
+                bbox_pts = ocr_results[orig_idx].get("bbox", [])
+                xs = [pt[0] for pt in bbox_pts] if bbox_pts else []
+                ys = [pt[1] for pt in bbox_pts] if bbox_pts else []
+                box_rect = {
+                    "x": int(min(xs)) if xs else 0,
+                    "y": int(min(ys)) if ys else 0,
+                    "width": int(max(xs) - min(xs)) if xs else 0,
+                    "height": int(max(ys) - min(ys)) if ys else 0,
+                }
+
+                single_meta = {
+                    "crop_file": crop_filename,
+                    "crop_index": local_i,
+                    "page_index": page_index,
+                    "bbox": bbox_pts,
+                    "box_rect": box_rect,
                     "url": crop_url,
                     "crop_size": [int(crop_img.shape[1]), int(crop_img.shape[0])],
                     "raw_text": final_text,
@@ -210,8 +285,16 @@ class PipelineOrchestrator:
                     "viet_conf": round(float(viet_conf), 3),
                     "final_text": final_text,
                     "final_conf": round(float(final_conf), 3),
-                    "bbox": ocr_results[orig_idx].get("bbox", []),
-                })
+                }
+
+                if self.save_crops_to_disk and self.artifact_store:
+                    json_filename = f"crop_{local_i:04d}.json"
+                    self.artifact_store.save_crop_metadata(job_id, json_filename, single_meta)
+
+                crops_meta.append(single_meta)
+
+            if self.save_crops_to_disk and self.artifact_store and crops_meta:
+                self.artifact_store.save_crop_metadata(job_id, "crops_metadata.json", crops_meta)
 
             del crops_in_memory, crop_indices
 
@@ -224,10 +307,15 @@ class PipelineOrchestrator:
         )
 
         # 8. Extraction
-        extracted_fields = self.extractor.extract(ocr_results, template=template)
+        extracted_fields = self.extractor.extract(
+            ocr_results,
+            template=template,
+            image=deskewed,
+            recognize_crop_fn=rec_crop_fn
+        )
 
         # 8b. Normalization
-        for addr_field in ["dia_chi", "dia_chi_thua", "dia_chi_thuong_tru"]:
+        for addr_field in ["dia_chi", "dia_chi_thua", "dia_chi_thuong_tru", "dia_chi_thuong_tru_chu_2"]:
             if addr_field in extracted_fields and extracted_fields[addr_field].get("value"):
                 extracted_fields[addr_field]["value"] = self.address_normalizer.normalize(
                     extracted_fields[addr_field]["value"]
@@ -337,6 +425,7 @@ class PipelineOrchestrator:
                 "cmnd": raw_c,
                 "ngay_sinh": raw_y,
                 "dia_chi_thuong_tru": get_val("dia_chi_thuong_tru"),
+                "dia_chi_thuong_tru_chu_2": get_val("dia_chi_thuong_tru_chu_2"),
                 "loai_chu": get_val("loai_chu") or ("Vợ chồng / Đồng sở hữu" if has_chu_2 else "Cá nhân")
             },
             "thua_dat": {
@@ -390,6 +479,8 @@ class PipelineOrchestrator:
         except Exception:
             pass
 
+        # Không trim Windows working set ở tầng trang: caller/worker chịu trách
+        # nhiệm cleanup ở biên tiến trình để tránh page-fault và nạp lại model.
         cleanup_memory(force_os_trim=False)
 
         return res_dict

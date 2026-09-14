@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import {
-  FileText,
+  Database,
   Search,
   RefreshCw,
   Download,
-  Eye,
   Trash2,
   Copy,
   Check,
@@ -13,17 +12,22 @@ import {
   FileCode,
   FileSpreadsheet,
   Layers,
-  Table,
-  Filter
+  Filter,
+  CheckSquare,
+  Square,
+  AlertTriangle,
+  Folder,
+  HardDrive,
+  ArrowRight,
+  ExternalLink,
+  Eye,
+  SlidersHorizontal,
+  FileText
 } from 'lucide-react';
+import { PgRecordSummary, PgFolderOption, PgSourceOption, PgStats } from '../../shared/types';
 
-interface RawOcrRecordSummary {
-  id: string;
-  file_name: string;
-  template: string;
-  total_pages: number;
-  created_at: string;
-  content_length: number;
+interface RawMarkdownPageProps {
+  onView129Table?: (rows: Record<string, any>[]) => void;
 }
 
 interface SummaryFieldItem {
@@ -51,11 +55,39 @@ interface ExcelPreviewPayload {
   total_ocr_lines: number;
 }
 
-export const RawMarkdownPage: React.FC = () => {
-  const [records, setRecords] = useState<RawOcrRecordSummary[]>([]);
+export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table }) => {
+  // Dữ liệu hồ sơ
+  const [records, setRecords] = useState<PgRecordSummary[]>([]);
+  const [totalRecords, setTotalRecords] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
+  const [stats, setStats] = useState<PgStats | null>(null);
+
+  // Danh mục bộ lọc
+  const [folderOptions, setFolderOptions] = useState<PgFolderOption[]>([]);
+  const [sourceOptions, setSourceOptions] = useState<PgSourceOption[]>([]);
+
+  // Trạng thái bộ lọc
+  const [selectedFolder, setSelectedFolder] = useState<string>('all');
+  const [selectedSource, setSelectedSource] = useState<string>('all');
+  const [fileCountFilter, setFileCountFilter] = useState<'all' | 'small' | 'medium' | 'large'>('all');
   const [search, setSearch] = useState<string>('');
-  const [limit, setLimit] = useState<number>(100);
+  const [limit, setLimit] = useState<number>(50);
+  const [page, setPage] = useState<number>(1);
+
+  // Chọn dòng để xóa có chọn lọc (Multi-select)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Trạng thái xuất Excel
+  const [exportingExcel, setExportingExcel] = useState<boolean>(false);
+
+  // Modal xác nhận xóa
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    open: boolean;
+    type: 'single' | 'selected' | 'folder' | 'source';
+    targetName: string;
+    targetIds?: string[];
+  } | null>(null);
+  const [deleting, setDeleting] = useState<boolean>(false);
 
   // Modal xem Markdown chi tiết
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
@@ -63,34 +95,92 @@ export const RawMarkdownPage: React.FC = () => {
   const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
 
-  // Modal xem trước bảng tính Excel (Spreadsheet Preview)
+  // Modal xem trước bảng tính Excel
   const [excelPreviewDocId, setExcelPreviewDocId] = useState<string | null>(null);
   const [excelPreviewData, setExcelPreviewData] = useState<ExcelPreviewPayload | null>(null);
   const [loadingExcelPreview, setLoadingExcelPreview] = useState<boolean>(false);
   const [activeExcelTab, setActiveExcelTab] = useState<'summary' | 'ocr_lines' | 'cadastral_129'>('summary');
   const [excelFilterText, setExcelFilterText] = useState<string>('');
 
-  // Load danh sách bản ghi
+  // Nạp danh mục filter và stats
+  const fetchFilterOptionsAndStats = useCallback(async () => {
+    try {
+      const [filterRes, statsRes] = await Promise.all([
+        axios.get('/api/v1/pg/filters'),
+        axios.get('/api/v1/pg/stats')
+      ]);
+      setFolderOptions(filterRes.data?.folders || []);
+      setSourceOptions(filterRes.data?.sources || []);
+      setStats(statsRes.data || null);
+    } catch (err) {
+      console.error('Lỗi nạp danh mục filter/stats PostgreSQL:', err);
+    }
+  }, []);
+
+  // Nạp danh sách bản ghi theo filter
   const fetchRecords = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get('/api/v1/raw-ocr', {
+      let min_files: number | undefined;
+      let max_files: number | undefined;
+      if (fileCountFilter === 'small') {
+        max_files = 10;
+      } else if (fileCountFilter === 'medium') {
+        min_files = 10;
+        max_files = 50;
+      } else if (fileCountFilter === 'large') {
+        min_files = 50;
+      }
+
+      const offset = (page - 1) * limit;
+      const res = await axios.get('/api/v1/pg/records', {
         params: {
           limit,
+          offset,
+          folder_result: selectedFolder !== 'all' ? selectedFolder : undefined,
+          source_path: selectedSource !== 'all' ? selectedSource : undefined,
+          min_files,
+          max_files,
           search: search.trim() || undefined
         }
       });
       setRecords(res.data?.records || []);
+      setTotalRecords(res.data?.total || 0);
     } catch (err) {
-      console.error('Lỗi tải danh sách dữ liệu thô Markdown:', err);
+      console.error('Lỗi nạp danh sách hồ sơ PostgreSQL:', err);
     } finally {
       setLoading(false);
     }
-  }, [limit, search]);
+  }, [limit, page, selectedFolder, selectedSource, fileCountFilter, search]);
+
+  useEffect(() => {
+    fetchFilterOptionsAndStats();
+  }, [fetchFilterOptionsAndStats]);
 
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
+
+  // Xử lý chọn / bỏ chọn checkbox
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedIds.size === records.length && records.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(records.map(r => r.id)));
+    }
+  };
 
   // Xem Markdown chi tiết
   const handleViewDetail = async (docId: string) => {
@@ -99,7 +189,7 @@ export const RawMarkdownPage: React.FC = () => {
     setSelectedRecord(null);
     setCopied(false);
     try {
-      const res = await axios.get(`/api/v1/raw-ocr/${encodeURIComponent(docId)}`);
+      const res = await axios.get(`/api/v1/pg/records/${encodeURIComponent(docId)}`);
       setSelectedRecord(res.data);
     } catch (err) {
       alert('Không thể nạp nội dung Markdown của hồ sơ này: ' + err);
@@ -117,7 +207,7 @@ export const RawMarkdownPage: React.FC = () => {
     setActiveExcelTab('summary');
     setExcelFilterText('');
     try {
-      const res = await axios.get(`/api/v1/raw-ocr/${encodeURIComponent(docId)}/preview-excel`);
+      const res = await axios.get(`/api/v1/pg/records/${encodeURIComponent(docId)}/preview-excel`);
       setExcelPreviewData(res.data);
     } catch (err) {
       alert('Không thể nạp dữ liệu xem trước bảng tính Excel: ' + err);
@@ -128,93 +218,96 @@ export const RawMarkdownPage: React.FC = () => {
   };
 
   // Tải file .md
-  const handleDownload = (docId: string) => {
-    window.open(`/api/v1/raw-ocr/${encodeURIComponent(docId)}/download`, '_blank');
+  const handleDownloadMd = (docId: string) => {
+    window.open(`/api/v1/pg/records/${encodeURIComponent(docId)}/download-md`, '_blank');
   };
 
-  // Tải file Excel thô (.xlsx)
-  const handleDownloadRawExcel = (docId: string) => {
-    window.open(`/api/v1/raw-ocr/${encodeURIComponent(docId)}/export-excel`, '_blank');
-  };
-
-  // Tải file 129 Cột (.xlsx)
-  const handleDownload129Excel = (docId: string) => {
-    window.open(`/api/v1/raw-ocr/${encodeURIComponent(docId)}/export-129-excel`, '_blank');
-  };
-
-  // Tải file Excel danh sách bảng tổng hợp
-  const handleDownloadTableExcel = () => {
-    const params = new URLSearchParams();
-    params.set('limit', limit.toString());
-    if (search.trim()) params.set('search', search.trim());
-    window.open(`/api/v1/raw-ocr/export-table-excel?${params.toString()}`, '_blank');
-  };
-
-  // Sao chép nội dung Markdown
-  const handleCopyMarkdown = () => {
-    if (!selectedRecord?.raw_markdown) return;
-    navigator.clipboard.writeText(selectedRecord.raw_markdown);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Xóa bản ghi
-  const handleDelete = async (docId: string, fileName: string) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa bản ghi dữ liệu thô của file "${fileName}"?`)) {
-      return;
-    }
+  // Xem trên Bảng 129 Cột
+  const handleViewIn129Table = async () => {
     try {
-      await axios.delete(`/api/v1/raw-ocr/${encodeURIComponent(docId)}`);
-      setRecords(prev => prev.filter(r => r.id !== docId));
-      if (selectedDocId === docId) {
-        setSelectedDocId(null);
-        setSelectedRecord(null);
+      const params: any = { limit: 5000 };
+      if (selectedFolder !== 'all') params.folder_result = selectedFolder;
+      if (selectedSource !== 'all') params.source_path = selectedSource;
+
+      const res = await axios.get('/api/v1/pg/129-rows', { params });
+      const rows = res.data?.rows || [];
+      if (rows.length === 0) {
+        alert('Không có dữ liệu 129 cột thỏa mãn điều kiện lọc!');
+        return;
       }
-      if (excelPreviewDocId === docId) {
-        setExcelPreviewDocId(null);
-        setExcelPreviewData(null);
+      if (onView129Table) {
+        onView129Table(rows);
+      } else {
+        alert(`Đã nạp thành công ${rows.length} dòng 129 cột! Chuyển sang tab Bảng Chuyển Đổi Địa Chính để xem.`);
       }
     } catch (err) {
-      alert('Lỗi xóa bản ghi: ' + err);
+      alert('Không thể nạp dữ liệu 129 cột: ' + err);
     }
   };
 
-  // Xóa toàn bộ dữ liệu Markdown thô
-  const [clearingAll, setClearingAll] = useState<boolean>(false);
-  const handleClearAll = async () => {
-    if (records.length === 0) return;
-    const confirmed = window.confirm(
-      `CẢNH BÁO NGUY HIỂM:\nBạn có chắc chắn muốn XÓA TOÀN BỘ ${records.length} bản ghi dữ liệu Markdown thô trong cơ sở dữ liệu SQLite?\n\nThao tác này KHÔNG THỂ HOÀN TÁC!`
-    );
-    if (!confirmed) return;
-
-    setClearingAll(true);
+  // Xuất file Excel 129 Cột cho mẻ / thư mục đang lọc
+  const handleExport129Excel = async () => {
+    setExportingExcel(true);
     try {
-      const res = await axios.delete('/api/v1/raw-ocr/clear-all');
-      alert(`Đã xóa thành công ${res.data?.deleted_count ?? ''} bản ghi dữ liệu thô!`);
-      setRecords([]);
-      if (selectedDocId) {
-        setSelectedDocId(null);
-        setSelectedRecord(null);
-      }
-      if (excelPreviewDocId) {
-        setExcelPreviewDocId(null);
-        setExcelPreviewData(null);
-      }
-      fetchRecords();
+      const params: any = {};
+      if (selectedFolder !== 'all') params.folder_result = selectedFolder;
+      if (selectedSource !== 'all') params.source_path = selectedSource;
+
+      const res = await axios.post('/api/v1/pg/export-129-excel', {}, {
+        params,
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const fn = selectedFolder !== 'all' ? selectedFolder : 'KhoDuLieu_PG';
+      link.setAttribute('download', `KetQua_129Cot_${fn}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     } catch (err: any) {
-      alert('Lỗi xóa toàn bộ dữ liệu: ' + (err.response?.data?.detail || err.message));
+      alert('Không thể xuất file Excel 129 cột: ' + (err.response?.data?.detail || err.message));
     } finally {
-      setClearingAll(false);
+      setExportingExcel(false);
     }
   };
 
-  const formatBytes = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    return `${(bytes / 1024).toFixed(1)} KB`;
+  // Thực thi xóa có chọn lọc sau khi người dùng xác nhận
+  const executeDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      if (deleteConfirm.type === 'single' && deleteConfirm.targetIds?.[0]) {
+        await axios.delete('/api/v1/pg/records', {
+          data: { ids: deleteConfirm.targetIds }
+        });
+      } else if (deleteConfirm.type === 'selected' && deleteConfirm.targetIds) {
+        await axios.delete('/api/v1/pg/records', {
+          data: { ids: deleteConfirm.targetIds }
+        });
+        setSelectedIds(new Set());
+      } else if (deleteConfirm.type === 'folder') {
+        await axios.delete('/api/v1/pg/by-folder', {
+          params: { folder_result: deleteConfirm.targetName }
+        });
+        setSelectedFolder('all');
+      } else if (deleteConfirm.type === 'source') {
+        await axios.delete('/api/v1/pg/by-source', {
+          params: { source_path: deleteConfirm.targetName }
+        });
+        setSelectedSource('all');
+      }
+      // Nạp lại dữ liệu
+      await Promise.all([fetchRecords(), fetchFilterOptionsAndStats()]);
+      setDeleteConfirm(null);
+    } catch (err: any) {
+      alert('Lỗi khi thực hiện xóa dữ liệu: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setDeleting(false);
+    }
   };
 
-  // Dữ liệu lọc trong Excel Preview
+  // Dữ liệu lọc trong modal Excel Preview
   const filteredSummaryFields = (excelPreviewData?.summary_fields || []).filter(item => {
     if (!excelFilterText.trim()) return true;
     const q = excelFilterText.toLowerCase();
@@ -237,507 +330,494 @@ export const RawMarkdownPage: React.FC = () => {
     return Object.values(row).some(v => String(v || '').toLowerCase().includes(q));
   });
 
+  const totalPages = Math.ceil(totalRecords / limit) || 1;
+
   return (
     <div className="space-y-6">
-      {/* ── HEADER & STATS ── */}
+      {/* ── HEADER & THỐNG KÊ POSTGRESQL ── */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white shadow-md">
-              <FileCode size={26} />
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-800 flex items-center justify-center text-white shadow-md">
+              <Database size={26} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <span>Bảng Lưu Trữ Dữ Liệu Thô OCR (Raw Markdown)</span>
-                <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">
-                  SQLite Persistence
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900 leading-tight">
+                  Kho Lưu Trữ & Quản Lý Dữ Liệu PostgreSQL
+                </h2>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
+                  Port 5433 (ocr_so_do)
                 </span>
-              </h2>
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Xem toàn bộ văn bản OCR nguyên bản, xem trước bảng tính Excel trực quan và xuất file .xlsx
+                Tự động lưu trữ bền vững sau mỗi lần quét. Tra cứu, lọc theo thư mục/số lượng file và xóa có chọn lọc.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          {/* KPI Mini-Cards */}
+          <div className="flex flex-wrap items-center gap-2.5 text-xs">
+            <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+              <span className="text-slate-400 block text-[10px] font-semibold">Tổng thư mục</span>
+              <span className="text-sm font-bold text-slate-800">{stats?.total_folders ?? folderOptions.length}</span>
+            </div>
+            <div className="px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl">
+              <span className="text-indigo-600 block text-[10px] font-semibold">Tổng số hồ sơ</span>
+              <span className="text-sm font-bold text-indigo-900">{stats?.total_records ?? totalRecords}</span>
+            </div>
+            <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+              <span className="text-emerald-700 block text-[10px] font-semibold">Trích xuất hợp lệ</span>
+              <span className="text-sm font-bold text-emerald-900">{stats?.success_records ?? 0}</span>
+            </div>
+            {stats && stats.error_records! > 0 && (
+              <div className="px-3 py-2 bg-rose-50 border border-rose-200 rounded-xl">
+                <span className="text-rose-700 block text-[10px] font-semibold">Lỗi nhận dạng</span>
+                <span className="text-sm font-bold text-rose-900">{stats.error_records}</span>
+              </div>
+            )}
             <button
-              onClick={handleDownloadTableExcel}
-              disabled={loading || records.length === 0}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-              title="Xuất toàn bộ bảng danh sách hồ sơ thô sang file Excel"
-            >
-              <FileSpreadsheet size={15} />
-              <span>Xuất Excel Danh Sách</span>
-            </button>
-
-            <button
-              onClick={() => fetchRecords()}
+              onClick={() => { fetchRecords(); fetchFilterOptionsAndStats(); }}
               disabled={loading}
-              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
+              className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition shadow-sm"
+              title="Làm mới dữ liệu từ PostgreSQL"
             >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              <span>Làm mới</span>
-            </button>
-
-            <button
-              onClick={handleClearAll}
-              disabled={loading || clearingAll || records.length === 0}
-              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 disabled:opacity-40 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-              title="Xóa vĩnh viễn toàn bộ dữ liệu Markdown thô trong cơ sở dữ liệu SQLite"
-            >
-              <Trash2 size={14} className={clearingAll ? 'animate-spin' : ''} />
-              <span>{clearingAll ? 'Đang xóa...' : 'Xóa Toàn Bộ'}</span>
+              <RefreshCw size={15} className={loading ? 'animate-spin text-indigo-600' : ''} />
             </button>
           </div>
         </div>
 
-        {/* Search & Filter Bar */}
-        <div className="mt-5 pt-5 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="relative w-full sm:w-96">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Tìm kiếm theo tên file, mẫu sổ..."
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
-            />
+        {/* ── BỘ LỌC THÔNG MINH (SMART FILTERS) ── */}
+        <div className="mt-5 pt-5 border-t border-slate-100 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          
+          {/* Lọc theo Thư Mục Kết Quả (Folder) */}
+          <div className="md:col-span-4">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+              <Folder size={13} className="text-indigo-600" />
+              <span>Thư mục kết quả đã lưu:</span>
+            </label>
+            <select
+              value={selectedFolder}
+              onChange={e => { setSelectedFolder(e.target.value); setPage(1); }}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-indigo-500 focus:bg-white"
+            >
+              <option value="all">🌟 Tất cả thư mục kết quả ({totalRecords} hồ sơ)</option>
+              {folderOptions.map(f => (
+                <option key={f.name} value={f.name}>
+                  📁 {f.name} ({f.count} hồ sơ) - {f.date}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-500 w-full sm:w-auto justify-between sm:justify-end">
-            <span>Hiển thị:</span>
+          {/* Lọc theo Số Lượng File (File Count) */}
+          <div className="md:col-span-3">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+              <SlidersHorizontal size={13} className="text-indigo-600" />
+              <span>Số lượng file mẻ quét:</span>
+            </label>
             <select
-              value={limit}
-              onChange={e => setLimit(parseInt(e.target.value))}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none"
+              value={fileCountFilter}
+              onChange={e => { setFileCountFilter(e.target.value as any); setPage(1); }}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-indigo-500 focus:bg-white"
             >
-              <option value={50}>50 bản ghi</option>
-              <option value={100}>100 bản ghi</option>
-              <option value={200}>200 bản ghi</option>
-              <option value={500}>500 bản ghi</option>
+              <option value="all">Tất cả quy mô mẻ</option>
+              <option value="small">Mẻ nhỏ (≤ 10 file)</option>
+              <option value="medium">Mẻ vừa (10 - 50 file)</option>
+              <option value="large">Mẻ lớn (&gt; 50 file)</option>
             </select>
-            <span className="font-semibold text-slate-700 ml-2">Tổng: {records.length} bản ghi</span>
           </div>
+
+          {/* Lọc theo Đường Dẫn Máy (Source Path) */}
+          <div className="md:col-span-3">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+              <HardDrive size={13} className="text-indigo-600" />
+              <span>Đường dẫn trên máy:</span>
+            </label>
+            <select
+              value={selectedSource}
+              onChange={e => { setSelectedSource(e.target.value); setPage(1); }}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-indigo-500 focus:bg-white truncate"
+            >
+              <option value="all">Tất cả link trên máy</option>
+              {sourceOptions.map(s => (
+                <option key={s.path} value={s.path} title={s.path}>
+                  💻 {s.path} ({s.count} file)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Ô Tìm Kiếm Từ Khóa */}
+          <div className="md:col-span-2">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">Tìm từ khóa:</label>
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Tên file, tên chủ..."
+                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-indigo-500 focus:bg-white"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Active Filter Chips & Reset */}
+        {(selectedFolder !== 'all' || selectedSource !== 'all' || fileCountFilter !== 'all' || search) && (
+          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-400 text-[11px] font-semibold">Đang lọc:</span>
+            {selectedFolder !== 'all' && (
+              <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold flex items-center gap-1">
+                Folder: {selectedFolder}
+                <button onClick={() => setSelectedFolder('all')} className="hover:text-rose-600">×</button>
+              </span>
+            )}
+            {fileCountFilter !== 'all' && (
+              <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold flex items-center gap-1">
+                Quy mô: {fileCountFilter}
+                <button onClick={() => setFileCountFilter('all')} className="hover:text-rose-600">×</button>
+              </span>
+            )}
+            {selectedSource !== 'all' && (
+              <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold flex items-center gap-1 max-w-xs truncate" title={selectedSource}>
+                Link: {selectedSource}
+                <button onClick={() => setSelectedSource('all')} className="hover:text-rose-600">×</button>
+              </span>
+            )}
+            {search && (
+              <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold flex items-center gap-1">
+                Từ khóa: "{search}"
+                <button onClick={() => setSearch('')} className="hover:text-rose-600">×</button>
+              </span>
+            )}
+            <button
+              onClick={() => {
+                setSelectedFolder('all');
+                setSelectedSource('all');
+                setFileCountFilter('all');
+                setSearch('');
+                setPage(1);
+              }}
+              className="text-xs text-rose-600 hover:text-rose-700 font-semibold underline ml-1"
+            >
+              Xóa tất cả bộ lọc
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── ACTION BAR: XÓA CÓ CHỌN LỌC & XUẤT DỮ LIỆU ── */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        {/* Nhóm Hành Động Xóa Có Chọn Lọc */}
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setDeleteConfirm({
+                open: true,
+                type: 'selected',
+                targetName: `${selectedIds.size} hồ sơ đã chọn`,
+                targetIds: Array.from(selectedIds)
+              })}
+              className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm animate-in fade-in duration-150"
+            >
+              <Trash2 size={14} />
+              <span>Xóa {selectedIds.size} mục đã chọn</span>
+            </button>
+          )}
+
+          {selectedFolder !== 'all' && (
+            <button
+              onClick={() => setDeleteConfirm({
+                open: true,
+                type: 'folder',
+                targetName: selectedFolder
+              })}
+              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
+              title={`Xóa toàn bộ hồ sơ thuộc thư mục kết quả "${selectedFolder}"`}
+            >
+              <Trash2 size={14} />
+              <span>Xóa cả thư mục "{selectedFolder}"</span>
+            </button>
+          )}
+
+          {selectedSource !== 'all' && (
+            <button
+              onClick={() => setDeleteConfirm({
+                open: true,
+                type: 'source',
+                targetName: selectedSource
+              })}
+              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 max-w-xs truncate"
+              title={`Xóa toàn bộ hồ sơ có đường dẫn trên máy thuộc "${selectedSource}"`}
+            >
+              <Trash2 size={14} />
+              <span>Xóa theo link máy này</span>
+            </button>
+          )}
+
+          <div className="text-xs text-slate-500 font-medium">
+            Hiển thị: <b>{records.length}</b> / {totalRecords} hồ sơ
+          </div>
+        </div>
+
+        {/* Nhóm Hành Động Xuất 129 Cột & Xem Bảng */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport129Excel}
+            disabled={exportingExcel || records.length === 0}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+            title="Xuất file Excel 129 cột cho tập hồ sơ đang lọc"
+          >
+            <FileSpreadsheet size={15} />
+            <span>{exportingExcel ? 'Đang xuất Excel...' : 'Xuất Excel 129 Cột'}</span>
+          </button>
+
+          <button
+            onClick={handleViewIn129Table}
+            disabled={records.length === 0}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+            title="Nạp toàn bộ dữ liệu đang lọc vào giao diện Bảng 129 Cột"
+          >
+            <span>Xem Trên Bảng 129 Cột</span>
+            <ArrowRight size={14} />
+          </button>
         </div>
       </div>
 
-      {/* ── BẢNG DỮ LIỆU THÔ ── */}
+      {/* ── BẢNG DANH SÁCH HỒ SƠ TỪ POSTGRESQL ── */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto min-h-[300px]">
+        <div className="overflow-x-auto min-h-[350px]">
           <table className="w-full text-left text-xs text-slate-700 border-collapse">
             <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4 w-12 text-center">STT</th>
-                <th className="py-3 px-4 min-w-[220px]">Tên tệp hồ sơ</th>
-                <th className="py-3 px-4 w-28 text-center">Mẫu nhận diện</th>
-                <th className="py-3 px-4 w-24 text-center">Số trang</th>
-                <th className="py-3 px-4 w-28 text-right">Dung lượng</th>
-                <th className="py-3 px-4 min-w-[150px]">Thời gian quét</th>
-                <th className="py-3 px-4 w-52 text-center">Thao tác</th>
+                <th className="py-3 px-3 w-10 text-center">
+                  <button onClick={handleToggleSelectAll} className="text-slate-500 hover:text-indigo-600">
+                    {selectedIds.size === records.length && records.length > 0 ? (
+                      <CheckSquare size={16} className="text-indigo-600" />
+                    ) : (
+                      <Square size={16} />
+                    )}
+                  </button>
+                </th>
+                <th className="py-3 px-3 w-12 text-center">STT</th>
+                <th className="py-3 px-3 min-w-[200px]">Tên tệp & Link máy</th>
+                <th className="py-3 px-3 min-w-[140px]">Thư mục kết quả</th>
+                <th className="py-3 px-3 w-20 text-center">Mẫu</th>
+                <th className="py-3 px-3 min-w-[120px]">Số phát hành</th>
+                <th className="py-3 px-3 min-w-[160px]">Họ tên chủ</th>
+                <th className="py-3 px-3 w-24 text-center">Thửa / Tờ</th>
+                <th className="py-3 px-3 min-w-[130px]">Thời gian lưu</th>
+                <th className="py-3 px-3 w-24 text-center">Trạng thái</th>
+                <th className="py-3 px-3 w-40 text-center">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
               {loading && records.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={11} className="py-16 text-center text-slate-400">
                     <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-indigo-500" />
-                    <span>Đang nạp danh sách dữ liệu thô...</span>
+                    <span>Đang tải dữ liệu từ PostgreSQL...</span>
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
-                    <FileText size={32} className="mx-auto mb-2 text-slate-300" />
-                    <span>Chưa có bản ghi dữ liệu thô nào trong cơ sở dữ liệu.</span>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Dữ liệu sẽ tự động được lưu trữ tại đây khi bạn chạy quét hồ sơ đơn lẻ hoặc theo lô.
-                    </p>
+                  <td colSpan={11} className="py-16 text-center text-slate-400">
+                    <FileText size={36} className="mx-auto mb-2 text-slate-300" />
+                    <p className="text-sm font-semibold text-slate-600">Không tìm thấy hồ sơ nào trong PostgreSQL</p>
+                    <p className="text-xs text-slate-400 mt-1">Hãy quét thư mục hoặc nhận dạng file để lưu dữ liệu vào đây.</p>
                   </td>
                 </tr>
               ) : (
-                records.map((rec, idx) => (
-                  <tr key={rec.id} className="hover:bg-indigo-50/40 transition group">
-                    <td className="py-3 px-4 text-center text-slate-400 font-mono text-[11px]">
-                      {idx + 1}
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-900">
-                      <div className="flex items-center gap-2">
-                        <FileText size={15} className="text-slate-400 shrink-0" />
-                        <span className="truncate max-w-[320px]" title={rec.file_name}>
-                          {rec.file_name}
+                records.map((r, idx) => {
+                  const isSelected = selectedIds.has(r.id);
+                  const sttNumber = (page - 1) * limit + idx + 1;
+                  return (
+                    <tr key={r.id} className={`hover:bg-indigo-50/40 transition ${isSelected ? 'bg-indigo-50/70' : ''}`}>
+                      <td className="py-3 px-3 text-center">
+                        <button onClick={() => handleToggleSelect(r.id)} className="text-slate-500 hover:text-indigo-600">
+                          {isSelected ? <CheckSquare size={16} className="text-indigo-600" /> : <Square size={16} />}
+                        </button>
+                      </td>
+                      <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
+                        {sttNumber}
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="font-bold text-slate-900 truncate max-w-[220px]" title={r.file_name}>
+                          {r.file_name}
+                        </div>
+                        {r.source_path && (
+                          <div className="text-[10px] text-slate-400 font-mono truncate max-w-[220px]" title={r.source_path}>
+                            {r.source_path}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-indigo-700 border border-slate-200">
+                          {r.folder_result || r.batch_id || 'Khác'}
                         </span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-                        ID: {rec.id}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                        {rec.template || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center font-bold text-slate-800">
-                      {rec.total_pages} trang
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-slate-600">
-                      {formatBytes(rec.content_length)}
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
-                      {rec.created_at}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {/* Nút Xem Trước Bảng Excel */}
-                        <button
-                          onClick={() => handleOpenExcelPreview(rec.id)}
-                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
-                          title="Xem trước bảng tính Excel & Tải về"
-                        >
-                          <FileSpreadsheet size={13} />
-                          <span>Bảng Excel</span>
-                        </button>
-
-                        {/* Nút Xem Markdown */}
-                        <button
-                          onClick={() => handleViewDetail(rec.id)}
-                          className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
-                          title="Xem toàn văn Markdown"
-                        >
-                          <Eye size={13} />
-                          <span>Xem</span>
-                        </button>
-
-                        {/* Nút Tải .md */}
-                        <button
-                          onClick={() => handleDownload(rec.id)}
-                          className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                          title="Tải tệp Markdown (.md)"
-                        >
-                          <Download size={14} />
-                        </button>
-
-                        {/* Nút Xóa */}
-                        <button
-                          onClick={() => handleDelete(rec.id, rec.file_name)}
-                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                          title="Xóa bản ghi"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                          {r.template || '-'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 font-bold text-emerald-800">
+                        {r.so_phat_hanh || '-'}
+                      </td>
+                      <td className="py-3 px-3 font-semibold text-slate-800 truncate max-w-[160px]" title={r.ten_chu}>
+                        {r.ten_chu || '-'}
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono text-[11px]">
+                        {r.so_thua ? `${r.so_thua} / ${r.to_ban_do || '?'}` : '-'}
+                      </td>
+                      <td className="py-3 px-3 text-slate-500 text-[11px] font-mono">
+                        {r.created_at}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {r.status === 'success' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                            Hợp lệ
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                            Lỗi
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleViewDetail(r.id)}
+                            className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition"
+                            title="Xem văn bản Markdown thô"
+                          >
+                            <FileCode size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleOpenExcelPreview(r.id)}
+                            className="p-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-lg transition"
+                            title="Xem trước bảng tính Excel"
+                          >
+                            <Eye size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDownloadMd(r.id)}
+                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
+                            title="Tải tệp .md"
+                          >
+                            <Download size={13} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({
+                              open: true,
+                              type: 'single',
+                              targetName: r.file_name,
+                              targetIds: [r.id]
+                            })}
+                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition"
+                            title="Xóa bản ghi này khỏi PostgreSQL"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Phân trang (Pagination) */}
+        {totalRecords > limit && (
+          <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs text-slate-600">
+            <div>
+              Trang <b>{page}</b> / <b>{totalPages}</b> (Tổng số: {totalRecords} hồ sơ)
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-40 border border-slate-200 rounded-lg font-semibold transition"
+              >
+                Trang trước
+              </button>
+              <button
+                onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={page >= totalPages}
+                className="px-3 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-40 border border-slate-200 rounded-lg font-semibold transition"
+              >
+                Trang tiếp
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ── MODAL XEM TRƯỚC BẢNG TÍNH EXCEL (EXCEL SPREADSHEET PREVIEW) ── */}
-      {excelPreviewDocId && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-6xl w-full h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-slate-200 bg-emerald-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-md">
-                  <FileSpreadsheet size={20} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    <span>Xem Trước Bảng Tính Excel (Spreadsheet Preview)</span>
-                    {excelPreviewData?.template && (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                        {excelPreviewData.template}
-                      </span>
-                    )}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-mono truncate max-w-lg">
-                    {excelPreviewData?.file_name || excelPreviewDocId} ({excelPreviewData?.metadata?.total_pages || 1} trang)
-                  </p>
-                </div>
-              </div>
-
-              {/* Action Buttons Header */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleDownloadRawExcel(excelPreviewDocId)}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-                  title="Tải về file Excel chứa Sheet Tóm tắt và Sheet Dòng OCR"
-                >
-                  <Download size={14} />
-                  <span>Tải Excel Thô (.xlsx)</span>
-                </button>
-
-                <button
-                  onClick={() => handleDownload129Excel(excelPreviewDocId)}
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-                  title="Chuyển đổi dữ liệu sang tệp Excel 129 cột của Bộ TN&MT"
-                >
-                  <Layers size={14} />
-                  <span>Tải Bảng 129 Cột (.xlsx)</span>
-                </button>
-
-                <button
-                  onClick={() => setExcelPreviewDocId(null)}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition ml-1"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+      {/* ── MODAL XÁC NHẬN XÓA CÓ CHỌN LỌC ── */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle size={24} />
+            </div>
+            <div className="text-center">
+              <h3 className="text-base font-bold text-slate-900">Xác Nhận Xóa Dữ Liệu Trong PostgreSQL</h3>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                {deleteConfirm.type === 'single' && (
+                  <>Bạn có chắc chắn muốn xóa hồ sơ <b>"{deleteConfirm.targetName}"</b> khỏi PostgreSQL?</>
+                )}
+                {deleteConfirm.type === 'selected' && (
+                  <>Bạn có chắc chắn muốn xóa có chọn lọc <b>{deleteConfirm.targetName}</b> khỏi PostgreSQL?</>
+                )}
+                {deleteConfirm.type === 'folder' && (
+                  <>Bạn có chắc chắn muốn xóa toàn bộ hồ sơ thuộc thư mục kết quả <b>"{deleteConfirm.targetName}"</b> khỏi PostgreSQL?</>
+                )}
+                {deleteConfirm.type === 'source' && (
+                  <>Bạn có chắc chắn muốn xóa toàn bộ hồ sơ có link trên máy thuộc <b>"{deleteConfirm.targetName}"</b> khỏi PostgreSQL?</>
+                )}
+              </p>
+              <p className="text-[11px] text-rose-600 font-semibold mt-1">
+                Thao tác này sẽ xóa các bản ghi được chỉ định.
+              </p>
             </div>
 
-            {/* Subheader: Sheet Tabs & Search Filter */}
-            <div className="px-6 py-2.5 bg-slate-100 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              {/* Sheet Navigation Tabs (Like Excel) */}
-              <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
-                <button
-                  onClick={() => setActiveExcelTab('summary')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition ${
-                    activeExcelTab === 'summary'
-                      ? 'bg-white text-emerald-800 shadow-xs border border-slate-200'
-                      : 'text-slate-600 hover:bg-slate-200/70'
-                  }`}
-                >
-                  <Table size={13} />
-                  <span>Sheet 1: Tóm Tắt Bóc Tách</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600">
-                    {excelPreviewData?.total_summary_fields || 0}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setActiveExcelTab('ocr_lines')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition ${
-                    activeExcelTab === 'ocr_lines'
-                      ? 'bg-white text-indigo-800 shadow-xs border border-slate-200'
-                      : 'text-slate-600 hover:bg-slate-200/70'
-                  }`}
-                >
-                  <FileText size={13} />
-                  <span>Sheet 2: Dòng Văn Bản OCR</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600">
-                    {excelPreviewData?.total_ocr_lines || 0}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setActiveExcelTab('cadastral_129')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition ${
-                    activeExcelTab === 'cadastral_129'
-                      ? 'bg-white text-blue-800 shadow-xs border border-slate-200'
-                      : 'text-slate-600 hover:bg-slate-200/70'
-                  }`}
-                >
-                  <Layers size={13} />
-                  <span>Sheet 3: Bảng 129 Cột</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600">
-                    {excelPreviewData?.cadastral_129_rows?.length || 0}
-                  </span>
-                </button>
-              </div>
-
-              {/* Filter inside preview */}
-              <div className="relative w-full sm:w-64">
-                <Filter size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={excelFilterText}
-                  onChange={e => setExcelFilterText(e.target.value)}
-                  placeholder="Lọc dữ liệu dòng..."
-                  className="w-full pl-8 pr-3 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-            </div>
-
-            {/* Table Content (Spreadsheet View) */}
-            <div className="flex-1 overflow-auto bg-slate-50 p-4">
-              {loadingExcelPreview ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
-                  <RefreshCw size={32} className="animate-spin text-emerald-600" />
-                  <span className="text-xs font-semibold">Đang chuẩn bị bảng tính Excel xem trước...</span>
-                </div>
-              ) : activeExcelTab === 'summary' ? (
-                /* TAB 1: TÓM TẮT BÓC TÁCH */
-                <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-                  <table className="w-full text-left text-xs border-collapse font-sans">
-                    <thead className="bg-slate-800 text-white font-bold text-[11px] sticky top-0 z-10">
-                      <tr>
-                        <th className="py-2.5 px-3 w-16 text-center border-r border-slate-700">STT</th>
-                        <th className="py-2.5 px-4 w-72 border-r border-slate-700">Trường Dữ Liệu Bóc Tách Thô</th>
-                        <th className="py-2.5 px-4">Giá Trị Trích Xuất (Raw Value)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {filteredSummaryFields.length === 0 ? (
-                        <tr>
-                          <td colSpan={3} className="py-8 text-center text-slate-400 text-xs">
-                            Không có trường bóc tách nào khớp với bộ lọc.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredSummaryFields.map(item => (
-                          <tr key={item.stt} className="even:bg-slate-50/70 hover:bg-emerald-50/40 transition">
-                            <td className="py-2 px-3 text-center text-slate-400 font-mono text-[11px] border-r border-slate-200">
-                              {item.stt}
-                            </td>
-                            <td className="py-2 px-4 font-semibold text-slate-900 border-r border-slate-200">
-                              {item.field}
-                            </td>
-                            <td className="py-2 px-4 text-slate-800 font-medium">
-                              {item.value || <span className="text-slate-300 italic">(Trống)</span>}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              ) : activeExcelTab === 'ocr_lines' ? (
-                /* TAB 2: DÒNG VĂN BẢN OCR CHI TIẾT */
-                <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-                  <table className="w-full text-left text-xs border-collapse font-sans">
-                    <thead className="bg-indigo-900 text-white font-bold text-[11px] sticky top-0 z-10">
-                      <tr>
-                        <th className="py-2.5 px-3 w-16 text-center border-r border-indigo-800">STT</th>
-                        <th className="py-2.5 px-3 w-24 text-center border-r border-indigo-800">Trang</th>
-                        <th className="py-2.5 px-4 w-48 border-r border-indigo-800">Tệp Nguồn</th>
-                        <th className="py-2.5 px-4">Nội Dung Văn Bản Nhận Dạng Quang Học (OCR Lines)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {filteredOcrLines.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} className="py-8 text-center text-slate-400 text-xs">
-                            Không có dòng văn bản OCR nào khớp với bộ lọc.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredOcrLines.map(item => (
-                          <tr key={item.stt} className="even:bg-slate-50/70 hover:bg-indigo-50/40 transition">
-                            <td className="py-2 px-3 text-center text-slate-400 font-mono text-[11px] border-r border-slate-200">
-                              {item.stt}
-                            </td>
-                            <td className="py-2 px-3 text-center font-bold text-slate-700 border-r border-slate-200">
-                              Trang {item.page}
-                            </td>
-                            <td className="py-2 px-4 text-slate-500 font-mono text-[11px] truncate max-w-[180px] border-r border-slate-200" title={item.file_name}>
-                              {item.file_name}
-                            </td>
-                            <td className="py-2 px-4 text-slate-900 font-mono text-xs">
-                              {item.text}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                /* TAB 3: BẢNG CHUẨN 129 CỘT */
-                <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-x-auto">
-                  <table className="min-w-[1400px] text-left text-xs border-collapse font-sans">
-                    <thead className="bg-slate-900 text-white font-bold text-[11px] sticky top-0 z-10">
-                      <tr>
-                        <th className="py-2.5 px-3 text-center border-r border-slate-800 w-12">STT</th>
-                        <th className="py-2.5 px-4 border-r border-slate-800 min-w-[160px]">Tên Chủ Đất</th>
-                        <th className="py-2.5 px-3 border-r border-slate-800 w-24 text-center">Năm Sinh</th>
-                        <th className="py-2.5 px-3 border-r border-slate-800 w-32 text-center">Số CCCD</th>
-                        <th className="py-2.5 px-4 border-r border-slate-800 min-w-[200px]">Địa Chỉ Thường Trú</th>
-                        <th className="py-2.5 px-3 border-r border-slate-800 w-24 text-center">Số Thửa</th>
-                        <th className="py-2.5 px-3 border-r border-slate-800 w-24 text-center">Tờ Bản Đồ</th>
-                        <th className="py-2.5 px-3 border-r border-slate-800 w-28 text-right">Diện Tích (m²)</th>
-                        <th className="py-2.5 px-3 border-r border-slate-800 w-28 text-center">Mã Mục Đích</th>
-                        <th className="py-2.5 px-3 border-r border-slate-800 w-28 text-center">Thời Hạn</th>
-                        <th className="py-2.5 px-4 border-r border-slate-800 min-w-[160px]">Nguồn Gốc</th>
-                        <th className="py-2.5 px-3 border-r border-slate-800 w-28 text-center">Ngày Cấp</th>
-                        <th className="py-2.5 px-3 border-r border-slate-800 w-28 text-center">Số Vào Sổ</th>
-                        <th className="py-2.5 px-3 border-r border-slate-800 w-28 text-center">Số Phát Hành</th>
-                        <th className="py-2.5 px-3 w-36 text-center">Mã Vạch</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {filteredCadastralRows.length === 0 ? (
-                        <tr>
-                          <td colSpan={15} className="py-8 text-center text-slate-400 text-xs">
-                            Chưa có dữ liệu 129 cột được ánh xạ.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredCadastralRows.map((r, i) => (
-                          <tr key={i} className="even:bg-slate-50/70 hover:bg-blue-50/40 transition">
-                            <td className="py-2 px-3 text-center font-mono text-slate-400 border-r border-slate-200">{r.STT || i + 1}</td>
-                            <td className="py-2 px-4 font-bold text-slate-900 border-r border-slate-200">{r.CHU_hoTen || r.nguoi_su_dung?.ho_ten_chu_1 || '-'}</td>
-                            <td className="py-2 px-3 text-center border-r border-slate-200">{r.CHU_ngaySinh || '-'}</td>
-                            <td className="py-2 px-3 text-center font-mono border-r border-slate-200">{r.GT_soGiayTo || '-'}</td>
-                            <td className="py-2 px-4 text-slate-600 border-r border-slate-200">{r.CHU_diaChiThuongTru || '-'}</td>
-                            <td className="py-2 px-3 text-center font-bold text-slate-800 border-r border-slate-200">{r.TD_soThuTuThua || '-'}</td>
-                            <td className="py-2 px-3 text-center font-bold text-slate-800 border-r border-slate-200">{r.TD_soHieuToBanDo || '-'}</td>
-                            <td className="py-2 px-3 text-right font-bold text-emerald-700 font-mono border-r border-slate-200">{r.TD_dienTich || '-'}</td>
-                            <td className="py-2 px-3 text-center font-bold text-indigo-700 border-r border-slate-200">{r.TD_maMucDichSuDung || '-'}</td>
-                            <td className="py-2 px-3 text-center border-r border-slate-200">{r.TD_thoiHanSuDung || '-'}</td>
-                            <td className="py-2 px-4 text-slate-600 border-r border-slate-200">{r.TD_nguonGoc || '-'}</td>
-                            <td className="py-2 px-3 text-center font-mono border-r border-slate-200">{r.GCN_ngayCap || '-'}</td>
-                            <td className="py-2 px-3 text-center font-mono border-r border-slate-200">{r.GCN_soVaoSo || '-'}</td>
-                            <td className="py-2 px-3 text-center font-mono font-bold text-slate-900 border-r border-slate-200">{r.GCN_soPhatHanh || '-'}</td>
-                            <td className="py-2 px-3 text-center font-mono text-slate-600">{r.GCN_maVach || '-'}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
-              <div className="flex items-center gap-2">
-                <span>Trạng thái:</span>
-                <span className="font-semibold text-slate-800">
-                  {activeExcelTab === 'summary'
-                    ? `Hiển thị ${filteredSummaryFields.length}/${excelPreviewData?.total_summary_fields || 0} trường`
-                    : activeExcelTab === 'ocr_lines'
-                    ? `Hiển thị ${filteredOcrLines.length}/${excelPreviewData?.total_ocr_lines || 0} dòng text`
-                    : `Hiển thị ${filteredCadastralRows.length} thửa đất 129 cột`}
-                </span>
-                <span className="text-slate-300">|</span>
-                <span className="text-emerald-700 font-medium">Bấm các nút tải ở góc trên để lưu file .xlsx hoàn chỉnh</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setExcelPreviewDocId(null)}
-                  className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition"
-                >
-                  Đóng Bảng Tính
-                </button>
-              </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                onClick={executeDelete}
+                disabled={deleting}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                {deleting ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                <span>{deleting ? 'Đang xóa...' : 'Đồng ý xóa'}</span>
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── MODAL XEM NỘI DUNG MARKDOWN THÔ ── */}
+      {/* ── MODAL XEM NHANH MARKDOWN THÔ ── */}
       {selectedDocId && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-4xl w-full h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
-            {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm">
                   <FileCode size={18} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    <span>Nội Dung Markdown Thô (Raw OCR)</span>
-                    {selectedRecord?.template && (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">
-                        {selectedRecord.template}
-                      </span>
-                    )}
-                  </h3>
+                  <h3 className="text-sm font-bold text-slate-900">Văn Bản OCR Thô (Markdown)</h3>
                   <p className="text-xs text-slate-500 font-mono truncate max-w-md">
                     {selectedRecord?.file_name || selectedDocId}
                   </p>
@@ -745,31 +825,22 @@ export const RawMarkdownPage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Switch sang Excel Preview */}
                 <button
                   onClick={() => {
-                    const id = selectedDocId;
-                    setSelectedDocId(null);
-                    handleOpenExcelPreview(id);
+                    if (selectedRecord?.raw_markdown) {
+                      navigator.clipboard.writeText(selectedRecord.raw_markdown);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }
                   }}
-                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-                  title="Xem trước dưới dạng Bảng tính Excel"
-                >
-                  <FileSpreadsheet size={14} />
-                  <span>Bảng Excel</span>
-                </button>
-
-                <button
-                  onClick={handleCopyMarkdown}
-                  disabled={!selectedRecord?.raw_markdown}
                   className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
                 >
                   {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-                  <span>{copied ? 'Đã sao chép!' : 'Sao chép'}</span>
+                  <span>{copied ? 'Đã chép!' : 'Sao chép'}</span>
                 </button>
 
                 <button
-                  onClick={() => handleDownload(selectedDocId)}
+                  onClick={() => handleDownloadMd(selectedDocId)}
                   className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
                 >
                   <Download size={14} />
@@ -785,29 +856,195 @@ export const RawMarkdownPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Modal Content */}
             <div className="flex-1 p-6 overflow-y-auto bg-slate-950 text-slate-200 font-mono text-xs leading-relaxed selection:bg-indigo-600 selection:text-white">
               {loadingDetail ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
-                  <RefreshCw size={28} className="animate-spin text-indigo-400" />
-                  <span>Đang tải nội dung Markdown...</span>
+                <div className="flex items-center justify-center h-full text-slate-400">
+                  <RefreshCw size={24} className="animate-spin mr-2" />
+                  <span>Đang nạp Markdown từ PostgreSQL...</span>
                 </div>
-              ) : selectedRecord?.raw_markdown ? (
-                <pre className="whitespace-pre-wrap break-words font-mono">
-                  {selectedRecord.raw_markdown}
-                </pre>
               ) : (
-                <div className="text-slate-500 text-center py-12">
-                  Không có nội dung dữ liệu thô.
+                <pre className="whitespace-pre-wrap break-words font-mono">
+                  {selectedRecord?.raw_markdown || '# Không có nội dung Markdown cho hồ sơ này.'}
+                </pre>
+              )}
+            </div>
+
+            <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end text-xs">
+              <button
+                onClick={() => setSelectedDocId(null)}
+                className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg transition"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL XEM TRƯỚC BẢNG TÍNH EXCEL (SPREADSHEET PREVIEW) ── */}
+      {excelPreviewDocId && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-6xl w-full h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-teal-600 flex items-center justify-center text-white shadow-sm">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <span>Xem Trước Dữ Liệu Bảng Tính Excel</span>
+                    <span className="bg-teal-100 text-teal-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                      {excelPreviewData?.template || 'Mẫu chuẩn'}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono truncate max-w-md">
+                    {excelPreviewData?.file_name || excelPreviewDocId}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => excelPreviewDocId && handleDownloadMd(excelPreviewDocId)}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+                >
+                  <Download size={14} />
+                  <span>Tải .md</span>
+                </button>
+                <button
+                  onClick={() => setExcelPreviewDocId(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition ml-1"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-header tabs in modal */}
+            <div className="px-6 py-2.5 border-b border-slate-200 bg-slate-100 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setActiveExcelTab('summary')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    activeExcelTab === 'summary' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Bảng tổng hợp ({excelPreviewData?.summary_fields?.length || 0} trường)
+                </button>
+                <button
+                  onClick={() => setActiveExcelTab('ocr_lines')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    activeExcelTab === 'ocr_lines' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Từng dòng OCR ({excelPreviewData?.ocr_lines?.length || 0} dòng)
+                </button>
+                <button
+                  onClick={() => setActiveExcelTab('cadastral_129')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    activeExcelTab === 'cadastral_129' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Ánh xạ 129 Cột ({excelPreviewData?.cadastral_129_rows?.length || 0} dòng)
+                </button>
+              </div>
+
+              <div className="relative w-64">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={excelFilterText}
+                  onChange={e => setExcelFilterText(e.target.value)}
+                  placeholder="Lọc trong bảng..."
+                  className="w-full pl-7 pr-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-teal-500"
+                />
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-auto p-4 bg-slate-50 text-xs">
+              {loadingExcelPreview ? (
+                <div className="flex items-center justify-center h-full text-slate-400">
+                  <RefreshCw size={24} className="animate-spin mr-2" />
+                  <span>Đang dựng dữ liệu bảng tính...</span>
+                </div>
+              ) : activeExcelTab === 'summary' ? (
+                <table className="w-full bg-white rounded-xl border border-slate-200 text-left border-collapse">
+                  <thead className="bg-slate-100 text-[11px] font-bold text-slate-600 border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3 w-16 text-center">STT</th>
+                      <th className="py-2.5 px-4 w-64">Tên trường thông tin</th>
+                      <th className="py-2.5 px-4">Giá trị trích xuất</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {filteredSummaryFields.map((f, i) => (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="py-2 px-3 text-center text-slate-400 font-mono">{f.stt}</td>
+                        <td className="py-2 px-4 font-bold text-slate-700">{f.field}</td>
+                        <td className="py-2 px-4 font-mono text-slate-900">{f.value || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : activeExcelTab === 'ocr_lines' ? (
+                <table className="w-full bg-white rounded-xl border border-slate-200 text-left border-collapse">
+                  <thead className="bg-slate-100 text-[11px] font-bold text-slate-600 border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3 w-16 text-center">STT</th>
+                      <th className="py-2.5 px-3 w-20 text-center">Trang</th>
+                      <th className="py-2.5 px-4">Văn bản OCR nhận dạng được</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-mono text-xs">
+                    {filteredOcrLines.map((l, i) => (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="py-2 px-3 text-center text-slate-400">{l.stt}</td>
+                        <td className="py-2 px-3 text-center">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold">
+                            Trang {l.page}
+                          </span>
+                        </td>
+                        <td className="py-2 px-4 text-slate-800">{l.text}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white rounded-xl border border-slate-200 text-left border-collapse text-[11px]">
+                    <thead className="bg-slate-100 font-bold text-slate-700 border-b border-slate-200">
+                      <tr>
+                        <th className="p-2 border-r border-slate-200">STT</th>
+                        <th className="p-2 border-r border-slate-200">Số phát hành</th>
+                        <th className="p-2 border-r border-slate-200">Chủ sử dụng</th>
+                        <th className="p-2 border-r border-slate-200">Số giấy tờ</th>
+                        <th className="p-2 border-r border-slate-200">Thửa / Tờ</th>
+                        <th className="p-2 border-r border-slate-200">Diện tích</th>
+                        <th className="p-2 border-r border-slate-200">Địa chỉ thửa</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredCadastralRows.map((row, i) => (
+                        <tr key={i} className="hover:bg-slate-50">
+                          <td className="p-2 border-r border-slate-100 text-center font-mono">{i + 1}</td>
+                          <td className="p-2 border-r border-slate-100 font-bold text-emerald-700">{row.GCN_soPhatHanh || '-'}</td>
+                          <td className="p-2 border-r border-slate-100 font-semibold">{row.CHU_hoTen || '-'}</td>
+                          <td className="p-2 border-r border-slate-100 font-mono">{row.GT_soGiayTo || '-'}</td>
+                          <td className="p-2 border-r border-slate-100 font-mono">{row.TD_soThuTuThua ? `${row.TD_soThuTuThua} / ${row.TD_soHieuToBanDo || '?'}` : '-'}</td>
+                          <td className="p-2 border-r border-slate-100 font-bold text-right">{row.TD_dienTich || '-'}</td>
+                          <td className="p-2 border-r border-slate-100 max-w-xs truncate">{row.TD_diaChiChiTiet || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
-              <span>Hồ sơ ID: <code className="font-mono">{selectedDocId}</code></span>
+            <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end">
               <button
-                onClick={() => setSelectedDocId(null)}
+                onClick={() => setExcelPreviewDocId(null)}
                 className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg transition"
               >
                 Đóng

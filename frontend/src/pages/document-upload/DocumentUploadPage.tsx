@@ -110,7 +110,7 @@ export const DocumentUploadPage: React.FC = () => {
       }
 
       const res = await axios.post(
-        '/chuyen-doi/export',
+        '/api/v1/exports/excel-129',
         {
           rows: rows,
           filename: `GCN_${result.so_phat_hanh || result.document_id || 'export'}.xlsx`

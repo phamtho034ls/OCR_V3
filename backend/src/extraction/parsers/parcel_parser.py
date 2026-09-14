@@ -7,6 +7,7 @@ import logging
 import unicodedata
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
+import numpy as np
 from ..spatial_engine import SpatialEngine
 from ..validators import GCNValidators
 
@@ -49,13 +50,37 @@ class ParcelParser:
     Parser for parcel information: parcel ID, map sheet, purpose, origin, and terms.
     """
 
+    # These strings are commonly detected in the signature/authority block at
+    # the bottom of page 3.  They can contain a valid district/province name,
+    # so checking only for location keywords ("huyện", "tỉnh", ...) is not
+    # sufficient to identify a parcel address.
+    ADDRESS_AUTHORITY_PATTERNS = (
+        r"\bt\.?\s*m\.?\b",
+        r"\b(?:uy|uỷ)\s*ban\s*nhan\s*dan\b",
+        r"\bubnd\b",
+        r"\bchu\s*tich\b",
+        r"\bxac\s*nhan\s*(?:cua|boi)\b",
+        r"\bco\s*quan\s*cap\b",
+        r"\bnguoi\s*ky\b",
+    )
+
     SO_THUA_LABELS = [
         "a) Thửa đất số:",
         "a) Thửa đất số",
+        "â) Thừa đất số:",
+        "â) Thửa đất số:",
+        "ai Thửa đất số:",
+        "a) Thừa đất số",
         "Thửa đất số:",
+        "Thừa đất số:",
+        "Thứa đất số:",
         "Thửa đất số.",
         "Thửa số:",
-        "Thửa số"
+        "Thừa số:",
+        "Thứa số:",
+        "Thửa số",
+        "1. Thửa đất:",
+        "1, Thứa đất:"
     ]
 
     TO_BAN_DO_LABELS = [
@@ -64,13 +89,16 @@ class ParcelParser:
         "Tờ bản đồ:",
         "Tờ số:",
         "Tờ bản đồ số.",
-        "Tờ số"
+        "Tờ số",
+        "tờ bản đồ số:"
     ]
 
     DIA_CHI_LABELS = [
         "Địa chỉ thửa đất:",
         "b) Địa chỉ:",
+        "b) Địa chì:",
         "Địa chỉ:",
+        "Địa chì:",
         "Địa chỉ thửa đất",
         "Tại:"
     ]
@@ -88,6 +116,8 @@ class ParcelParser:
         "Thời hạn sử dụng:",
         "Thời hạn sử dụng đất:",
         "e) Thời hạn sử dụng:",
+        "- Thời hạn sử dụng:",
+        "- Thời hạn:",
         "Thời hạn:"
     ]
 
@@ -100,6 +130,9 @@ class ParcelParser:
     NGUON_GOC_LABELS = [
         "Nguồn gốc sử dụng:",
         "g) Nguồn gốc sử dụng:",
+        "Thường g) Nguồn gốc sử dụng:",
+        "8) Nguồn gốc sử dụng:",
+        "3 Nguồn gốc sử dụng:",
         "Nguồn gốc:",
         "8. Nguồn gốc:"
     ]
@@ -246,6 +279,10 @@ class ParcelParser:
         v_md, n_md, n_ma_md, _ = GCNValidators.validate_land_use_purpose(None, full_context=joined_table)
         v_th, n_th, _ = GCNValidators.validate_land_use_term(None, full_context=joined_table)
         v_ng, n_ng, n_code_ng, _ = GCNValidators.validate_land_use_origin(None, full_context=joined_table)
+        # A table-wide phrase cannot be assigned to an individual row when the
+        # document has multiple parcels.  Keep it at document level for review,
+        # but let row-level spatial extraction provide each parcel's origin.
+        has_single_parcel = len(parcels) == 1
 
         # Trích xuất địa chỉ thửa đất trong khối bảng (ví dụ 'Đồng Khuổi Dụi, xã Vĩnh Yên')
         table_dia_chi = None
@@ -280,8 +317,8 @@ class ParcelParser:
                 "muc_dich_su_dung": n_md if v_md else None,
                 "ma_muc_dich": n_ma_md if v_md else None,
                 "thoi_han": n_th if v_th else None,
-                "nguon_goc": n_ng if v_ng else None,
-                "nguon_goc_ky_hieu": n_code_ng if v_ng else None,
+                "nguon_goc": n_ng if v_ng and has_single_parcel else None,
+                "nguon_goc_ky_hieu": n_code_ng if v_ng and has_single_parcel else None,
             })
 
         if return_details:
@@ -300,7 +337,11 @@ class ParcelParser:
         return final_tb, final_st
 
     @staticmethod
-    def parse(ocr_boxes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def parse(
+        ocr_boxes: List[Dict[str, Any]],
+        image: Optional[np.ndarray] = None,
+        recognize_crop_fn: Any = None
+    ) -> Dict[str, Any]:
         result = {
             "so_thua": None,
             "to_ban_do": None,
@@ -326,26 +367,78 @@ class ParcelParser:
         all_lines = [b.get("text", "").strip() for b in sorted_boxes if b.get("text", "").strip()]
         full_text = " \n ".join(all_lines)
 
-        # 0. Thử bóc tách dạng bảng danh sách nhiều thửa đất (nếu có)
-        tbl_res = ParcelParser._parse_table_parcels(all_lines, return_details=True)
-        if tbl_res:
-            if tbl_res.get("to_ban_do"):
-                result["to_ban_do"] = tbl_res["to_ban_do"]
-            if tbl_res.get("so_thua"):
-                result["so_thua"] = tbl_res["so_thua"]
-            if tbl_res.get("ma_muc_dich"):
-                result["ma_muc_dich"] = tbl_res["ma_muc_dich"]
-                result["muc_dich_su_dung"] = tbl_res.get("muc_dich_su_dung")
-            if tbl_res.get("thoi_han"):
-                result["thoi_han"] = tbl_res["thoi_han"]
-            if tbl_res.get("nguon_goc"):
-                result["nguon_goc"] = tbl_res["nguon_goc"]
-                result["nguon_goc_ky_hieu"] = tbl_res.get("nguon_goc_ky_hieu")
-            if tbl_res.get("dia_chi"):
-                result["dia_chi"] = tbl_res["dia_chi"]
-                result["dia_chi_thua"] = tbl_res["dia_chi"]
-            if tbl_res.get("danh_sach_thua"):
-                result["danh_sach_thua"] = tbl_res["danh_sach_thua"]
+        # 0. Thử bóc tách dạng bảng danh sách nhiều thửa đất (Spatial 2D Grid)
+        try:
+            from ..spatial_table_extractor import SpatialTableExtractor
+            sp_res = SpatialTableExtractor.extract_parcels(sorted_boxes, image=image, recognize_crop_fn=recognize_crop_fn)
+            if sp_res and sp_res.get("is_multi_parcel") and sp_res.get("danh_sach_thua"):
+                if sp_res.get("to_ban_do"):
+                    result["to_ban_do"] = sp_res["to_ban_do"]
+                if sp_res.get("so_thua"):
+                    result["so_thua"] = sp_res["so_thua"]
+                if sp_res.get("dia_chi"):
+                    result["dia_chi"] = sp_res["dia_chi"]
+                    result["dia_chi_thua"] = sp_res["dia_chi"]
+                if sp_res.get("tong_dien_tich"):
+                    result["dien_tich_cap"] = sp_res["tong_dien_tich"]
+                result["danh_sach_thua"] = sp_res["danh_sach_thua"]
+                # Lấy thông tin mục đích, thời hạn, nguồn gốc từ thửa đầu tiên làm đại diện nếu hợp lệ
+                first_p = sp_res["danh_sach_thua"][0]
+                if first_p.get("ma_muc_dich"):
+                    result["ma_muc_dich"] = first_p["ma_muc_dich"]
+                    result["muc_dich_su_dung"] = first_p.get("muc_dich_su_dung")
+                if first_p.get("thoi_han"):
+                    v_th_chk, n_th_chk, _ = GCNValidators.validate_land_use_term(first_p["thoi_han"])
+                    if v_th_chk:
+                        result["thoi_han"] = n_th_chk
+                if first_p.get("nguon_goc"):
+                    v_ng_chk, n_ng_chk, _, _ = GCNValidators.validate_land_use_origin(first_p["nguon_goc"])
+                    if v_ng_chk:
+                        result["nguon_goc"] = n_ng_chk
+                        result["nguon_goc_ky_hieu"] = first_p.get("nguon_goc_ky_hieu")
+        except Exception as exc_sp:
+            logger.debug("Lỗi SpatialTableExtractor: %s", exc_sp)
+
+        # Fallback bảng cũ nếu SpatialTableExtractor chưa bắt được
+        if not result["danh_sach_thua"]:
+            tbl_res = ParcelParser._parse_table_parcels(all_lines, return_details=True)
+            if tbl_res:
+                if tbl_res.get("to_ban_do"):
+                    result["to_ban_do"] = tbl_res["to_ban_do"]
+                if tbl_res.get("so_thua"):
+                    result["so_thua"] = tbl_res["so_thua"]
+                if tbl_res.get("ma_muc_dich"):
+                    result["ma_muc_dich"] = tbl_res["ma_muc_dich"]
+                    result["muc_dich_su_dung"] = tbl_res.get("muc_dich_su_dung")
+                if tbl_res.get("thoi_han"):
+                    result["thoi_han"] = tbl_res["thoi_han"]
+                if tbl_res.get("nguon_goc"):
+                    result["nguon_goc"] = tbl_res["nguon_goc"]
+                    result["nguon_goc_ky_hieu"] = tbl_res.get("nguon_goc_ky_hieu")
+                if tbl_res.get("dia_chi"):
+                    result["dia_chi"] = tbl_res["dia_chi"]
+                    result["dia_chi_thua"] = tbl_res["dia_chi"]
+                if tbl_res.get("danh_sach_thua"):
+                    result["danh_sach_thua"] = tbl_res["danh_sach_thua"]
+
+        # When a table parser has produced parcel rows, their address is the
+        # strongest source available.  Do not let the later page-wide fallback
+        # replace it with the authority/signature line at the bottom of page 3.
+        has_structured_parcels = bool(result["danh_sach_thua"])
+        structured_dc = ""
+        current_dc = str(result.get("dia_chi") or "").strip()
+        if current_dc and not ParcelParser._is_contaminated_dc(current_dc):
+            structured_dc = ParcelParser._clean_parcel_address(current_dc)
+        if not structured_dc and has_structured_parcels:
+            for parcel in result["danh_sach_thua"]:
+                candidate = str(parcel.get("dia_chi") or "").strip()
+                if candidate and not ParcelParser._is_contaminated_dc(candidate):
+                    structured_dc = ParcelParser._clean_parcel_address(candidate)
+                    if structured_dc:
+                        break
+        if structured_dc:
+            result["dia_chi"] = structured_dc
+            result["dia_chi_thua"] = structured_dc
 
         # 1. Số thửa đất (Sổ đơn hoặc fallback)
         if not result["so_thua"]:
@@ -358,7 +451,7 @@ class ParcelParser:
                     result["so_thua"] = n_st
             if not result["so_thua"]:
                 m_thua = re.search(
-                    r'(?<!tổng\s)(?<!tong\s)(?:th[ửừứaảãạu]\s*đ[ấa]t\s*số|th[ửừứaảãạu]\s*số|thua\s*dat\s*so)\s*[:\.]?\s*(\d+[A-Za-z]?)',
+                    r'(?<!tổng\s)(?<!tong\s)(?:(?:[aâ]\)|ai|[0-9][,\.]?|\-)?\s*)?(?:th[ửừứaảãạu]\s*đ[ấa]t\s*số|th[ửừứaảãạu]\s*số|thua\s*dat\s*so)\s*[:\.]?\s*(\d+[A-Za-z]?(?:\s*[\+]\s*\d+[A-Za-z]?)*)',
                     full_text, re.IGNORECASE
                 )
                 if m_thua:
@@ -377,7 +470,7 @@ class ParcelParser:
                     result["to_ban_do"] = n_tb
             if not result["to_ban_do"]:
                 m_to = re.search(
-                    r'(?:tờ\s*bản\s*đồ\s*số|to\s*ban\s*do\s*so|tờ\s*số)\s*[:\.]?\s*(\d+)',
+                    r'(?:tờ\s*bản\s*đồ\s*số|to\s*ban\s*do\s*so|tờ\s*số|tờ\s*bản\s*đồ)\s*[:\.]?\s*(\d+[A-Za-z]?(?:\s*[\+]\s*\d+[A-Za-z]?)*)',
                     full_text, re.IGNORECASE
                 )
                 if m_to:
@@ -409,13 +502,19 @@ class ParcelParser:
             if not txt:
                 return True
             low = txt.lower()
+            if ParcelParser._is_authority_or_signature_text(low):
+                return True
             return any(k in low for k in BAD_ADDR_KEYWORDS)
 
-        found_dc = ""
+        # Preserve an address obtained from a structured table.  If the table
+        # has no address, explicit label-based extraction is still allowed, but
+        # an unbounded scan of the whole page is not: that scan reaches the
+        # signature block and mistakes "TM. UỶ BAN..." for a parcel address.
+        found_dc = structured_dc
         dc_res = SpatialEngine.extract_field_value_spatially(
             sorted_boxes, ParcelParser.DIA_CHI_LABELS, direction="right", max_dx=900.0
         )
-        if dc_res and dc_res.get("value") and len(dc_res["value"]) > 4:
+        if not found_dc and dc_res and dc_res.get("value") and len(dc_res["value"]) > 4:
             v_dc = dc_res["value"].strip()
             if not _is_contaminated_dc(v_dc):
                 for idx, line in enumerate(all_lines):
@@ -444,7 +543,7 @@ class ParcelParser:
                         break
 
         # Fallback: search for parcel location lines in table or page
-        if not found_dc:
+        if not found_dc and not has_structured_parcels:
             for idx, line in enumerate(all_lines):
                 llow = line.lower()
                 if any(w in llow for w in ["xã vĩnh yên", "huyện bình gia", "tỉnh lạng sơn"]) and not _is_contaminated_dc(line):
@@ -493,18 +592,26 @@ class ParcelParser:
                 sorted_boxes, ParcelParser.THOI_HAN_LABELS, direction="right"
             )
             if th_res and th_res.get("value"):
-                raw_th = th_res["value"].strip()
-            else:
+                v_th, n_th, _ = GCNValidators.validate_land_use_term(th_res["value"].strip())
+                if v_th:
+                    raw_th = n_th
+            if not raw_th:
                 for line in all_lines:
-                    if re.search(r"(?:[eđ]\)\s*)?thời\s*hạn\s*(?:sử\s*dụng)?", line, re.IGNORECASE):
+                    if re.search(r"(?:[eđ]\)\s*|[-*]\s*)?thời\s*hạn\s*(?:sử\s*dụng)?", line, re.IGNORECASE):
                         val = re.sub(r"^.*?(?:thời\s*hạn\s*(?:sử\s*dụng)?)\s*[:\.]?\s*", "", line, flags=re.IGNORECASE).strip()
-                        if len(val) >= 3:
-                            raw_th = val
-                            break
+                        if len(val) >= 3 and not any(bad in val.lower() for bad in ["mục đích", "diện tích", "địa chỉ"]):
+                            v_th, n_th, _ = GCNValidators.validate_land_use_term(val, full_context=full_text)
+                            if v_th:
+                                raw_th = n_th
+                                break
 
-            v_th, n_th, _ = GCNValidators.validate_land_use_term(raw_th, full_context=full_text)
-            if v_th:
-                result["thoi_han"] = n_th
+            if not raw_th:
+                v_th, n_th, _ = GCNValidators.validate_land_use_term(None, full_context=full_text)
+                if v_th:
+                    raw_th = n_th
+
+            if raw_th:
+                result["thoi_han"] = raw_th
 
         # 7. Hình thức sử dụng
         ht_res = SpatialEngine.extract_field_value_spatially(
@@ -522,19 +629,28 @@ class ParcelParser:
                 sorted_boxes, ParcelParser.NGUON_GOC_LABELS, direction="right"
             )
             if ng_res and ng_res.get("value") and len(ng_res["value"]) > 3:
-                raw_ng = ng_res["value"].strip()
-            else:
+                v_ng, n_ng, n_code_ng, _ = GCNValidators.validate_land_use_origin(ng_res["value"].strip())
+                if v_ng:
+                    raw_ng = n_ng
+            if not raw_ng:
                 for line in all_lines:
-                    if re.search(r"(?:[g8]\)\s*)?(?:nguồn\s*gốc\s*sử\s*dụng|nguồn\s*gốc:)", line, re.IGNORECASE):
+                    if re.search(r"(?:(?:Thường\s*)?[g8]\)\s*|[-*]\s*)?(?:nguồn\s*gốc\s*sử\s*dụng|nguồn\s*gốc:?)", line, re.IGNORECASE):
                         val = re.sub(r"^.*?(?:nguồn\s*gốc\s*sử\s*dụng|nguồn\s*gốc)\s*[:\.]?\s*", "", line, flags=re.IGNORECASE).strip()
-                        if len(val) > 3:
-                            raw_ng = val
-                            break
+                        if len(val) > 3 and not any(bad in val.lower() for bad in ["người nhận", "tài sản", "thời hạn"]):
+                            v_ng, n_ng, n_code_ng, _ = GCNValidators.validate_land_use_origin(val, full_context=full_text)
+                            if v_ng:
+                                raw_ng = n_ng
+                                result["nguon_goc_ky_hieu"] = n_code_ng
+                                break
 
-            v_ng, n_ng, n_code_ng, _ = GCNValidators.validate_land_use_origin(raw_ng, full_context=full_text)
-            if v_ng:
-                result["nguon_goc"] = n_ng
-                result["nguon_goc_ky_hieu"] = n_code_ng
+            if not raw_ng:
+                v_ng, n_ng, n_code_ng, _ = GCNValidators.validate_land_use_origin(None, full_context=full_text)
+                if v_ng:
+                    raw_ng = n_ng
+                    result["nguon_goc_ky_hieu"] = n_code_ng
+
+            if raw_ng:
+                result["nguon_goc"] = raw_ng
 
         return result
 
@@ -543,12 +659,31 @@ class ParcelParser:
         if not raw:
             return True
         sl = str(raw).lower()
+        if ParcelParser._is_authority_or_signature_text(sl):
+            return True
         bad_kw = [
             "mục đích", "muc dich", "diện tích", "dien tich", "thời hạn", "thoi han",
             "riêng", "rieng", "chung", "thửa đất số", "tờ bản đồ", "quyền sử dụng",
             "(m²)", "(m2)", "m²", "m2"
         ]
         return any(k in sl for k in bad_kw)
+
+    @staticmethod
+    def _is_authority_or_signature_text(raw: str) -> bool:
+        """Return whether text belongs to the authority/signature block.
+
+        OCR frequently recognizes the footer with high confidence because it
+        is bold and isolated.  The footer can contain a real district name,
+        therefore location keywords alone must never make it an address.
+        Accent-insensitive matching also covers OCR variants such as ``UY``
+        instead of ``UỶ`` and ``CHU TICH`` instead of ``CHỦ TỊCH``.
+        """
+        if not raw:
+            return False
+        text = unicodedata.normalize("NFD", str(raw).lower())
+        text = "".join(ch for ch in text if not unicodedata.combining(ch))
+        text = re.sub(r"\s+", " ", text).strip()
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in ParcelParser.ADDRESS_AUTHORITY_PATTERNS)
 
     @staticmethod
     def _clean_parcel_address(raw: str) -> str:

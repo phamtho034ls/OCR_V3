@@ -35,15 +35,21 @@ async def upload_document(
         result = container.process_document_uc.execute(
             document_path=tmp_path,
             document_id=doc_id,
+            file_name=file.filename,
             split_a3=True,
             smart_gcn_filter=True
         )
+        merged_data = result["merged"]
+        merged_data["file_name"] = file.filename
+        merged_data["document_id"] = doc_id
         return JSONResponse(content={
             "document_id": doc_id,
             "file_name": file.filename,
             "status": "success",
             "elapsed_seconds": result["elapsed_seconds"],
-            "data": result["merged"]
+            "data": merged_data,
+            "chuyen_doi_rows": result.get("chuyen_doi_rows", []),
+            "raw_ocr_markdown": result.get("raw_ocr_markdown", ""),
         })
     except Exception as e:
         logger.exception(f"[{doc_id}] Lỗi xử lý document: {e}")

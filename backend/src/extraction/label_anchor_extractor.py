@@ -7,6 +7,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import numpy as np
 
 from .spatial_engine import SpatialEngine
 from .parsers import (
@@ -61,6 +62,8 @@ class LabelAnchorExtractor:
         ocr_results: List[Dict[str, Any]],
         template: str,
         fuzzy_threshold: float = DEFAULT_FUZZY_THRESHOLD,
+        image: Optional[np.ndarray] = None,
+        recognize_crop_fn: Any = None,
     ) -> Dict[str, Dict[str, Any]]:
         """
         Trích xuất toàn bộ dữ liệu có cấu trúc từ OCR boxes.
@@ -116,7 +119,7 @@ class LabelAnchorExtractor:
                 }
 
         # 2. Áp dụng 5 Modular Domain Parsers
-        self._apply_domain_parsers(results, sorted_ocr, effective_tmpl)
+        self._apply_domain_parsers(results, sorted_ocr, effective_tmpl, image=image, recognize_crop_fn=recognize_crop_fn)
 
         return results
 
@@ -124,7 +127,9 @@ class LabelAnchorExtractor:
         self,
         results: Dict[str, Dict[str, Any]],
         sorted_ocr: List[Dict[str, Any]],
-        template: str
+        template: str,
+        image: Optional[np.ndarray] = None,
+        recognize_crop_fn: Any = None,
     ) -> None:
         """
         Gom kết quả từ 5 Domain Parsers chuyên biệt và điền vào kết quả trích xuất.
@@ -179,7 +184,7 @@ class LabelAnchorExtractor:
 
         # 2. Parcel Parser
         if not is_diagram_table_page:
-            parcel_data = ParcelParser.parse(sorted_ocr)
+            parcel_data = ParcelParser.parse(sorted_ocr, image=image, recognize_crop_fn=recognize_crop_fn)
         else:
             parcel_data = {}
             # Vẫn trích xuất tỷ lệ bản đồ trên trang sơ đồ (Trang 3/Trang 4)
@@ -190,7 +195,16 @@ class LabelAnchorExtractor:
                 parcel_data["ty_le"] = f"1:{m_tl.group(1)}"
 
         for k, v in parcel_data.items():
-            if v:
+            if k == "danh_sach_thua":
+                if v:
+                    results["danh_sach_thua"] = {
+                        "value": v,
+                        "confidence": 0.95,
+                        "bbox": None,
+                        "source_line": "",
+                        "match_score": 95.0
+                    }
+            elif v:
                 set_val(k, v)
 
         # 3. Area Parser
@@ -204,6 +218,15 @@ class LabelAnchorExtractor:
         for k, v in cert_data.items():
             if v:
                 set_val(k, v)
+
+        # Gắn provenance cho candidate lấy từ ROI footer để có thể truy nguyên
+        # page/bbox/candidate khi số vào sổ được chọn từ vùng chuyên biệt.
+        footer_roi = next((b for b in sorted_ocr if b.get("registry_footer_roi")), None)
+        if footer_roi and results.get("so_vao_so", {}).get("value"):
+            results["so_vao_so"]["bbox"] = footer_roi.get("bbox")
+            results["so_vao_so"]["source_line"] = footer_roi.get("text", "")
+            results["so_vao_so"]["selection_reason"] = "registry_footer_roi_complete_candidate"
+            results["so_vao_so"]["engine"] = "hybrid"
 
         # 5. Transfer Parser (áp dụng cho tất cả các trang, đặc biệt là Trang 4 có Sơ đồ và Biến động Mục IV)
         transfer_data = TransferParser.parse(sorted_ocr)

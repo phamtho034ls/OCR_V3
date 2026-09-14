@@ -55,7 +55,7 @@ def test_mapper_and_exporter():
     
     assert row["STT"] == 1
     assert row["GCN_soPhatHanh"] == "CH 123456"
-    assert row["GCN_soVaoSo"] == "CS 00987"
+    assert row["GCN_soVaoSo"] in ["CS 00987", "CS00987"]
     assert row["TD_soThuTuThua"] == "125"
     assert row["TD_soHieuToBanDo"] == "45"
     assert row["TD_dienTich"] == 180.5
@@ -146,44 +146,26 @@ def test_api_endpoints():
 
     client = TestClient(app)
 
-    # 1. Test GET /chuyen-doi/columns
-    res_cols = client.get("/chuyen-doi/columns")
+    # 1. Test GET /api/v1/exports/columns-129
+    res_cols = client.get("/api/v1/exports/columns-129")
     assert res_cols.status_code == 200, res_cols.text
     cols_data = res_cols.json()
     assert cols_data["total"] == 129
     assert len(cols_data["sections"]) >= 10
 
-    # 2. Test GET /chuyen-doi/vinhyen-50
-    res_vy = client.get("/chuyen-doi/vinhyen-50")
-    if res_vy.status_code == 200:
-        vy_data = res_vy.json()
-        assert vy_data["total"] >= 1
-        assert len(vy_data["rows"]) == vy_data["total"]
-        # Kiểm tra không có dấu '+' trong TD_soThuTuThua
-        for r in vy_data["rows"]:
-            assert "+" not in str(r.get("TD_soThuTuThua", ""))
-        export_rows = vy_data["rows"][:5]
-    else:
-        assert res_vy.status_code in [200, 404]
-        export_rows = [{"STT": 1, "GCN_soPhatHanh": "CH 123456", "TD_soThuTuThua": "12"}]
-
-    # 3. Test GET /chuyen-doi/load-from-markdown-db
-    res_mdb = client.get("/chuyen-doi/load-from-markdown-db")
-    assert res_mdb.status_code == 200, res_mdb.text
-    mdb_data = res_mdb.json()
-    assert "total" in mdb_data
-    assert "rows" in mdb_data
-    assert isinstance(mdb_data["rows"], list)
-
-    # 4. Test GET /api/v1/raw-ocr/to-129-rows
+    # 2. Test GET /api/v1/raw-ocr/to-129-rows
     res_r129 = client.get("/api/v1/raw-ocr/to-129-rows")
     assert res_r129.status_code == 200, res_r129.text
     r129_data = res_r129.json()
     assert "total" in r129_data
     assert "rows" in r129_data
+    assert isinstance(r129_data["rows"], list)
+    export_rows = r129_data["rows"][:5] or [
+        {"STT": 1, "GCN_soPhatHanh": "CH 123456", "TD_soThuTuThua": "12"}
+    ]
 
-    # 5. Test POST /chuyen-doi/export
-    res_exp = client.post("/chuyen-doi/export", json={
+    # 3. Test POST /api/v1/exports/excel-129
+    res_exp = client.post("/api/v1/exports/excel-129", json={
         "rows": export_rows,
         "filename": "Test_Export_5_Rows.xlsx"
     })

@@ -82,6 +82,8 @@ class RawMarkdownGenerator:
                 lines.append(f"Năm sinh chủ 2        : {nguoi.get('ngay_sinh_chu_2') or '-'}")
                 lines.append(f"Số CMND/CCCD chủ 2    : {nguoi.get('cmnd_chu_2') or '-'}")
             lines.append(f"Địa chỉ thường trú    : {nguoi.get('dia_chi_thuong_tru') or '-'}")
+            if nguoi.get("ho_ten_chu_2"):
+                lines.append(f"Địa chỉ thường trú chủ 2: {nguoi.get('dia_chi_thuong_tru_chu_2') or '-'}")
             lines.append(f"Thửa đất số           : {thua.get('so_thua') or '-'}")
             lines.append(f"Tờ bản đồ số          : {thua.get('to_ban_do') or '-'}")
             lines.append(f"Địa chỉ thửa đất      : {thua.get('dia_chi') or thua.get('dia_chi_thua') or '-'}")
@@ -100,6 +102,21 @@ class RawMarkdownGenerator:
             bd_info = bd.get('thong_tin_bien_dong') or bd.get('ten_chuyen_nhuong_moi') or '-'
             lines.append(f"Biến động chuyển nhượng: {bd_info}")
             lines.append(f"Mã vạch (Barcode)     : {merged_data.get('ma_vach') or '-'}")
+
+            danh_sach = thua.get('danh_sach_thua', [])
+            if danh_sach and len(danh_sach) >= 2:
+                lines.append("")
+                lines.append("[DANH SÁCH CHI TIẾT CÁC THỬA ĐẤT]")
+                for p_item in danh_sach:
+                    stt_p = p_item.get("stt", 1)
+                    s_thua = p_item.get("so_thua", "-")
+                    t_bando = p_item.get("to_ban_do", "-")
+                    dt_p = p_item.get("dien_tich", "-")
+                    md_p = p_item.get("ma_muc_dich") or p_item.get("muc_dich_su_dung") or "-"
+                    th_p = p_item.get("thoi_han") or "-"
+                    ng_p = p_item.get("nguon_goc") or "-"
+                    dc_p = p_item.get("dia_chi") or "-"
+                    lines.append(f"Thửa {stt_p}: Thửa số {s_thua} | Tờ số {t_bando} | Diện tích: {dt_p} m2 | Mục đích: {md_p} | Thời hạn: {th_p} | Nguồn gốc: {ng_p} | Địa chỉ: {dc_p}")
             lines.append("```")
             lines.append("")
             lines.append("---")

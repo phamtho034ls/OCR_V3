@@ -6,6 +6,9 @@ import pytest
 from extraction.excel_chuyen_doi_mapper import ExcelChuyenDoiMapper
 from extraction.parsers.owner_parser import OwnerParser
 from extraction.parsers.parcel_parser import ParcelParser
+from ocr_so_do.application.projections.cadastral_129_mapper import Cadastral129Mapper
+from ocr_so_do.domain.rules.raw_markdown.generator import RawMarkdownGenerator
+from ocr_so_do.infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
 
 
 def test_clean_address_strips_personal_info():
@@ -59,6 +62,67 @@ def test_owner_parser_residence_addresses_with_spouse():
     assert parsed["dia_chi_thuong_tru_chu_2"] == "Thôn Khuổi Dụi, xã Vĩnh Yên, huyện Bình Gia, tỉnh Lạng Sơn"
 
 
+def test_owner_parser_keeps_each_spouse_block_when_primary_label_is_damaged():
+    """Regression for BK 248186: OCR loses the first 'Sinh năm' label."""
+    lines = [
+        "Hộ ông Sám Văn Ninh",
+        "1985,56 OMND 082013674",
+        "Địa chỉ mường trức Thôn Nà Mê, Xã Nam Quan, Huyện Lộc Bình, Tỉnh Lang Sơn",
+        "Và bà: Ma Thị Hoáng",
+        "Sinh năm 1985",
+        "Đụi chỉ chường trức Thân Nữ Bề quả Nam Quan, huyện Lọc Hình, tỉnh Lạng Sơn",
+        "BK248186",
+    ]
+    boxes = [{"text": text, "box": [100, 100 + i * 20, 400, 120 + i * 20]} for i, text in enumerate(lines)]
+
+    parsed = OwnerParser.parse(boxes)
+
+    assert parsed["ngay_sinh_chu_1"] == "1985"
+    assert parsed["ngay_sinh_chu_2"] == "1985"
+    assert parsed["dia_chi_thuong_tru"] == "Thôn Nà Mê, Xã Nam Quan, Huyện Lộc Bình, Tỉnh Lạng Sơn"
+    assert parsed["dia_chi_thuong_tru_chu_2"] == "Thôn Nà Bè, xã Nam Quan, huyện Lộc Bình, tỉnh Lạng Sơn"
+
+
+def test_current_mapper_never_copies_primary_address_to_spouse_without_evidence():
+    merged = {
+        "nguoi_su_dung": {
+            "ho_ten_chu_1": "Ông: Sám Văn Ninh",
+            "ho_ten_chu_2": "Bà: Ma Thị Hoáng",
+            "dia_chi_thuong_tru": "Thôn Nà Mê, xã Nam Quan, huyện Lộc Bình, tỉnh Lạng Sơn",
+        },
+        "thua_dat": {},
+        "cap_gcn": {},
+        "tai_san": {},
+    }
+
+    row = Cadastral129Mapper.map_merged_to_row(merged, stt=1)
+
+    assert row["CHU_diaChiChiTiet"].startswith("Thôn Nà Mê")
+    assert row["VC_diaChiChiTiet"] == ""
+
+
+def test_raw_markdown_round_trip_preserves_second_owner_address():
+    merged = {
+        "nguoi_su_dung": {
+            "ho_ten_chu_1": "Ông: Sám Văn Ninh",
+            "ho_ten_chu_2": "Bà: Ma Thị Hoáng",
+            "dia_chi_thuong_tru": "Thôn Nà Mê, xã Nam Quan, huyện Lộc Bình, tỉnh Lạng Sơn",
+            "dia_chi_thuong_tru_chu_2": "Thôn Nà Bè, xã Nam Quan, huyện Lộc Bình, tỉnh Lạng Sơn",
+        },
+        "thua_dat": {},
+        "cap_gcn": {},
+        "bien_dong": {},
+    }
+    markdown = RawMarkdownGenerator.generate_document_raw_markdown(
+        "bk-248186", "BK 248186_HS.pdf", "mau_B", [], merged
+    )
+
+    parsed = RawMarkdownExcelExporter.parse_raw_markdown(markdown)["merged_dict"]["nguoi_su_dung"]
+
+    assert parsed["dia_chi_thuong_tru"].startswith("Thôn Nà Mê")
+    assert parsed["dia_chi_thuong_tru_chu_2"].startswith("Thôn Nà Bè")
+
+
 def test_parcel_parser_filters_contaminated_table_headers():
     lines = [
         "IL. Thứa đất, nhà ở và tài sản khác gắn liền với đất",
@@ -74,6 +138,63 @@ def test_parcel_parser_filters_contaminated_table_headers():
     assert parsed["dia_chi_thua"] == "Đồng Khuổi Dụi, xã Vĩnh Yên"
     assert "mục đích" not in parsed["dia_chi_thua"].lower()
     assert "diện tích" not in parsed["dia_chi_thua"].lower()
+
+
+def test_parcel_parser_rejects_authority_footer_as_address():
+    """A footer containing the district name is not a parcel address."""
+    boxes = [
+        {"text": "Bình Gia, ngày 08 tháng 12 năm 2010", "bbox": [[100, 900], [500, 900], [500, 920], [100, 920]]},
+        {"text": "TM. UỶ BAN NHÂN DÂN HUYỆN BÌNH GIA", "bbox": [[100, 940], [600, 940], [600, 965], [100, 965]]},
+        {"text": "CHỦ TỊCH", "bbox": [[250, 975], [400, 975], [400, 995], [250, 995]]},
+    ]
+
+    parsed = ParcelParser.parse(boxes)
+
+    assert parsed["dia_chi"] in (None, "")
+    assert parsed["dia_chi_thua"] in (None, "")
+
+
+def test_parcel_parser_preserves_structured_table_address_over_footer(monkeypatch):
+    """A table-row address must not be overwritten by the signature block."""
+    from extraction.spatial_table_extractor import SpatialTableExtractor
+
+    monkeypatch.setattr(
+        SpatialTableExtractor,
+        "extract_parcels",
+        lambda *args, **kwargs: {
+            "is_multi_parcel": True,
+            "danh_sach_thua": [{"so_thua": "2", "dia_chi": "Đồng Mạy Làng"}],
+            "dia_chi": "Đồng Mạy Làng",
+            "so_thua": "2",
+            "to_ban_do": "78",
+        },
+    )
+    boxes = [
+        {"text": "TM. UỶ BAN NHÂN DÂN HUYỆN BÌNH GIA", "bbox": [[100, 940], [600, 940], [600, 965], [100, 965]]},
+    ]
+
+    parsed = ParcelParser.parse(boxes)
+
+    assert parsed["dia_chi"] == "Đồng Mạy Làng"
+    assert parsed["dia_chi_thua"] == "Đồng Mạy Làng"
+
+
+def test_mapper_rejects_authority_ocr_variants_without_creating_district_address():
+    merged = {
+        "nguoi_su_dung": {
+            "dia_chi_thuong_tru": "Thôn Pác Luống, xã Thiện Thuật, huyện Bình Gia, tỉnh Lạng Sơn",
+        },
+        "thua_dat": {
+            "dia_chi": "TM UÝ BAN NHÂN DÂN HUYỆN BÌNH GIA",
+        },
+        "cap_gcn": {},
+        "tai_san": {},
+    }
+
+    row = Cadastral129Mapper.map_merged_to_row(merged, stt=1, file_name="BH 405653.pdf")
+
+    assert row["TD_diaChiChiTiet"] == ""
+    assert row["TD_tenTDP"] == ""
 
 
 def test_map_merged_to_row_address_enrichment():

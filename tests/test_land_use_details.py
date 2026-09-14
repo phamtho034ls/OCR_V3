@@ -107,6 +107,24 @@ def test_land_use_origin_validation():
     assert GCNValidators.validate_land_use_origin("sử dụng")[0] is False
 
 
+def test_land_use_origin_recovers_reordered_ocr_but_rejects_form_noise():
+    # OCR sometimes changes the visual reading order of the last table column.
+    v, norm, code, _ = GCNValidators.validate_land_use_origin(
+        "đất không thu tiên sử dụng đất Công nhận QS DĐ như giao"
+    )
+    assert v is True
+    assert norm == "Công nhận QSDĐ như giao đất không thu tiền sử dụng đất"
+    assert code == "CNQ-KTT"
+
+    # These were previously accepted by the permissive generic-CN fallback.
+    for noise in (
+        "Quyền số (Ký và ghi rõ họ, tên) Người nhận hồ sơ 130,.... Số thứ tự:",
+        "(Ký và ghi rõ họ, tên)",
+        "Tài sản gắn liền với đất",
+    ):
+        assert GCNValidators.validate_land_use_origin(noise)[0] is False
+
+
 def test_excel_mapper_land_fields():
     # map_muc_dich
     assert ExcelChuyenDoiMapper.map_muc_dich("HNK") == "HNK"

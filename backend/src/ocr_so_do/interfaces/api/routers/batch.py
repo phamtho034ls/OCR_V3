@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 
 from ....bootstrap import DEFAULT_OUTPUT_DIR, get_container
 from ....infrastructure.memory import cleanup_memory
+from ....infrastructure.persistence.postgres_store import get_postgres_store
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +35,25 @@ batch_jobs: Dict[str, Dict[str, Any]] = {}
 def _read_worker_file_limit() -> int:
     """Đọc cấu hình an toàn; giữ chunk trong khoảng đã kiểm chứng 1..50 file."""
     try:
-        return min(50, max(1, int(os.getenv("OCR_BATCH_WORKER_MAX_FILES", "20"))))
+        return min(50, max(1, int(os.getenv("OCR_BATCH_WORKER_MAX_FILES", "10"))))
     except (TypeError, ValueError):
-        logger.warning("OCR_BATCH_WORKER_MAX_FILES không hợp lệ; dùng mặc định 20")
-        return 20
+        logger.warning("OCR_BATCH_WORKER_MAX_FILES không hợp lệ; dùng mặc định 10")
+        return 10
 
 
 BATCH_WORKER_MAX_FILES = _read_worker_file_limit()
+
+
+def _read_file_timeout_seconds() -> int:
+    """Watchdog cho một hồ sơ để worker lỗi không khóa toàn bộ hàng đợi."""
+    try:
+        return min(7200, max(30, int(os.getenv("OCR_BATCH_FILE_TIMEOUT_SECONDS", "900"))))
+    except (TypeError, ValueError):
+        logger.warning("OCR_BATCH_FILE_TIMEOUT_SECONDS không hợp lệ; dùng mặc định 900 giây")
+        return 900
+
+
+BATCH_FILE_TIMEOUT_SECONDS = _read_file_timeout_seconds()
 _batch_execution_lock = threading.Lock()
 
 
@@ -86,13 +99,107 @@ def _persist_result(output_dir: Path, batch_id: str, index: int, result: Dict[st
     return str(path)
 
 
+def _row_identity(row: Dict[str, Any]) -> tuple:
+    """Stable identity used only to remove exact duplicate export rows."""
+    return tuple(str(row.get(k, "") or "").strip() for k in (
+        "HS_duongDanHSQ", "GCN_soPhatHanh", "TD_soThuTuThua",
+        "TD_soHieuToBanDo", "TD_dienTich", "TD_maMucDichSuDung",
+        "TD_thoiHanSuDung", "TD_nguonGoc",
+    ))
+
+
+def _prepare_export_rows(doc_res: Dict[str, Any], file_name: str, start_stt: int) -> tuple:
+    """Use structured rows as the single source of truth for Excel export.
+
+    Markdown is a human-readable fallback only. Re-parsing it when structured
+    rows already exist loses page/bbox provenance and can export a second set of
+    rows for the same PDF.
+    """
+    from ....infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
+    from ....application.projections.cadastral_129_mapper import Cadastral129Mapper
+
+    structured = doc_res.get("chuyen_doi_rows")
+    if isinstance(structured, list) and structured:
+        rows = list(structured)
+        source = "structured"
+    else:
+        raw_md = doc_res.get("raw_ocr_markdown", "")
+        if not raw_md:
+            return [], {"status": "review", "reasons": ["missing_structured_result"]}
+        parsed = RawMarkdownExcelExporter.parse_raw_markdown(raw_md)
+        rows = Cadastral129Mapper.map_merged_to_rows(
+            parsed.get("merged_dict", {}), start_stt=start_stt, file_name=file_name
+        )
+        source = "markdown_fallback"
+
+    unique_rows = []
+    seen = set()
+    for row in rows:
+        row = dict(row)
+        row["file_name"] = row.get("file_name") or file_name
+        key = _row_identity(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_rows.append(row)
+
+    # Đánh số lại ở tầng export, không giữ STT cục bộ của từng worker.
+    for offset, row in enumerate(unique_rows):
+        row["STT"] = start_stt + offset
+        row["DDK_maDon"] = f"DON_{start_stt + offset}"
+
+    merged = doc_res.get("merged") or {}
+    thua = merged.get("thua_dat") or {}
+    expected = thua.get("tong_so_thua") or thua.get("so_luong_thua")
+    try:
+        expected = int(expected) if expected not in (None, "") else None
+    except (TypeError, ValueError):
+        expected = None
+    if expected is None:
+        ds = thua.get("danh_sach_thua") or []
+        expected = len(ds) if isinstance(ds, list) and ds else None
+
+    reasons = []
+    if expected and len(unique_rows) != expected:
+        reasons.append(f"row_count_mismatch:{len(unique_rows)}!={expected}")
+
+    total_area = (
+        thua.get("tong_dien_tich")
+        or thua.get("dien_tich_cap")
+        or merged.get("tong_dien_tich")
+    )
+    try:
+        total_area = float(str(total_area).replace(",", ".")) if total_area not in (None, "") else None
+    except (TypeError, ValueError):
+        total_area = None
+    areas = []
+    for row in unique_rows:
+        try:
+            value = row.get("TD_dienTich")
+            if value not in (None, ""):
+                areas.append(float(str(value).replace(",", ".")))
+        except (TypeError, ValueError):
+            pass
+    if total_area is not None and areas:
+        tolerance = max(0.5, abs(total_area) * 0.01)
+        if abs(sum(areas) - total_area) > tolerance:
+            reasons.append(f"area_sum_mismatch:{sum(areas):.3f}!={total_area:.3f}")
+    elif total_area is not None and len(areas) != len(unique_rows):
+        reasons.append("missing_area_rows")
+
+    quality = {"status": "accepted" if not reasons else "review", "reasons": reasons, "source": source}
+    if reasons:
+        for row in unique_rows:
+            row["_quality_status"] = "review"
+            row["_quality_reasons"] = reasons
+    return unique_rows, quality
+
+
 def _export_batch_checkpoint_excel(output_dir: Path, batch_id: str) -> Optional[Path]:
     """
     Đọc tất cả các result_*.json đã lưu của batch trên đĩa và xuất/cập nhật file Excel 129 cột.
     Xử lý streaming theo từng file để tránh giữ toàn bộ dữ liệu trong RAM.
     """
-    from ....infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
-    from ....application.projections.cadastral_129_mapper import Cadastral129Mapper
     from ....infrastructure.exporters.excel_129_exporter import Excel129Exporter
 
     batch_results_dir = output_dir / "batches" / batch_id / "results"
@@ -110,19 +217,7 @@ def _export_batch_checkpoint_excel(output_dir: Path, batch_id: str) -> Optional[
             with open(rf, "r", encoding="utf-8") as f:
                 doc_res = json.load(f)
             file_name = doc_res.get("file_name", rf.stem)
-            raw_md = doc_res.get("raw_ocr_markdown", "")
-            if raw_md:
-                parsed = RawMarkdownExcelExporter.parse_raw_markdown(raw_md)
-                merged_dict = parsed.get("merged_dict", {})
-                rows = Cadastral129Mapper.map_merged_to_rows(
-                    merged_dict, start_stt=curr_stt, file_name=file_name
-                )
-            else:
-                rows = doc_res.get("chuyen_doi_rows", [])
-
-            for r in rows:
-                if not r.get("file_name"):
-                    r["file_name"] = file_name
+            rows, quality = _prepare_export_rows(doc_res, file_name, curr_stt)
             all_129_rows.extend(rows)
             curr_stt += len(rows)
             del doc_res
@@ -172,6 +267,8 @@ def _run_batch_worker_chunk(
                     split_a3=split_a3,
                     smart_gcn_filter=smart_gcn_filter,
                     stt=idx,
+                    batch_id=batch_id,
+                    folder_result=batch_id,
                 )
                 m_data = res.get("merged", {})
                 result_path = _persist_result(output_dir, batch_id, idx, res)
@@ -220,7 +317,7 @@ def _run_batch_worker_chunk(
         except Exception:
             pass
     finally:
-        cleanup_memory(force_os_trim=False)
+        cleanup_memory(force_os_trim=True)
 
 
 def _save_batch_checkpoint(
@@ -260,9 +357,22 @@ def _save_batch_checkpoint(
     job["last_checkpoint_message"] = (
         f"Đã lưu checkpoint {processed_count}/{total_files}; worker OCR cũ đã kết thúc và RAM native đã được hệ điều hành thu hồi."
     )
-    if excel_path and excel_path.exists():
-        job["checkpoint_excel_url"] = f"/api/v1/batch/{batch_id}/download-excel"
-        job["checkpoint_excel_name"] = f"BaoCao_129Cot_{batch_id}.xlsx"
+    # Cập nhật tiến độ đợt quét vào PostgreSQL
+    try:
+        succ_cnt = sum(1 for r in results if r.get("status") == "success")
+        err_cnt = sum(1 for r in results if r.get("status") == "error")
+        st = "completed" if processed_count >= total_files else "running"
+        pg_store = get_postgres_store()
+        pg_store.update_batch_progress(
+            batch_id=batch_id,
+            processed_count=processed_count,
+            success_count=succ_cnt,
+            error_count=err_cnt,
+            status=st
+        )
+    except Exception as e_pg_up:
+        logger.warning(f"[Batch {batch_id}] Lỗi cập nhật PostgreSQL checkpoint: {e_pg_up}")
+
     cleanup_memory(force_os_trim=True)
 
 
@@ -301,14 +411,21 @@ def _run_batch_scan_job(batch_id: str, target_files: List[Path], split_a3: bool,
             batch_jobs[batch_id]["worker_pid"] = worker.pid
             completed_indices = set()
             fatal_error = None
+            active_file_name = ""
+            active_file_started_at = None
+            worker_progress_at = time.time()
 
             def handle_message(message: Dict[str, Any]) -> None:
-                nonlocal fatal_error
+                nonlocal fatal_error, active_file_name, active_file_started_at, worker_progress_at
+                worker_progress_at = time.time()
                 message_type = message.get("type")
                 if message_type == "started":
-                    batch_jobs[batch_id]["current_file"] = message.get("file_name", "")
+                    active_file_name = message.get("file_name", "")
+                    active_file_started_at = time.time()
+                    batch_jobs[batch_id]["current_file"] = active_file_name
                 elif message_type == "result":
                     summary = message["summary"]
+                    active_file_started_at = None
                     if summary["stt"] not in completed_indices:
                         completed_indices.add(summary["stt"])
                         results.append(summary)
@@ -328,6 +445,18 @@ def _run_batch_scan_job(batch_id: str, target_files: List[Path], split_a3: bool,
                 except queue.Empty:
                     pass
                 _sample_worker_memory(batch_id, worker.pid)
+                watchdog_started_at = active_file_started_at or worker_progress_at
+                if (
+                    time.time() - watchdog_started_at > BATCH_FILE_TIMEOUT_SECONDS
+                ):
+                    watchdog_target = active_file_name or "khởi tạo worker OCR"
+                    fatal_error = (
+                        f"{watchdog_target} vượt quá "
+                        f"{BATCH_FILE_TIMEOUT_SECONDS} giây; worker đã được dừng để giải phóng RAM"
+                    )
+                    logger.error("[Batch %s] %s", batch_id, fatal_error)
+                    worker.terminate()
+                    break
 
             worker.join(timeout=10)
             if worker.is_alive():
@@ -406,6 +535,21 @@ async def scan_directory(req: ScanDirectoryRequest, background_tasks: Background
 
     batch_id = f"dir_{uuid.uuid4().hex[:8]}"
     _trim_batch_jobs()
+
+    # Khởi tạo bản ghi đợt quét trong PostgreSQL
+    try:
+        pg_store = get_postgres_store()
+        pg_store.save_batch(
+            batch_id=batch_id,
+            folder_name=dir_p.name,
+            source_path=str(dir_p.resolve()),
+            output_dir=str(DEFAULT_OUTPUT_DIR / "batches" / batch_id),
+            total_files=len(target_files),
+            status="running"
+        )
+    except Exception as e_pg:
+        logger.warning(f"Lỗi khởi tạo batch trong PostgreSQL: {e_pg}")
+
     batch_jobs[batch_id] = {
         "batch_id": batch_id,
         "status": "processing",
@@ -479,7 +623,7 @@ async def get_batch_progress(batch_id: str):
 @router.get("/{batch_id}/download-excel", summary="Tải file Excel 129 cột checkpoint hiện tại")
 async def download_batch_excel(batch_id: str):
     """
-    Tải file Excel 129 cột được xuất tự động sau mỗi 20 file hoặc khi hoàn thành.
+    Tải file Excel 129 cột được xuất tự động sau mỗi 10 file hoặc khi hoàn thành.
     Người dùng có thể tải về bất cứ lúc nào trong khi quét mà không cần đợi chạy hết.
     """
     # Endpoint tải file không được khởi tạo model OCR trong process FastAPI.
@@ -528,8 +672,6 @@ async def convert_batch_markdown_to_129_excel(batch_id: str):
     batch_results_dir = output_dir / "batches" / batch_id / "results"
 
     from ....infrastructure.persistence.sqlite_raw_store import get_sqlite_raw_store
-    from ....infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
-    from ....application.projections.cadastral_129_mapper import Cadastral129Mapper
     from ....infrastructure.exporters.excel_129_exporter import Excel129Exporter
     from fastapi.responses import FileResponse
 
@@ -545,19 +687,7 @@ async def convert_batch_markdown_to_129_excel(batch_id: str):
                 with open(rf, "r", encoding="utf-8") as f:
                     doc_res = json.load(f)
                 file_name = doc_res.get("file_name", rf.stem)
-                raw_md = doc_res.get("raw_ocr_markdown", "")
-                if raw_md:
-                    parsed = RawMarkdownExcelExporter.parse_raw_markdown(raw_md)
-                    merged_dict = parsed.get("merged_dict", {})
-                    rows = Cadastral129Mapper.map_merged_to_rows(
-                        merged_dict, start_stt=curr_stt, file_name=file_name
-                    )
-                else:
-                    rows = doc_res.get("chuyen_doi_rows", [])
-
-                for r in rows:
-                    if not r.get("file_name"):
-                        r["file_name"] = file_name
+                rows, quality = _prepare_export_rows(doc_res, file_name, curr_stt)
                 all_129_rows.extend(rows)
                 curr_stt += len(rows)
             except Exception as e_rf:
@@ -570,16 +700,10 @@ async def convert_batch_markdown_to_129_excel(batch_id: str):
             rec = store.get_record(r["id"])
             if not rec:
                 continue
-            raw_md = rec.get("raw_markdown", "")
             file_name = rec.get("file_name", "") or r.get("file_name", "")
-            parsed = RawMarkdownExcelExporter.parse_raw_markdown(raw_md)
-            merged_dict = parsed.get("merged_dict", {})
-            rows = Cadastral129Mapper.map_merged_to_rows(
-                merged_dict, start_stt=curr_stt, file_name=file_name
+            rows, quality = _prepare_export_rows(
+                {"raw_ocr_markdown": rec.get("raw_markdown", "")}, file_name, curr_stt
             )
-            for row in rows:
-                if not row.get("file_name"):
-                    row["file_name"] = file_name
             all_129_rows.extend(rows)
             curr_stt += len(rows)
 

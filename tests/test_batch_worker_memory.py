@@ -95,3 +95,13 @@ def test_process_local_cleanup_never_recreates_detector(monkeypatch):
     assert container.detector is detector
     assert container.orchestrator.detector is detector
     assert result["engine_recreated"] is False
+
+
+def test_batch_worker_defaults_are_bounded(monkeypatch):
+    from ocr_so_do.interfaces.api.routers import batch
+
+    monkeypatch.delenv("OCR_BATCH_WORKER_MAX_FILES", raising=False)
+    monkeypatch.delenv("OCR_BATCH_FILE_TIMEOUT_SECONDS", raising=False)
+
+    assert batch._read_worker_file_limit() == 10
+    assert batch._read_file_timeout_seconds() == 900

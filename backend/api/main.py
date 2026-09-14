@@ -94,8 +94,6 @@ from extraction.diagram_extractor import DiagramExtractor
 from extraction.address_normalizer import AddressNormalizer
 from extraction.gcn_merger import GCNMerger
 from extraction.cccd_extractor import CCCDExtractor
-from extraction.gcn_cccd_pair_merger import GCNCCCDPairMerger
-from extraction.ke_hoach_515_exporter import KeHoach515Exporter
 from extraction.border_token_pruner import prune_border_tokens
 from ocr_so_do.bootstrap import get_container
 from ocr_so_do.infrastructure.memory import cleanup_memory
@@ -125,12 +123,13 @@ app.add_middleware(
 
 # Đăng ký các router /api/v1 từ kiến trúc Backend mới
 try:
-    from ocr_so_do.interfaces.api.routers import documents as doc_v1, jobs as job_v1, exports as exp_v1, batch as batch_v1, raw_ocr as raw_ocr_v1
+    from ocr_so_do.interfaces.api.routers import documents as doc_v1, jobs as job_v1, exports as exp_v1, batch as batch_v1, raw_ocr as raw_ocr_v1, pg_storage as pg_storage_v1
     app.include_router(doc_v1.router, prefix="/api/v1")
     app.include_router(job_v1.router, prefix="/api/v1")
     app.include_router(exp_v1.router, prefix="/api/v1")
     app.include_router(batch_v1.router, prefix="/api/v1")
     app.include_router(raw_ocr_v1.router, prefix="/api/v1")
+    app.include_router(pg_storage_v1.router, prefix="/api/v1")
 except Exception as _e:
     logger.warning(f"Không thể load /api/v1 routers: {_e}")
 
@@ -471,12 +470,30 @@ def run_pipeline_on_image(image: np.ndarray, pipeline: dict, job_id: str, page_i
                 # Với box mã vạch đã được mở rộng (để bắt trọn 13-15 số), ưu tiên VietOCR nếu đọc đủ số
                 is_barcode_item = ocr_results[orig_idx].get("is_barcode_box", False) or len(re.sub(r'\D', '', viet_text)) in [13, 14, 15]
 
-                if is_barcode_item and len(re.sub(r'\D', '', viet_text)) >= 12 and viet_conf >= min_conf_viet:
+                # Ô số/thập phân: ưu tiên candidate đúng dạng số và confidence
+                # cao hơn; không để VietOCR biến 207.9 thành 2019.
+                decimal_re = re.compile(r"^\s*\d{1,7}[\.,]\d{1,4}\s*$")
+                numeric_candidates = []
+                if decimal_re.match(str(paddle_t)):
+                    numeric_candidates.append((float(paddle_c or 0.0), str(paddle_t).strip(), float(paddle_c or 0.0)))
+                if decimal_re.match(str(viet_text)):
+                    numeric_candidates.append((float(viet_conf or 0.0), str(viet_text).strip(), float(viet_conf or 0.0)))
+                numeric_override = bool(numeric_candidates and not is_barcode_item)
+                if numeric_override:
+                    _, selected_text, selected_conf = max(numeric_candidates, key=lambda item: item[0])
+                    ocr_results[orig_idx]["text"] = selected_text
+                    ocr_results[orig_idx]["confidence"] = selected_conf
+                    ocr_results[orig_idx]["ocr_candidates"] = {
+                        "paddle": {"text": paddle_t, "confidence": paddle_c},
+                        "vietocr": {"text": viet_text, "confidence": viet_conf},
+                    }
+
+                if not numeric_override and is_barcode_item and len(re.sub(r'\D', '', viet_text)) >= 12 and viet_conf >= min_conf_viet:
                     ocr_results[orig_idx]["text"] = viet_text.strip()
                     ocr_results[orig_idx]["confidence"] = float(viet_conf)
-                elif has_digits_paddle and not has_digits_viet and paddle_c >= 0.80:
+                elif not numeric_override and has_digits_paddle and not has_digits_viet and paddle_c >= 0.80:
                     logger.info(f"[{job_id}] Giữ kết quả PaddleOCR để bảo toàn số CCCD/Năm sinh: {paddle_t!r}")
-                elif viet_text and viet_conf >= min_conf_viet:
+                elif not numeric_override and viet_text and viet_conf >= min_conf_viet:
                     ocr_results[orig_idx]["text"] = viet_text.strip()
                     ocr_results[orig_idx]["confidence"] = float(viet_conf)
 
@@ -490,10 +507,24 @@ def run_pipeline_on_image(image: np.ndarray, pipeline: dict, job_id: str, page_i
 
                 try:
                     crop_filename = crop_path.name
-                    crops_meta.append({
+                    bbox_pts = ocr_results[orig_idx].get("bbox", [])
+                    xs = [pt[0] for pt in bbox_pts] if bbox_pts else []
+                    ys = [pt[1] for pt in bbox_pts] if bbox_pts else []
+                    box_rect = {
+                        "x": int(min(xs)) if xs else 0,
+                        "y": int(min(ys)) if ys else 0,
+                        "width": int(max(xs) - min(xs)) if xs else 0,
+                        "height": int(max(ys) - min(ys)) if ys else 0,
+                    }
+                    single_crop_meta = {
                         "url": f"/output/{job_id}/crops/{crop_filename}",
+                        "crop_file": crop_filename,
+                        "crop_index": local_i,
+                        "page_index": page_index,
                         "crop_path": str(crop_path),
                         "crop_size": [int(crop_img.shape[1]), int(crop_img.shape[0])],
+                        "bbox": bbox_pts,
+                        "box_rect": box_rect,
                         "raw_text": final_text,
                         "pruned_text": pruned["pruned_text"],
                         "removed_border_tokens": pruned["removed_tokens"],
@@ -503,18 +534,34 @@ def run_pipeline_on_image(image: np.ndarray, pipeline: dict, job_id: str, page_i
                         "viet_conf": round(float(viet_conf), 3),
                         "final_text": final_text,
                         "final_conf": round(float(final_conf), 3),
-                        "bbox": ocr_results[orig_idx].get("bbox", []),
-                    })
+                    }
+                    crops_meta.append(single_crop_meta)
+                    # Ghi crop_XXXX.json theo từng ảnh crop
+                    json_p = crops_dir / f"{crop_path.stem}.json"
+                    with open(json_p, "w", encoding="utf-8") as f_cj:
+                        json.dump(single_crop_meta, f_cj, ensure_ascii=False, indent=2)
                 except Exception as crop_err:
                     logger.warning(f"[{job_id}] Không lưu được crop {local_i}: {crop_err}")
+
+            if crops_meta:
+                try:
+                    summary_p = crops_dir / "crops_metadata.json"
+                    with open(summary_p, "w", encoding="utf-8") as f_sm:
+                        json.dump(crops_meta, f_sm, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
 
             logger.info(f"[{job_id}] Đã lưu {len(crops_meta)} crops vào {crops_dir}")
             del crops, batch_preds, crop_indices, crop_paths
 
-
-
     # ─── Bước 8: Field Extraction ─────────────────────────────────────────────
-    fields = pipeline["extractor"].extract(ocr_results, template)
+    rec_crop_fn = (lambda c_img: pipeline["recognizer"].recognize(c_img)) if "recognizer" in pipeline else None
+    fields = pipeline["extractor"].extract(
+        ocr_results,
+        template=template,
+        image=deskewed,
+        recognize_crop_fn=rec_crop_fn
+    )
 
     # ─── Bước 9: Cross-Validation Diện Tích ──────────────────────────────────
     area_validation = {}
@@ -853,9 +900,6 @@ async def ocr_single(
             )
 
     try:
-        pipeline = await get_pipeline()
-        ingestion = pipeline["ingestion"]
-
         suffix = Path(file.filename or "file.jpg").suffix
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             # UploadFile đã có file tạm/spool; copy theo stream, không tạo thêm
@@ -863,28 +907,61 @@ async def ocr_single(
             shutil.copyfileobj(file.file, tmp, length=1024 * 1024)
             tmp_path = tmp.name
 
-        try:
-            page_results = []
-            for _page_no, _page_img in enumerate(
-                ingestion.iter_pages(tmp_path, split_a3=True, smart_gcn_filter=True)
-            ):
-                if page_index >= 0 and _page_no != page_index:
-                    del _page_img
-                    continue
-                try:
-                    p_res = run_pipeline_on_image(
-                        _page_img, pipeline, f"{job_id}_p{_page_no + 1}", page_index=_page_no
-                    )
-                    p_res["file_name"] = f"Trang_{_page_no + 1}.png"
-                    p_res["page_index"] = _page_no
-                    page_results.append(p_res)
-                finally:
-                    del _page_img
-                    cleanup_memory(force_os_trim=False)
-                if page_index >= 0:
-                    break
+        if page_index < 0:
+            try:
+                from ocr_so_do.bootstrap import get_container
+                container = get_container(device="cuda:0", save_crops_to_disk=True)
+                res = container.process_document_uc.execute(
+                    document_path=tmp_path,
+                    document_id=job_id,
+                    file_name=file.filename,
+                    split_a3=True,
+                    smart_gcn_filter=True
+                )
+                result = res["merged"]
+                result["job_id"] = job_id
+                result["document_id"] = job_id
+                result["file_name"] = file.filename
+                result["processing_time_ms"] = round(res["elapsed_seconds"] * 1000, 1)
+                result["tong_thoi_gian_sec"] = res["elapsed_seconds"]
+                result["total_pages"] = res["merged"].get("so_trang", len(res.get("page_results", [])))
+                result["chuyen_doi_rows"] = res.get("chuyen_doi_rows", [])
+                result["chuyen_doi_row"] = res["chuyen_doi_rows"][0] if res.get("chuyen_doi_rows") else {}
+                result["raw_ocr_markdown"] = res.get("raw_ocr_markdown", "")
 
-            if not page_results:
+                if result.get("can_review"):
+                    artifact_path = _persist_json_artifact(job_id, result, "review")
+                    if review_queue.full():
+                        try:
+                            review_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            pass
+                    await review_queue.put({"job_id": job_id, "artifact_path": artifact_path})
+                    review_results[job_id] = {
+                        "job_id": job_id,
+                        "can_review": result.get("can_review", []),
+                        "confidence": result.get("confidence", {}),
+                        "mau": result.get("mau", "unknown"),
+                        "so_phat_hanh": result.get("so_phat_hanh", ""),
+                        "artifact_path": artifact_path,
+                        "reviewed": False,
+                    }
+                    _trim_memory_stores()
+
+                cleanup_memory(force_os_trim=True)
+                return JSONResponse(content=result)
+            finally:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
+
+        else:
+            pipeline = await get_pipeline()
+            ingestion = pipeline["ingestion"]
+            page_results = []
+            try:
                 for _page_no, _page_img in enumerate(
                     ingestion.iter_pages(tmp_path, split_a3=False, smart_gcn_filter=False)
                 ):
@@ -900,11 +977,15 @@ async def ocr_single(
                         page_results.append(p_res)
                     finally:
                         del _page_img
-                        cleanup_memory(force_os_trim=False)
+                        cleanup_memory(force_os_trim=True)
                     if page_index >= 0:
                         break
-        finally:
-            os.unlink(tmp_path)
+            finally:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
 
         if not page_results:
             raise HTTPException(status_code=400, detail="Không đọc được ảnh từ file")
@@ -1239,278 +1320,3 @@ async def mark_reviewed(job_id: str):
         raise HTTPException(status_code=404, detail=f"Không tìm thấy job: {job_id}")
     review_results[job_id]["reviewed"] = True
     return {"message": f"Job {job_id} đã được đánh dấu reviewed"}
-
-
-# ─── Kế Hoạch 515 (Sổ Đỏ + CCCD) Endpoints ─────────────────────────────────
-
-class Scan515Request(BaseModel):
-    directory_path: str = Field(r"D:\13. XOM 9\XOM 9\XOM 9 VAN LA", description="Thư mục chứa cặp hồ sơ GCN + GT")
-    ma_xa: str = Field("14506", description="Mã ĐVHC cấp xã")
-    max_samples: int = Field(0, description="Số lượng cặp cần xử lý (0 = toàn bộ)")
-
-
-@app.post("/ocr/scan-515", tags=["Kế Hoạch 515"])
-async def scan_515_directory(req: Scan515Request, background_tasks: BackgroundTasks):
-    """
-    Quét và tự động ghép cặp Sổ Đỏ (*-GCN.pdf) + CCCD (*-GT.pdf) trong thư mục,
-    kết xuất bảng Excel 38 cột chuẩn Kế hoạch 515 (Bộ Công An - Bộ TNMT).
-    """
-    dir_path = Path(req.directory_path)
-    if not dir_path.exists():
-        raise HTTPException(status_code=404, detail=f"Thư mục không tồn tại: {req.directory_path}")
-
-    pipeline = await get_pipeline()
-    merger = GCNCCCDPairMerger(
-        detector=pipeline["detector"],
-        recognizer=pipeline["recognizer"],
-        use_gpu=pipeline["use_gpu"]
-    )
-
-    pairs = merger.scan_directory_pairs(str(dir_path))
-    if not pairs:
-        raise HTTPException(status_code=404, detail="Không tìm thấy file hồ sơ nào trong thư mục")
-
-    pair_keys = list(pairs.keys())
-    if req.max_samples > 0 and len(pair_keys) > req.max_samples:
-        pair_keys = pair_keys[:req.max_samples]
-
-    batch_id = f"515_{str(uuid.uuid4())[:8]}"
-    output_excel_path = str(Path(r"D:\Tho\OCR\OCR_V3\ocr-so-do\output") / f"KET_QUA_515_{batch_id}.xlsx")
-
-    async def process_515_job():
-        try:
-            results = []
-            for idx, k in enumerate(pair_keys, 1):
-                p_info = pairs[k]
-                review_results[batch_id]["current_file"] = f"[{idx}/{len(pair_keys)}] {k}"
-                try:
-                    res = merger.process_single_pair(k, p_info["gcn_path"], p_info["gt_path"])
-                    results.append(res)
-                    review_results[batch_id]["results"] = results
-                except Exception as exc:
-                    logger.error(f"Lỗi xử lý cặp {k}: {exc}")
-                    results.append({
-                        "bo_gcn": k,
-                        "error": str(exc),
-                        "status": "error"
-                    })
-                    review_results[batch_id]["results"] = results
-
-                cleanup_memory(force_os_trim=True)
-
-            # Xuất file Excel 515
-            exporter = KeHoach515Exporter()
-            exporter.export(results, output_excel_path, ma_xa=req.ma_xa)
-            review_results[batch_id]["excel_path"] = output_excel_path
-            review_results[batch_id]["status"] = "done"
-            logger.info(f"Hoàn thành job 515 {batch_id}. File Excel: {output_excel_path}")
-
-        except Exception as e:
-            logger.error(f"Lỗi job 515 {batch_id}: {e}", exc_info=True)
-            review_results[batch_id]["status"] = "error"
-            review_results[batch_id]["error"] = str(e)
-
-    _trim_memory_stores()
-    review_results[batch_id] = {
-        "status": "processing",
-        "batch_id": batch_id,
-        "files_count": len(pair_keys),
-        "current_file": "Bắt đầu quét cặp hồ sơ...",
-        "excel_path": "",
-        "results": []
-    }
-    background_tasks.add_task(process_515_job)
-
-    return JSONResponse(content={
-        "batch_id": batch_id,
-        "status": "processing",
-        "pairs_count": len(pair_keys),
-        "message": f"Đang tiến hành xử lý {len(pair_keys)} bộ hồ sơ Sổ Đỏ + CCCD."
-    })
-
-
-@app.get("/export/ke-hoach-515/{batch_id}", tags=["Kế Hoạch 515"])
-async def download_515_excel(batch_id: str):
-    """Tải file Excel bảng tổng hợp Kế hoạch 515 (38 Cột)."""
-    if batch_id not in review_results:
-        raise HTTPException(status_code=404, detail="Không tìm thấy kết quả batch")
-
-    excel_path = review_results[batch_id].get("excel_path")
-    if not excel_path or not os.path.exists(excel_path):
-        raise HTTPException(status_code=404, detail="Chưa có file Excel hoặc file đang được xử lý")
-
-    return FileResponse(
-        path=excel_path,
-        filename=f"KET_QUA_LAM_SACH_DAT_DAI_515_{batch_id}.xlsx",
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-
-# ─── Chuyển Đổi Dữ Liệu Địa Chính (129 Cột) Endpoints ────────────────────────
-
-class ExportChuyenDoiRequest(BaseModel):
-    rows: List[Dict[str, Any]]
-    filename: Optional[str] = "KetQua_ChuyenDoiDuLieu_129Cot.xlsx"
-
-
-@app.get("/chuyen-doi/columns", tags=["Chuyển Đổi Dữ Liệu"])
-async def get_chuyen_doi_columns():
-    """Lấy danh sách 129 cột và phân nhóm trường dữ liệu chuẩn."""
-    col_file = CONFIGS_DIR / "excel_chuyen_doi_columns.json"
-    if not col_file.exists():
-        raise HTTPException(status_code=404, detail="Không tìm thấy file cấu hình cột 129")
-    try:
-        with open(col_file, "r", encoding="utf-8") as f:
-            columns = json.load(f)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Lỗi đọc file cấu hình: {e}")
-
-    # Nhóm theo section
-    sections = []
-    seen = set()
-    for col in columns:
-        sk = col.get("section_key", "chung")
-        stitle = col.get("section", "Chung")
-        if sk not in seen:
-            seen.add(sk)
-            sec_cols = [c for c in columns if c.get("section_key") == sk]
-            sections.append({
-                "key": sk,
-                "title": stitle,
-                "count": len(sec_cols),
-                "col_range": f"{sec_cols[0]['col']}-{sec_cols[-1]['col']}"
-            })
-
-    return JSONResponse(content={
-        "total": len(columns),
-        "sections": sections,
-        "columns": columns
-    })
-
-
-@app.get("/chuyen-doi/load-from-markdown-db", tags=["Chuyển Đổi Dữ Liệu"])
-async def load_from_markdown_db(limit: int = 500, search: Optional[str] = None):
-    """
-    Nạp toàn bộ dữ liệu Markdown thô đã lưu trong DB SQLite (raw_ocr.db),
-    bóc tách và chuyển đổi sang bảng 129 cột chuẩn Bộ TN&MT.
-    """
-    try:
-        from backend.src.ocr_so_do.infrastructure.persistence.sqlite_raw_store import get_sqlite_raw_store
-        from backend.src.ocr_so_do.infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
-        from backend.src.ocr_so_do.application.projections.cadastral_129_mapper import Cadastral129Mapper
-
-        store = get_sqlite_raw_store()
-        records = store.list_records(limit=limit, offset=0, search=search)
-        all_rows = []
-        curr_stt = 1
-        for r in records:
-            rec = store.get_record(r["id"])
-            if not rec:
-                continue
-            raw_md = rec.get("raw_markdown", "")
-            file_name = rec.get("file_name", "") or r.get("file_name", "")
-            parsed = RawMarkdownExcelExporter.parse_raw_markdown(raw_md)
-            merged_dict = parsed.get("merged_dict", {})
-            rows = Cadastral129Mapper.map_merged_to_rows(
-                merged_dict,
-                start_stt=curr_stt,
-                file_name=file_name
-            )
-            for row in rows:
-                if not row.get("file_name"):
-                    row["file_name"] = file_name
-                row["raw_doc_id"] = r["id"]
-            all_rows.extend(rows)
-            curr_stt += len(rows)
-
-        return JSONResponse(content={
-            "total": len(all_rows),
-            "total_records": len(records),
-            "rows": all_rows
-        })
-    except Exception as e:
-        logger.error(f"Lỗi nạp 129 cột từ Markdown DB: {e}")
-        raise HTTPException(status_code=500, detail=f"Lỗi nạp dữ liệu từ Markdown DB: {str(e)}")
-
-
-@app.get("/chuyen-doi/vinhyen-50", tags=["Chuyển Đổi Dữ Liệu"])
-async def get_vinhyen_50_data():
-    """Lấy dữ liệu mẫu Vĩnh Yên đã bóc tách và mapping chuẩn 129 cột."""
-    candidates = [
-        Path(__file__).parent.parent / "output" / "e2e_vinhyen" / "vinhyen_chuyen_doi_rows.json",
-        Path(__file__).parent.parent / "output" / "e2e_50_vinhyen" / "vinhyen_50_chuyen_doi_rows.json",
-    ]
-    for cache_path in candidates:
-        if cache_path.exists():
-            try:
-                with open(cache_path, "r", encoding="utf-8") as f:
-                    rows = json.load(f)
-                return JSONResponse(content={"total": len(rows), "rows": rows})
-            except Exception as e:
-                logger.error(f"Lỗi đọc cache {cache_path}: {e}")
-
-    # Fallback nếu chưa có file cache: nạp từ details
-    for d_dir in [
-        Path(__file__).parent.parent / "output" / "e2e_vinhyen" / "details",
-        Path(__file__).parent.parent / "output" / "e2e_50_vinhyen" / "details",
-    ]:
-        if d_dir.exists():
-            from extraction.excel_chuyen_doi_mapper import ExcelChuyenDoiMapper
-            json_files = sorted(list(d_dir.glob("*/*_result.json")))
-            rows = []
-            for jf in json_files:
-                try:
-                    with open(jf, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    gcn_rows = ExcelChuyenDoiMapper.map_merged_to_rows(data, start_stt=len(rows) + 1, file_name=jf.parent.name)
-                    rows.extend(gcn_rows)
-                except Exception:
-                    pass
-            if rows:
-                return JSONResponse(content={"total": len(rows), "rows": rows})
-
-    # Fallback cuối cùng: nạp từ DB Markdown (chỉ trả về khi có dữ liệu)
-    try:
-        res = await load_from_markdown_db(limit=500)
-        import json as _json
-        body = _json.loads(res.body.decode("utf-8"))
-        if body.get("total", 0) > 0:
-            return res
-    except Exception:
-        pass
-
-    raise HTTPException(status_code=404, detail="Chưa có dữ liệu mẫu Vĩnh Yên")
-
-
-@app.post("/chuyen-doi/export", tags=["Chuyển Đổi Dữ Liệu"])
-async def export_chuyen_doi_excel(req: ExportChuyenDoiRequest):
-    """
-    Xuất danh sách các hàng dữ liệu (129 cột) ra file Excel theo chuẩn template gốc.
-    """
-    if not req.rows:
-        raise HTTPException(status_code=400, detail="Danh sách dữ liệu xuất rỗng")
-
-    from extraction.excel_template_exporter import ExcelTemplateExporter
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-        tmp_path = tmp.name
-
-    try:
-        ExcelTemplateExporter.export(req.rows, tmp_path)
-        filename = req.filename or "KetQua_ChuyenDoiDuLieu_129Cot.xlsx"
-        if not filename.endswith(".xlsx"):
-            filename += ".xlsx"
-        return FileResponse(
-            path=tmp_path,
-            filename=filename,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    except Exception as e:
-        logger.error(f"Lỗi xuất Excel Chuyển Đổi: {e}", exc_info=True)
-        if os.path.exists(tmp_path):
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
-        raise HTTPException(status_code=500, detail=f"Lỗi xuất Excel: {e}")

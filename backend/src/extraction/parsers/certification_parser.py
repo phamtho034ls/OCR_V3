@@ -4,6 +4,7 @@ extraction/parsers/certification_parser.py - Modular parser for certification me
 
 import re
 import logging
+import unicodedata
 from typing import Any, Dict, List, Optional
 from ..spatial_engine import SpatialEngine
 
@@ -35,6 +36,67 @@ class CertificationParser:
     ]
 
     @staticmethod
+    def _normalize_registry_roi_candidate(raw: str) -> Optional[str]:
+        """Chuẩn hóa candidate lấy từ ROI cuối trang, không chấp nhận chuỗi bị cắt."""
+        if not raw:
+            return None
+        text = str(raw).strip()
+        folded = unicodedata.normalize("NFD", text)
+        folded = "".join(c for c in folded if unicodedata.category(c) != "Mn")
+        folded = folded.upper()
+        if any(k in folded for k in ("CMND", "CCCD", "MUC DICH", "DIEN TICH", "THUA DAT")):
+            return None
+
+        # Nhận cả trường hợp OCR dính nhãn: GCNCHOO494, CHOO-494, CHC0124.
+        match = re.search(r"(?:GCN|SO|S[O0]|CAP)?\s*(C[HNS])\s*([0-9A-ZOILSBUDC%._\-/]+)", folded)
+        if not match:
+            return None
+
+        prefix = match.group(1)
+        body = match.group(2)
+        replacements = {
+            "O": "0", "I": "1", "L": "1", "S": "5", "B": "8",
+            "D": "0", "G": "6", "U": "0", "C": "0", "%": "9",
+        }
+        body = "".join(replacements.get(ch, ch) for ch in body)
+        body = re.sub(r"[.\-_]", "", body)
+        # Số vào sổ chuẩn phải có tối thiểu 3 chữ số. Không tự cắt phần đuôi
+        # chữ cái vì đó thường là dấu hiệu OCR đọc thiếu/nhầm.
+        if not re.fullmatch(r"\d{3,8}(?:/[A-Z0-9-]+)?", body):
+            return None
+        return f"{prefix}{body}"
+
+    @staticmethod
+    def _extract_registry_footer_roi(boxes: List[Dict[str, Any]]) -> Optional[str]:
+        """Lấy candidate tốt nhất từ ROI footer, hợp nhất final/Paddle/VietOCR."""
+        candidates = []
+        for box in boxes:
+            source_values = [
+                ("final", box.get("text", ""), box.get("confidence", 0.0)),
+            ]
+            alternatives = box.get("ocr_candidates") or {}
+            for engine in ("paddle", "vietocr"):
+                item = alternatives.get(engine) or {}
+                if item.get("text"):
+                    source_values.append((engine, item.get("text", ""), item.get("confidence", 0.0)))
+            for engine, text, conf in source_values:
+                normalized = CertificationParser._normalize_registry_roi_candidate(text)
+                if normalized:
+                    digits = re.search(r"\d{3,8}", normalized)
+                    candidates.append({
+                        "value": normalized,
+                        "digits": len(digits.group(0)) if digits else 0,
+                        "confidence": float(conf or 0.0),
+                        "engine": engine,
+                    })
+        if not candidates:
+            return None
+
+        # Ưu tiên candidate đủ số hơn candidate bị cắt; sau đó confidence.
+        candidates.sort(key=lambda c: (c["digits"], c["confidence"]), reverse=True)
+        return candidates[0]["value"]
+
+    @staticmethod
     def parse(ocr_boxes: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = {
             "so_phat_hanh": None,
@@ -54,6 +116,12 @@ class CertificationParser:
         all_lines = [b.get("text", "").strip() for b in sorted_boxes if b.get("text", "").strip()]
         full_text = " \n ".join(all_lines)
 
+        # ROI được thêm bởi PipelineOrchestrator sau khi nhận dạng riêng vùng
+        # footer. Phải xử lý trước regex toàn trang để candidate bị cắt ở vùng
+        # OCR thông thường không ghi đè candidate đầy đủ từ ROI.
+        footer_roi_boxes = [b for b in sorted_boxes if b.get("registry_footer_roi")]
+        footer_roi_value = CertificationParser._extract_registry_footer_roi(footer_roi_boxes)
+
         # 1. Số phát hành (Serial phôi)
         from .serial_parser import SerialParser
         serial_data = SerialParser.parse_from_boxes(sorted_boxes)
@@ -69,29 +137,42 @@ class CertificationParser:
 
         # 2. Số vào sổ (trích xuất từ trang cấp GCN, không nhận trên trang thuần biến động chuyển nhượng/tặng cho)
         is_pure_mutation = bool(re.search(r"IV\.\s*Những\s*thay\s*đổi", full_text, re.IGNORECASE)) and not bool(re.search(r"(?:Số\s*vào\s*s|vào\s*s[ổóoôòõọỏ]|cấp\s*GCN|UBND|Ủy\s*ban\s*nhân\s*dân)", full_text, re.IGNORECASE))
-        if not is_pure_mutation:
+        if footer_roi_value:
+            result["so_vao_so"] = footer_roi_value
+        elif not is_pure_mutation:
             result["so_vao_so"] = CertificationParser._extract_so_vao_so(sorted_boxes, full_text)
 
 
         # 3. Nơi cấp GCN
+        authority_candidates = []
+        other_authority_candidates = []
         for line in all_lines:
             line_s = line.strip()
             if re.search(r"(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UBND|UY\s*BAN\s*NHAN\s*DAN)", line_s, re.IGNORECASE):
                 val = line_s
-                val = re.sub(r'^(?:TM\s*\.?\s*)+', 'TM. ', val)
-                if not val.startswith("TM."):
-                    val = "TM. " + val
+                val = re.sub(r'^(?:TM\s*\.?\s*|Kính\s*g[ửữ]i\s*[:\.]?\s*)+', '', val, flags=re.IGNORECASE)
                 val = re.sub(r'\bUBND\b', 'Ủy ban nhân dân', val, flags=re.IGNORECASE)
                 val = re.sub(r'(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UY\s*BAN\s*NHAN\s*DAN)', 'Ủy ban nhân dân', val, flags=re.IGNORECASE)
-                result["noi_cap"] = val
-                break
-            elif re.search(r"(?:VĂN\s*PHÒNG\s*ĐĂNG\s*KÝ\s*ĐẤT\s*ĐAI|CHI\s*NHÁNH\s*VĂN\s*PHÒNG)", line_s, re.IGNORECASE):
-                result["noi_cap"] = line_s
-                break
-            elif re.search(r"(?:SỞ\s*TÀI\s*NGUYÊN\s*VÀ\s*MÔI\s*TRƯỜNG|SO\s*TAI\s*NGUYEN)", line_s, re.IGNORECASE):
-                val_sn = re.sub(r"^.*?(?:SỞ\s*TÀI\s*NGUYÊN|SO\s*TAI\s*NGUYEN)", "Sở Tài nguyên", line_s, flags=re.IGNORECASE)
-                result["noi_cap"] = val_sn.strip()
-                break
+                val = re.sub(r'^(?:Ủy\s*ban\s*nhân\s*dân\s*)+', 'Ủy ban nhân dân ', val, flags=re.IGNORECASE)
+                val = re.sub(r'[\.]{2,}.*$', '', val).strip(' .:-,')
+                if val:
+                    authority_candidates.append(val)
+            elif re.search(r"(?:VĂN\s*PHÒNG\s*ĐĂNG\s*KÝ\s*ĐẤT\s*ĐAI|CHI\s*NHÁNH\s*VĂN\s*PHÒNG|SỞ\s*TÀI\s*NGUYÊN\s*VÀ\s*MÔI\s*TRƯỜNG|SO\s*TAI\s*NGUYEN)", line_s, re.IGNORECASE):
+                normalized_other = re.sub(
+                    r"^.*?(?:SỞ\s*TÀI\s*NGUYÊN|SO\s*TAI\s*NGUYEN)",
+                    "Sở Tài nguyên",
+                    line_s,
+                    flags=re.IGNORECASE,
+                )
+                other_authority_candidates.append(normalized_other.strip(" .:-,"))
+        if authority_candidates:
+            # Ưu tiên tên cơ quan đầy đủ, tránh lấy dòng OCR cụt.
+            result["noi_cap"] = max(
+                authority_candidates,
+                key=lambda s: (bool(re.search(r"(?:huyện|quận|thành phố|tỉnh|sở)", s, re.IGNORECASE)), len(s))
+            )
+        elif other_authority_candidates:
+            result["noi_cap"] = max(other_authority_candidates, key=len)
 
         # 4. Người ký quyết định & Chức vụ
         for idx, line in enumerate(all_lines):
@@ -148,6 +229,10 @@ class CertificationParser:
         for line in all_lines:
             if re.search(r"(?:CMND|CCCD)", line, re.IGNORECASE):
                 continue
+            # Ngày trong bảng thửa đất (đặc biệt ``Đến 11/2015``) không phải
+            # ngày cấp GCN. Chỉ nhận dòng ngày độc lập ở block cấp/chữ ký.
+            if re.search(r"(?:thời[ ]*hạn|thoi[ ]*han|mục[ ]*đích|muc[ ]*dich|nguồn[ ]*gốc|nguon[ ]*goc|diện[ ]*tích|dien[ ]*tich|\bđến\b|\bden\b)", line, re.IGNORECASE):
+                continue
             parsed_d = _parse_vn_date(line)
             if parsed_d:
                 result["ngay_cap"] = parsed_d
@@ -174,53 +259,63 @@ class CertificationParser:
     def _extract_so_vao_so(sorted_boxes: List[Dict[str, Any]], full_text: str) -> Optional[str]:
         BLACKLIST_WORDS = [
             "riêng", "chung", "mục đích", "diện tích", "thời hạn", "sử dụng",
-            "thửa", "bản đồ", "không", "lúa", "đất ở", "rừng", "cây", "cmnd", "cccd", "hộ", "sinh năm"
+            "thửa", "bản đồ", "không", "lúa", "đất ở", "rừng", "cây", "cmnd", "cccd", "hộ", "sinh năm",
+            "tiếp nhận", "hồ sơ", "quyền số", "thứ tự"
         ]
 
         def normalize_svs(raw: str) -> Optional[str]:
             if not raw:
                 return None
-            s = re.sub(r'^(?:cấp|cap|gcn|gtn|sổ|so|ấp|lập|vào\s*sổ|vao\s*so)\s*[:\.]?\s*', '', raw.strip(), flags=re.IGNORECASE).strip(".:- ")
+            s = re.sub(r'^(?:cấp|cap|gcn|gtn|gơn|sổ|số|so|ấp|lập|vào\s*s[ổốóo]|vao\s*s[ổốóo])\s*[:\.]?\s*', '', raw.strip(), flags=re.IGNORECASE).strip(".:- ")
             if any(bw in s.lower() for bw in BLACKLIST_WORDS) or s.upper().startswith(("MND", "CMND", "CCCD")):
                 return None
-            # Chuẩn hóa mã CH/CS (O->0, S->5, l->1, D->0)
-            m_ch = re.match(r"^(C[HNS])\s*([0-9A-Za-z\.\-_]+)$", s, re.IGNORECASE)
+            # Chuẩn hóa mã CH/CS (O/o->0, S/s->5, I/l/i->1, B->8, q->9, D->0, G->6)
+            m_ch = re.search(r'(?:GCN|GƠN|sổ)?\s*(C[HNS])\s*([0-9A-Za-z\.\-_%]+)', s, re.IGNORECASE)
             if m_ch:
                 prefix = m_ch.group(1).upper()
                 body = m_ch.group(2)
-                repl = {'O': '0', 'o': '0', 'S': '5', 's': '5', 'I': '1', 'l': '1', 'i': '1', 'B': '8', 'q': '9', 'D': '0'}
+                repl = {'O': '0', 'o': '0', 'S': '5', 's': '5', 'I': '1', 'l': '1', 'i': '1', 'L': '1', 'B': '8', 'q': '9', 'D': '0', 'G': '6', '%': '9', 'T': '7'}
                 norm_body = "".join(repl.get(c, c) for c in body)
-                # Nếu mã phân cấp có dấu chấm sau tiền tố (CH.00.4.20, CS.0.326) thì giữ dấu chấm
-                if not norm_body.startswith("."):
-                    norm_body = norm_body.replace(".", "").replace("-", "").replace("_", "")
-                if re.search(r"\d", norm_body):
-                    return f"{prefix}{norm_body}"
+                # Loại bỏ dấu phân cách rác nằm giữa các số (như CHO00.39, CHOO-484)
+                norm_clean = re.sub(r"[\.\-_]", "", norm_body)
+                m_dig = re.match(r"^(\d{3,6})", norm_clean)
+                if m_dig:
+                    return f"{prefix}{m_dig.group(1)}"
+                if re.search(r"\d", norm_clean):
+                    return f"{prefix}{norm_clean}"
             # Định dạng chung: phải có chữ số, dài từ 3 đến 25, không bắt đầu bằng tiền tố CMND
-            if re.search(r"\d", s) and 3 <= len(s) <= 25 and not s.upper().startswith(("MND", "CMND", "CCCD")):
-                return s
+            compact = re.sub(r"\s+", "", s).upper()
+            if re.fullmatch(r"(?:[A-Z]{1,4})?\d{1,8}(?:/[A-Z0-9-]+)?", compact):
+                if not re.match(r"^0\.\d+", compact):
+                    return compact
             return None
 
-        # Chiến lược 1: Quét Regex dung sai cao trên toàn văn bản (nhận diện các lỗi OCR: só, sô, sỏ, có, 35, 36, Sẽ, Sa...)
+        # Chiến lược 1: Quét Regex dung sai cao trên toàn văn bản (nhận diện các lỗi OCR: só, sô, số, sỏ, có, 35, 36, Sẽ, Sa, vô, m6, cấp GCN...)
         svs_patterns = [
             re.compile(
-                r"(?:(?:Số|[0-9]{1,2}|Sẽ|Sé|Sa)\s*(?:vào|v[aà]o|v[aà]n)?\s*(?:s[ổóoôòõỏ]|có)\s*(?:cấp|c[aâ]p|có)\s*(?:GCN|GƠN|sổ)?)\s*[:\.]?\s*([A-Za-z0-9\.\-_/ ]+)",
+                r"(?:(?:Số|[0-9]{1,2}|Sẽ|Sé|Sa|Sô|Số|só|sổ|m6|vô)\s*(?:vào|v[aà]o|v[aà]n)?\s*(?:s[ổốóoôòõỏ]|có)\s*(?:cấp|c[aâấ]p|có)?\s*(?:GCN|GƠN|GTN|sổ)?)\s*[:\.]?\s*([A-Za-z0-9\.\-_/% ]+)",
                 re.IGNORECASE
             ),
             re.compile(
-                r"(?:TỔ\s*CẤP\s*GCN|VÀO\s*S[ỔÓOÔÒÕỎ]\s*CẤP\s*GCN|S[ỔÓOÔÒÕỎ]\s*VÀO\s*S[ỔÓOÔÒÕỎ]|Số\s*vào\s*s[ổóoôòõỏ]|vào\s*s[ổóoôòõỏ]\s*số)\s*[:\.]?\s*([A-Za-z0-9\.\-_/ ]+)",
+                r"(?:TỔ\s*CẤP\s*GCN|VÀO\s*S[ỔỐÓOÔÒÕỎ]\s*CẤP\s*GCN|S[ỔỐÓOÔÒÕỎ]\s*VÀO\s*S[ỔỐÓOÔÒÕỎ]|Số\s*vào\s*s[ổốóoôòõỏ]|vào\s*s[ổốóoôòõỏ]\s*số)\s*[:\.]?\s*([A-Za-z0-9\.\-_/% ]+)",
                 re.IGNORECASE
             )
         ]
 
-        for pat in svs_patterns:
-            for match in pat.finditer(full_text):
-                cand = match.group(1).strip()
-                cand = re.split(r"[\n\r]|ngày|ngay|năm|tháng|bải", cand, flags=re.IGNORECASE)[0].strip()
-                norm = normalize_svs(cand)
-                if norm:
-                    return norm
+        lines = full_text.splitlines()
+        for line in lines:
+            if "tiếp nhận" in line.lower() or "đơn đề nghị" in line.lower():
+                continue
+            for pat in svs_patterns:
+                m = pat.search(line)
+                if m:
+                    cand = m.group(1).strip()
+                    cand = re.split(r"[\n\r]|ngày|ngay|năm|tháng|bải|số\s*phát\s*hành", cand, flags=re.IGNORECASE)[0].strip()
+                    norm = normalize_svs(cand)
+                    if norm:
+                        return norm
 
-        # Chiến lược 2: Spatial Engine với anchor nhãn chuẩn (đã được SpatialEngine chống box ngắn)
+        # Chiến lược 2: Spatial Engine với anchor nhãn chuẩn
         svs_res = SpatialEngine.extract_field_value_spatially(
             sorted_boxes, CertificationParser.SO_VAO_SO_LABELS, direction="right"
         )
@@ -229,11 +324,14 @@ class CertificationParser:
             if norm:
                 return norm
 
-        # Chiến lược 3: Tìm mã định dạng CH/CS hoặc số quyết định trong khối chứng nhận
-        m_ch = re.search(r"\b(C[HNS]\s*[0-9OoSBD\.\-_]{3,9}|C[HNS][0-9OoSBD\.\-_]{3,9}|\d{3,6}\s*/\s*QĐ)\b", full_text, re.IGNORECASE)
-        if m_ch:
-            norm = normalize_svs(m_ch.group(1))
-            if norm:
-                return norm
+        # Chiến lược 3: Tìm mã định dạng CH/CS hoặc số quyết định trong khối chứng nhận (hỗ trợ chuỗi dính liền GCNCHxxxxx)
+        for line in lines:
+            if "tiếp nhận" in line.lower() or "đơn đề nghị" in line.lower():
+                continue
+            m_ch = re.search(r"(?:GCN|GƠN|sổ)?\s*(C[HNS]\s*[0-9OoSBDlIqG%T]{3,8}|\d{3,6}\s*/\s*QĐ)", line, re.IGNORECASE)
+            if m_ch:
+                norm = normalize_svs(m_ch.group(1))
+                if norm:
+                    return norm
 
         return None
