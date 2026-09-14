@@ -37,6 +37,7 @@ services:
     volumes:
       - ocr_outputs:/app/output
       - ocr_cache:/app/.cache
+      - ocr_paddle_cache:/root/.paddleocr
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,3 +61,5 @@ volumes:
     name: ocr_sodo_outputs
   ocr_cache:
     name: ocr_sodo_cache
+  ocr_paddle_cache:
+    name: ocr_sodo_paddle_cache

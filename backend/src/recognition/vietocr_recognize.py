@@ -70,8 +70,8 @@ class VietOCRRecognizer:
             from vietocr.tool.predictor import Predictor
             from vietocr.tool.config import Cfg
         except ImportError as e:
-            logger.error("Chưa cài đặt vietocr. Chạy: pip install vietocr")
-            raise ImportError("Thiếu thư viện vietocr") from e
+            logger.error("Lỗi khi import vietocr hoặc thư viện phụ thuộc: %s", e)
+            raise ImportError(f"Lỗi nạp thư viện vietocr: {e}") from e
 
         self._model_name = model_name
         self._device = device
