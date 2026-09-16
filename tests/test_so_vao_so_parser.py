@@ -110,6 +110,32 @@ def test_registry_validator_rejects_partial_numbers_and_normalizes_ocr_confusion
     assert normalized == "CH00124"
 
 
+def test_registry_validator_and_footer_roi_accept_vp_prefix_for_two_page_gcn():
+    ok, normalized, _ = GCNValidators.validate_registry_book_number("VP.02577")
+    assert ok is True
+    assert normalized == "VP02577"
+
+    result = CertificationParser.parse([
+        {
+            "text": "Số vào sổ cấp Giấy chứng nhận: VP.02577",
+            "confidence": 0.60,
+            "registry_footer_roi": True,
+            "bbox": [[0, 2000], [1000, 2000], [1000, 2050], [0, 2050]],
+            "ocr_candidates": {
+                "vietocr_right": {"text": "VP.02577", "confidence": 0.88},
+            },
+        }
+    ])
+    assert result["so_vao_so"] == "VP02577"
+
+
+def test_certification_parser_normalizes_punctuation_inside_ocr_date_digits():
+    result = CertificationParser.parse([
+        {"text": "Ninh Bình, ngày 27 tháng 0,2 năm 2025", "confidence": 0.85}
+    ])
+    assert result["ngay_cap"] == "27/02/2025"
+
+
 def test_raw_markdown_exporter_cleans_registry_value_before_mapping():
     raw_markdown = """## I. DỮ LIỆU BÓC TÁCH THEO LOGIC (RAW EXTRACTED FIELDS)
 ```text

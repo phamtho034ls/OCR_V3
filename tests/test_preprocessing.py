@@ -91,6 +91,14 @@ class TestColorProfile:
         assert isinstance(result, np.ndarray)
         assert len(result.shape) == 2
 
+    def test_process_mau_2024_returns_grayscale(self):
+        """Mẫu GCN 2 trang phải có color profile riêng, không fallback unknown."""
+        img = make_test_image()
+        result = self.cp.process(img, "mau_2024")
+        assert isinstance(result, np.ndarray)
+        assert len(result.shape) == 2
+        assert "mau_2024" in self.cp._config
+
     def test_process_unknown_template(self):
         """Template không biết vẫn xử lý được (fallback)."""
         img = make_test_image()

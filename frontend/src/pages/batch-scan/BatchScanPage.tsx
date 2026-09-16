@@ -23,6 +23,8 @@ import {
   Copy,
   X,
   Database,
+  Layers,
+  Eye,
 } from 'lucide-react';
 import { BatchItemSummary, BatchProgressResponse } from '../../shared/types';
 
@@ -32,7 +34,40 @@ interface BatchScanPageProps {
 }
 
 export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, onOpenPgStorage }) => {
-  const [scanMode, setScanMode] = useState<'client_folder' | 'server_path'>('client_folder');
+  const [scanMode, setScanMode] = useState<'client_folder' | 'server_path' | 'pair_scan'>('pair_scan');
+
+  // Pair Scan State (GCN & GT -> 129 Cột)
+  const [pairServerPath, setPairServerPath] = useState<string>('D:\\13. XOM 9\\XOM 9\\XOM 9 VAN LA');
+  const [pairSampleLimit, setPairSampleLimit] = useState<number>(0);
+  const [isPreviewingPairs, setIsPreviewingPairs] = useState<boolean>(false);
+  const [pairPreviewData, setPairPreviewData] = useState<{
+    directory_path: string;
+    total_pairs: number;
+    both_count: number;
+    gcn_only_count: number;
+    gt_only_count: number;
+    pairs: Array<{
+      pair_id: string;
+      status: string;
+      has_gcn: boolean;
+      has_gt: boolean;
+      gcn_file?: string;
+      gt_file?: string;
+    }>;
+  } | null>(null);
+  const [isPairScanning, setIsPairScanning] = useState<boolean>(false);
+  const [activePairBatchId, setActivePairBatchId] = useState<string | null>(null);
+  const [pairBatchStatus, setPairBatchStatus] = useState<'idle' | 'running' | 'completed' | 'cancelled' | 'error'>('idle');
+  const [pairResults, setPairResults] = useState<any[]>([]);
+  const [pairProgressPercent, setPairProgressPercent] = useState<number>(0);
+  const [pairProcessedCount, setPairProcessedCount] = useState<number>(0);
+  const [pairTotalCount, setPairTotalCount] = useState<number>(0);
+  const [pairCurrentItem, setPairCurrentItem] = useState<string>('');
+  const [pairElapsedSeconds, setPairElapsedSeconds] = useState<number>(0);
+  const [pairSpeed, setPairSpeed] = useState<number>(0);
+  const [pairExcelReady, setPairExcelReady] = useState<boolean>(false);
+  const [pairCccdAuditSummary, setPairCccdAuditSummary] = useState<Record<string, number>>({});
+  const [showPairPreviewModal, setShowPairPreviewModal] = useState<boolean>(false);
 
   // Client Folder Upload State
   const [clientFiles, setClientFiles] = useState<File[]>([]);
@@ -301,6 +336,118 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
     }
   };
 
+  // ── XỬ LÝ QUÉT GHÉP CẶP GCN & GT (CCCD) ──────────────────────────
+  const handlePreviewPairs = async () => {
+    if (!pairServerPath.trim()) {
+      alert('Vui lòng nhập đường dẫn thư mục chứa hồ sơ!');
+      return;
+    }
+    setIsPreviewingPairs(true);
+    setErrorMessage(null);
+    try {
+      const res = await axios.post('/api/v1/batch-pairs/preview', {
+        directory_path: pairServerPath.trim(),
+      });
+      setPairPreviewData(res.data);
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Lỗi quét xem trước thư mục!');
+    } finally {
+      setIsPreviewingPairs(false);
+    }
+  };
+
+  const handleStartPairScan = async () => {
+    if (!pairServerPath.trim()) {
+      alert('Vui lòng nhập đường dẫn thư mục!');
+      return;
+    }
+    setErrorMessage(null);
+    setPairResults([]);
+    setPairProgressPercent(0);
+    setPairProcessedCount(0);
+    setPairElapsedSeconds(0);
+    setPairExcelReady(false);
+    setPairCccdAuditSummary({});
+    try {
+      const res = await axios.post('/api/v1/batch-pairs/start', {
+        directory_path: pairServerPath.trim(),
+        sample_limit: pairSampleLimit,
+        use_gpu: true,
+        enable_cccd_audit: true,
+        persist_cccd_audit: true,
+      });
+      setActivePairBatchId(res.data.batch_id);
+      setIsPairScanning(true);
+      setPairBatchStatus('running');
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Không thể khởi động tiến trình quét ghép cặp!');
+    }
+  };
+
+  const handleStopPairScan = async () => {
+    if (activePairBatchId) {
+      try {
+        await axios.post(`/api/v1/batch-pairs/${activePairBatchId}/cancel`);
+        setIsPairScanning(false);
+        setPairBatchStatus('cancelled');
+      } catch (err) {
+        console.error('Lỗi hủy batch:', err);
+      }
+    }
+  };
+
+  // Polling tiến độ pair batch
+  useEffect(() => {
+    let timer: any = null;
+    if (isPairScanning && activePairBatchId) {
+      timer = setInterval(async () => {
+        try {
+          const res = await axios.get(`/api/v1/batch-pairs/${activePairBatchId}/status`);
+          const data = res.data;
+          setPairProgressPercent(data.progress_percent || 0);
+          setPairProcessedCount(data.processed_count || 0);
+          setPairTotalCount(data.total_pairs || 0);
+          setPairCurrentItem(data.current_pair || '');
+          setPairElapsedSeconds(data.elapsed_seconds || 0);
+          setPairSpeed(data.speed_pairs_per_min || 0);
+          if (data.results) setPairResults(data.results);
+          if (data.excel_129_available) setPairExcelReady(true);
+          if (data.cccd_audit_summary) setPairCccdAuditSummary(data.cccd_audit_summary);
+
+          if (data.status === 'done') {
+            setIsPairScanning(false);
+            setPairBatchStatus('completed');
+            clearInterval(timer);
+          } else if (data.status === 'cancelled') {
+            setIsPairScanning(false);
+            setPairBatchStatus('cancelled');
+            clearInterval(timer);
+          } else if (data.status === 'error') {
+            setIsPairScanning(false);
+            setPairBatchStatus('error');
+            setErrorMessage(data.error || 'Lỗi trong quá trình quét ghép cặp.');
+            clearInterval(timer);
+          }
+        } catch (err) {
+          console.error('Lỗi khi polling pair batch status:', err);
+        }
+      }, 1500);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isPairScanning, activePairBatchId]);
+
+  const handleExportPairExcel129 = () => {
+    if (!activePairBatchId) return;
+    const link = document.createElement('a');
+    link.href = `/api/v1/batch-pairs/${activePairBatchId}/export-129`;
+    link.download = `KetQua_ChuyenDoi_129Cot_${activePairBatchId}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   // Export Excel 129 Columns (On-Demand từ Markdown đã lưu)
   const handleExportExcel = async () => {
     if (results.length === 0 && chuyenDoiRows.length === 0) {
@@ -444,8 +591,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
               <span>Tải Thư Mục Từ Máy Tính</span>
             </button>
             <button
-              onClick={() => { if (!isRunning) setScanMode('server_path'); }}
-              disabled={isRunning}
+              onClick={() => { if (!isRunning && !isPairScanning) setScanMode('server_path'); }}
+              disabled={isRunning || isPairScanning}
               className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
                 scanMode === 'server_path'
                   ? 'bg-white text-indigo-700 shadow-sm font-bold'
@@ -454,6 +601,19 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
             >
               <Server size={15} />
               <span>Quét Thư Mục Máy Chủ</span>
+            </button>
+            <button
+              onClick={() => { if (!isRunning && !isPairScanning) setScanMode('pair_scan'); }}
+              disabled={isRunning || isPairScanning}
+              className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
+                scanMode === 'pair_scan'
+                  ? 'bg-white text-emerald-700 shadow-sm font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Layers size={15} />
+              <span>Ghép Cặp GCN & GT (129 Cột)</span>
+              <span className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">Mới</span>
             </button>
           </div>
         </div>
@@ -637,6 +797,160 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
             </div>
           </div>
         )}
+
+        {/* ── CHẾ ĐỘ 3: QUÉT GHÉP CẶP GCN & GT (CCCD) [MỚI] ── */}
+        {scanMode === 'pair_scan' && (
+          <div className="mt-6 pt-6 border-t border-slate-100 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+              <div className="md:col-span-6">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Đường dẫn thư mục chứa hồ sơ (các file dạng *-GCN và *-GT):
+                </label>
+                <input
+                  type="text"
+                  value={pairServerPath}
+                  onChange={e => setPairServerPath(e.target.value)}
+                  disabled={isPairScanning}
+                  placeholder="VD: D:\13. XOM 9\XOM 9\XOM 9 VAN LA"
+                  className="w-full text-sm font-mono bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-emerald-500"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Số lượng mẫu:</label>
+                <select
+                  value={pairSampleLimit}
+                  onChange={e => setPairSampleLimit(parseInt(e.target.value))}
+                  disabled={isPairScanning}
+                  className="w-full text-sm bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-800 focus:outline-emerald-500"
+                >
+                  <option value={0}>Tất cả hồ sơ</option>
+                  <option value={2}>2 bộ (chạy thử)</option>
+                  <option value={5}>5 bộ mẫu</option>
+                  <option value={10}>10 bộ</option>
+                  <option value={20}>20 bộ</option>
+                  <option value={50}>50 bộ</option>
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="md:col-span-4 flex items-center gap-2">
+                <button
+                  onClick={handlePreviewPairs}
+                  disabled={isPairScanning || isPreviewingPairs || !pairServerPath.trim()}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 border border-slate-300"
+                >
+                  {isPreviewingPairs ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+                  <span>1. Phân Tích Cặp</span>
+                </button>
+
+                {!isPairScanning ? (
+                  <button
+                    onClick={handleStartPairScan}
+                    disabled={!pairServerPath.trim()}
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
+                  >
+                    <Play size={15} />
+                    <span>2. Quét & Xuất Excel</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleStopPairScan}
+                    className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
+                  >
+                    <Square size={15} />
+                    <span>Dừng Lại</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Gợi Ý Thư Mục */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-slate-500 font-medium">Gợi ý thư mục:</span>
+              <button
+                onClick={() => setPairServerPath('D:\\13. XOM 9\\XOM 9\\XOM 9 VAN LA')}
+                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg font-mono text-[11px] border border-emerald-200 transition"
+              >
+                📁 D:\13. XOM 9\XOM 9\XOM 9 VAN LA (82 bộ hồ sơ)
+              </button>
+            </div>
+
+            {/* Thống kê Preview nếu đã phân tích */}
+            {pairPreviewData && (
+              <div className="mt-3 p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={18} className="text-emerald-600" />
+                    <span className="text-xs font-bold text-emerald-950">
+                      Đã phân tích: {pairPreviewData.directory_path}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setShowPairPreviewModal(!showPairPreviewModal)}
+                    className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline flex items-center gap-1"
+                  >
+                    <Eye size={13} />
+                    <span>{showPairPreviewModal ? 'Ẩn danh sách cặp' : 'Xem danh sách chi tiết các cặp'}</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                  <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-xs">
+                    <span className="text-slate-500 block text-[11px]">Tổng số bộ hồ sơ:</span>
+                    <b className="text-slate-800 text-base">{pairPreviewData.total_pairs}</b>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-xs">
+                    <span className="text-emerald-600 block text-[11px]">Đủ cả GCN + CCCD:</span>
+                    <b className="text-emerald-700 text-base">{pairPreviewData.both_count} cặp</b>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-xs">
+                    <span className="text-amber-600 block text-[11px]">Chỉ có Sổ Đỏ (GCN):</span>
+                    <b className="text-amber-700 text-base">{pairPreviewData.gcn_only_count} file</b>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-xs">
+                    <span className="text-blue-600 block text-[11px]">Chỉ có Giấy tờ (GT):</span>
+                    <b className="text-blue-700 text-base">{pairPreviewData.gt_only_count} file</b>
+                  </div>
+                </div>
+
+                {/* Bảng xem trước danh sách cặp (Toggle) */}
+                {showPairPreviewModal && (
+                  <div className="max-h-60 overflow-y-auto bg-white rounded-lg border border-slate-200 mt-2">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 uppercase border-b sticky top-0">
+                        <tr>
+                          <th className="py-2 px-3 text-center w-12">#</th>
+                          <th className="py-2 px-3">Mã hồ sơ</th>
+                          <th className="py-2 px-3">File Sổ Đỏ (GCN)</th>
+                          <th className="py-2 px-3">File Giấy Tờ (GT)</th>
+                          <th className="py-2 px-3 text-center">Tình trạng</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {pairPreviewData.pairs.map((p, pidx) => (
+                          <tr key={pidx} className="hover:bg-slate-50">
+                            <td className="py-1.5 px-3 text-center text-slate-400 font-mono text-[11px]">{pidx + 1}</td>
+                            <td className="py-1.5 px-3 font-bold text-slate-800">{p.pair_id}</td>
+                            <td className="py-1.5 px-3 font-mono text-slate-600 text-[11px]">{p.gcn_file || <span className="text-slate-300 font-normal">Không có</span>}</td>
+                            <td className="py-1.5 px-3 font-mono text-slate-600 text-[11px]">{p.gt_file || <span className="text-slate-300 font-normal">Không có</span>}</td>
+                            <td className="py-1.5 px-3 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                p.status === 'both' ? 'bg-emerald-100 text-emerald-800' : p.status === 'gcn_only' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {p.status === 'both' ? 'Đủ 2 file' : p.status === 'gcn_only' ? 'Chỉ GCN' : 'Chỉ GT'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── THÔNG BÁO LỖI NẾU CÓ ── */}
@@ -647,8 +961,211 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
         </div>
       )}
 
-      {/* ── BẢNG ĐIỀU KHIỂN TIẾN ĐỘ THỜI GIAN THỰC ── */}
-      {(isRunning || batchStatus !== 'idle') && (
+      {/* ── BẢNG ĐIỀU KHIỂN TIẾN ĐỘ GHÉP CẶP GCN & GT (PAIR SCAN) ── */}
+      {scanMode === 'pair_scan' && (isPairScanning || pairBatchStatus !== 'idle') && (
+        <div className="bg-white rounded-2xl border border-emerald-200 shadow-sm p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`w-3 h-3 rounded-full ${
+                isPairScanning ? 'bg-emerald-500 animate-pulse' : pairBatchStatus === 'completed' ? 'bg-emerald-600' : 'bg-amber-500'
+              }`} />
+              <h3 className="text-base font-bold text-slate-900">
+                {isPairScanning
+                  ? 'Đang tiến hành bóc tách và ghép cặp hồ sơ GCN - GT...'
+                  : pairBatchStatus === 'completed'
+                  ? 'Đã hoàn thành toàn bộ thư mục ghép cặp!'
+                  : 'Tiến trình tạm dừng'}
+              </h3>
+            </div>
+            <div className="text-xs font-bold text-slate-500">
+              Tiến độ: <span className="text-emerald-600 text-sm">{pairProcessedCount}</span> / {pairTotalCount} bộ hồ sơ
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-slate-600">
+              <span className="font-mono truncate max-w-md">
+                {isPairScanning ? `Đang xử lý bộ: ${pairCurrentItem}` : pairCurrentItem}
+              </span>
+              <span className="font-bold text-emerald-600">{pairProgressPercent}%</span>
+            </div>
+            <div className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden p-0.5 border border-slate-200">
+              <div
+                className="bg-gradient-to-r from-emerald-500 to-teal-600 h-full rounded-full transition-all duration-300"
+                style={{ width: `${pairProgressPercent}%` }}
+              />
+            </div>
+          </div>
+
+          {/* 4 Cards KPI */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+            <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                <Files size={20} />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-500">Tổng bộ hồ sơ</p>
+                <p className="text-lg font-bold text-slate-800">{pairTotalCount}</p>
+              </div>
+            </div>
+
+            <div className="bg-emerald-50/60 rounded-xl p-3.5 border border-emerald-200/80 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                <CheckCircle2 size={20} />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-emerald-700">Đã trích xuất</p>
+                <p className="text-lg font-bold text-emerald-800">{pairResults.filter(r => r.status === 'ok').length}</p>
+              </div>
+            </div>
+
+            <div className="bg-indigo-50/60 rounded-xl p-3.5 border border-indigo-200/80 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                <Clock size={20} />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-indigo-700">Thời gian chạy</p>
+                <p className="text-lg font-bold text-indigo-800">{pairElapsedSeconds}s</p>
+              </div>
+            </div>
+
+            <div className="bg-teal-50/60 rounded-xl p-3.5 border border-teal-200/80 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center">
+                <RefreshCw size={20} />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-teal-700">Tốc độ xử lý</p>
+                <p className="text-lg font-bold text-teal-800">{pairSpeed} cặp/phút</p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50/60 rounded-xl p-3.5 border border-amber-200/80 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-amber-700">CCCD cần duyệt</p>
+                <p className="text-lg font-bold text-amber-800">{pairCccdAuditSummary.review_required || 0}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
+            <div className="text-xs text-slate-500">
+              {pairExcelReady ? (
+                <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
+                  <CheckCircle2 size={14} className="text-emerald-600" />
+                  File Excel 129 Cột đã sẵn sàng để tải về!
+                </span>
+              ) : (
+                <span>Đang tự động ghi dữ liệu vào bảng 129 cột và lưu checkpoint mỗi 3 cặp...</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportPairExcel129}
+                disabled={!pairExcelReady}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-sm"
+              >
+                <Download size={15} />
+                <span>Xuất File Excel (129 Cột)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BẢNG KẾT QUẢ QUÉT GHÉP CẶP (PAIR RESULTS TABLE) ── */}
+      {scanMode === 'pair_scan' && pairResults.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <FileSpreadsheet size={16} className="text-emerald-600" />
+              <span>Danh Sách Cặp Hồ Sơ Đã Ghép & Điền Vào 129 Cột ({pairResults.length})</span>
+            </h4>
+            <span className="text-xs text-slate-400">
+              Cập nhật trực tiếp theo thời gian thực
+            </span>
+          </div>
+
+          <div className="overflow-x-auto max-h-[500px]">
+            <table className="w-full text-left text-xs text-slate-700 border-collapse">
+              <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
+                <tr>
+                  <th className="py-2.5 px-3 w-12 text-center">STT</th>
+                  <th className="py-2.5 px-3 min-w-[120px]">Mã Hồ Sơ</th>
+                  <th className="py-2.5 px-3 min-w-[160px]">Chủ đất (từ CCCD)</th>
+                  <th className="py-2.5 px-3 min-w-[110px]">Số CCCD</th>
+                  <th className="py-2.5 px-3 w-20 text-center">Ngày sinh</th>
+                  <th className="py-2.5 px-3 w-20 text-center">Giới tính</th>
+                  <th className="py-2.5 px-3 w-24 text-center">Thửa / Tờ</th>
+                  <th className="py-2.5 px-3 w-24 text-right">Diện tích (m²)</th>
+                  <th className="py-2.5 px-3 min-w-[160px]">Địa chỉ thường trú</th>
+                  <th className="py-2.5 px-3 w-28 text-center">Đối soát CCCD</th>
+                  <th className="py-2.5 px-3 w-20 text-right">Thời gian</th>
+                  <th className="py-2.5 px-3 w-24 text-center">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {pairResults.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50 transition">
+                    <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">{item.stt}</td>
+                    <td className="py-2.5 px-3 font-bold text-slate-900">{item.pair_id}</td>
+                    <td className="py-2.5 px-3 font-semibold text-emerald-800">{item.chu_ho_ten || '-'}</td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">{item.so_cccd || '-'}</td>
+                    <td className="py-2.5 px-3 text-center font-mono text-[11px]">{item.ngay_sinh || '-'}</td>
+                    <td className="py-2.5 px-3 text-center">{item.gioi_tinh || '-'}</td>
+                    <td className="py-2.5 px-3 text-center font-mono text-[11px]">
+                      {item.so_thua ? `${item.so_thua} / ${item.to_ban_do || '-'}` : '-'}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-bold text-slate-800">{item.dien_tich || '-'}</td>
+                    <td className="py-2.5 px-3 text-slate-600 truncate max-w-[200px]" title={item.dia_chi_thuong_tru}>
+                      {item.dia_chi_thuong_tru || '-'}
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      {item.cccd_audit ? (
+                        <a
+                          href={item.cccd_audit.crop_url || undefined}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={item.cccd_audit.reason || 'Đối soát lại từ ảnh crop CCCD'}
+                          className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
+                            item.cccd_audit.status === 'supported'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : item.cccd_audit.status === 'review_required'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-slate-50 text-slate-500 border-slate-200'
+                          }`}
+                        >
+                          {item.cccd_audit.status === 'supported'
+                            ? 'Khớp crop'
+                            : item.cccd_audit.status === 'review_required'
+                            ? 'Cần duyệt'
+                            : 'Chưa có crop'}
+                        </a>
+                      ) : '-'}
+                    </td>
+                    <td className="py-2.5 px-3 text-right text-slate-500 font-mono text-[11px]">{item.elapsed_seconds}s</td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        item.status === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                      }`}>
+                        {item.status === 'ok' ? 'Thành công' : 'Lỗi'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── BẢNG ĐIỀU KHIỂN TIẾN ĐỘ THỜI GIAN THỰC (ĐƠN LẺ) ── */}
+      {scanMode !== 'pair_scan' && (isRunning || batchStatus !== 'idle') && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -795,7 +1312,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
       )}
 
       {/* ── BẢNG DANH SÁCH KẾT QUẢ TỪNG HỒ SƠ ── */}
-      {results.length > 0 && (
+      {scanMode !== 'pair_scan' && results.length > 0 && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">

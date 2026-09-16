@@ -123,13 +123,14 @@ app.add_middleware(
 
 # Đăng ký các router /api/v1 từ kiến trúc Backend mới
 try:
-    from ocr_so_do.interfaces.api.routers import documents as doc_v1, jobs as job_v1, exports as exp_v1, batch as batch_v1, raw_ocr as raw_ocr_v1, pg_storage as pg_storage_v1
+    from ocr_so_do.interfaces.api.routers import documents as doc_v1, jobs as job_v1, exports as exp_v1, batch as batch_v1, raw_ocr as raw_ocr_v1, pg_storage as pg_storage_v1, batch_pairs as batch_pairs_v1
     app.include_router(doc_v1.router, prefix="/api/v1")
     app.include_router(job_v1.router, prefix="/api/v1")
     app.include_router(exp_v1.router, prefix="/api/v1")
     app.include_router(batch_v1.router, prefix="/api/v1")
     app.include_router(raw_ocr_v1.router, prefix="/api/v1")
     app.include_router(pg_storage_v1.router, prefix="/api/v1")
+    app.include_router(batch_pairs_v1.router, prefix="/api/v1")
 except Exception as _e:
     logger.warning(f"Không thể load /api/v1 routers: {_e}")
 

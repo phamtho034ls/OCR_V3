@@ -24,6 +24,7 @@ from preprocessing.seal_mask import SealMask
 from preprocessing.orientation import OrientationCorrector
 from extraction.template_classifier import TemplateClassifier
 from extraction.barcode_extractor import BarcodeExtractor
+from extraction.two_page_gcn_profile import TwoPageGCNProfile
 from extraction.border_token_pruner import prune_border_tokens
 from extraction.label_anchor_extractor import LabelAnchorExtractor
 from extraction.diagram_extractor import DiagramExtractor
@@ -84,7 +85,12 @@ class PipelineOrchestrator:
                 rot_angle = 180
                 quick_ocr = self.detector.detect(deskewed)
 
+        # Nhận diện mẫu GCN mới bằng QR trước khi chọn color profile/template.
+        # QR là tín hiệu phân biệt ổn định hơn keyword OCR trên các ảnh GCN mới.
+        qr_info = TwoPageGCNProfile.detect_qr(deskewed)
         template = self.classifier.classify(quick_ocr)
+        if qr_info.get("detected"):
+            template = "mau_2024"
 
         # Lưu preview artifact nếu có store
         preview_url = ""
@@ -93,6 +99,11 @@ class PipelineOrchestrator:
 
         # 4. Color profile & Seal mask
         processed = self.color_profile.process(deskewed, template)
+        if not qr_info.get("detected"):
+            # CLAHE theo template giúp tăng khả năng bắt QR trên bản scan mờ.
+            qr_info = TwoPageGCNProfile.detect_qr(processed)
+            if qr_info.get("detected"):
+                template = "mau_2024"
         masked_image, seal_mask_arr = self.seal_mask.process(deskewed)
 
         # 5. Kết quả quick OCR đã chạy trên đúng ảnh deskewed, tái sử dụng để
@@ -102,11 +113,24 @@ class PipelineOrchestrator:
         if not ocr_results:
             ocr_results = self.detector.detect(masked_image)
 
-        # 5b. ROI chuyên biệt cho "Số vào sổ cấp GCN" ở cuối trang 3.
-        # Trên mẫu B, dòng này thường nằm dưới khối chữ ký nên detector toàn
-        # trang dễ bỏ qua hoặc cắt ngắn. ROI được tính theo tỷ lệ ảnh để dùng
-        # được với các độ phân giải/scan khác nhau, không phụ thuộc tọa độ cố định.
-        if page_index == 2 and deskewed is not None and deskewed.size:
+        # 5b. ROI chuyên biệt cho "Số vào sổ cấp GCN" ở cuối trang chứng nhận.
+        # Mẫu 2 trang kiểu AA có dòng này ở cuối trang sơ đồ (page_index=1),
+        # còn mẫu nhiều trang hiện tại thường đặt ở page_index=2. Chỉ bật
+        # page_index=1 khi quick OCR cho thấy đây là trang sơ đồ, để không
+        # làm thay đổi kết quả của các trang 2 mặt/luồng cũ.
+        quick_text = " ".join(
+            str(item.get("text", ""))
+            for item in (quick_ocr or [])
+            if item.get("text")
+        ).lower()
+        is_two_page_diagram = page_index == 1 and bool(re.search(
+            r"(?:s[oơ] *[dđ]ồ\s*th[uủ]a\s*[dđ][aấ]t|so\s*do\s*thua\s*dat|"
+            r"b[aả]ng\s*li[eệ]t\s*k[eê]\s*t[oọ]a\s*[đd][ộo]|bang\s*liet\s*ke\s*toa\s*do|"
+            r"ch[iỉ]ều\s*d[aà]i|chieu\s*dai)",
+            quick_text,
+            re.IGNORECASE,
+        ))
+        if (page_index == 2 or is_two_page_diagram) and deskewed is not None and deskewed.size:
             h, w = deskewed.shape[:2]
             roi_x1 = max(0, int(w * 0.03))
             roi_x2 = min(w, int(w * 0.80))
@@ -115,12 +139,33 @@ class PipelineOrchestrator:
             if roi_x2 > roi_x1 and roi_y2 > roi_y1:
                 registry_roi = deskewed[roi_y1:roi_y2, roi_x1:roi_x2]
                 registry_text, registry_conf = "", 0.0
+                registry_candidates = {}
                 rec_for_roi = getattr(self.detector, "recognize_crop", None)
                 if callable(rec_for_roi) and registry_roi.size:
                     try:
                         registry_text, registry_conf = rec_for_roi(registry_roi)
+                        registry_candidates["paddle"] = {
+                            "text": str(registry_text or "").strip(),
+                            "confidence": float(registry_conf or 0.0),
+                        }
                     except Exception as exc:
                         logger.debug("[%s] Không nhận dạng được ROI số vào sổ: %s", job_id, exc)
+                # Với mẫu 2 trang, phần số viết tay nằm bên phải nhãn in. OCR
+                # toàn ROI thường dính cả nhãn và làm mất các chữ số cuối.
+                # Chạy thêm VietOCR trên nửa phải nhưng chỉ cho đúng mẫu mới.
+                if is_two_page_diagram and registry_roi.size:
+                    rec_viet_for_roi = getattr(self.recognizer, "recognize", None)
+                    try:
+                        split_x = int(registry_roi.shape[1] * 0.55)
+                        right_roi = registry_roi[:, split_x:]
+                        if callable(rec_viet_for_roi) and right_roi.size:
+                            right_text, right_conf = rec_viet_for_roi(right_roi)
+                            registry_candidates["vietocr_right"] = {
+                                "text": str(right_text or "").strip(),
+                                "confidence": float(right_conf or 0.0),
+                            }
+                    except Exception as exc:
+                        logger.debug("[%s] Không nhận dạng được phần phải ROI số vào sổ: %s", job_id, exc)
                 ocr_results.append({
                     "text": str(registry_text or "").strip(),
                     "confidence": float(registry_conf or 0.0),
@@ -130,12 +175,7 @@ class PipelineOrchestrator:
                     ],
                     "registry_footer_roi": True,
                     "source": "registry_footer_roi",
-                    "ocr_candidates": {
-                        "paddle": {
-                            "text": str(registry_text or "").strip(),
-                            "confidence": float(registry_conf or 0.0),
-                        }
-                    },
+                    "ocr_candidates": registry_candidates,
                 })
 
         # 6. Barcode Detection & Recognition (Chuyên biệt cho mã vạch 13-15 số)
@@ -243,10 +283,12 @@ class PipelineOrchestrator:
                 if ocr_results[orig_idx].get("registry_footer_roi"):
                     # Giữ cả hai kết quả để CertificationParser chọn candidate
                     # đầy đủ nhất khi một engine bị cắt mất chữ số cuối.
-                    ocr_results[orig_idx]["ocr_candidates"] = {
+                    candidates = dict(ocr_results[orig_idx].get("ocr_candidates") or {})
+                    candidates.update({
                         "paddle": {"text": paddle_t, "confidence": float(paddle_c or 0.0)},
                         "vietocr": {"text": viet_text.strip() if viet_text else "", "confidence": float(viet_conf or 0.0)},
-                    }
+                    })
+                    ocr_results[orig_idx]["ocr_candidates"] = candidates
                 pruned = prune_border_tokens(final_text, paddle_text=paddle_t)
                 ocr_results[orig_idx]["raw_text"] = final_text
                 ocr_results[orig_idx]["pruned_text"] = pruned["pruned_text"]
@@ -395,6 +437,10 @@ class PipelineOrchestrator:
             "rotation_angle": rot_angle,
             "mau": template,
             "template": template,
+            "qr_detected": bool(qr_info.get("detected")),
+            "qr_payload": qr_info.get("payload", ""),
+            "qr_bbox": qr_info.get("bbox", []),
+            "qr_method": qr_info.get("method", ""),
             "preview_url": preview_url,
             "raw_ocr_markdown": raw_page_markdown,
             "ocr_results": ocr_results,

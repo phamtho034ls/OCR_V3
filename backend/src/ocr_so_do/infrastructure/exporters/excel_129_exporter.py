@@ -6,6 +6,7 @@ Cài đặt trực tiếp CadastralExporterPort bằng openpyxl, độc lập ho
 
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -123,6 +124,8 @@ class Excel129Exporter(CadastralExporterPort):
         align_center = Alignment(horizontal="center", vertical="center")
         align_right = Alignment(horizontal="right", vertical="center")
         core_alert_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        red_alert_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+        red_font = Font(name="Times New Roman", size=10, bold=True, color="9C0006")
 
         # Ghi các dòng dữ liệu mới
         for r_idx, row_dict in enumerate(mapped_rows, start=5):
@@ -149,6 +152,12 @@ class Excel129Exporter(CadastralExporterPort):
                 # Cảnh báo mềm màu vàng nhạt cho ô thiếu trường cốt lõi (Priority 5)
                 if code in cls.CORE_ALERT_FIELDS and (val is None or str(val).strip() == "" or str(val).lower() == "nan"):
                     cell.fill = core_alert_fill
+                elif code == "GCN_soVaoSo" and val:
+                    # Bôi đỏ ô Số vào sổ nếu có giá trị nhưng không đúng và đủ 5 chữ số theo yêu cầu
+                    digits_match = re.findall(r"\d", str(val))
+                    if len(digits_match) != 5:
+                        cell.fill = red_alert_fill
+                        cell.font = red_font
 
             sheet.row_dimensions[r_idx].height = 20
 

@@ -51,11 +51,15 @@ class CCCDExtractor:
         ngay_cap = self._extract_issue_date(texts, full_text)
         ngay_het_han = self._extract_expiry_date(texts, full_text)
 
-        # Fallback từ MRZ nếu có
+        # Fallback và làm giàu từ dòng mã đọc máy MRZ (Machine Readable Zone)
         mrz_data = self._parse_mrz(texts)
         if not so_cccd and mrz_data.get("so_cccd"):
             so_cccd = mrz_data["so_cccd"]
-        if not ho_ten and mrz_data.get("ho_ten"):
+        if mrz_data.get("ho_ten"):
+            # Nếu tên từ text dính liền không có dấu cách hoặc dính nhãn, dùng tên chuẩn từ MRZ
+            if not ho_ten or " " not in ho_ten or any(k in ho_ten.lower() for k in ["căn cước", "can cuoc", "can cu'oc", "identity", "card"]):
+                ho_ten = mrz_data["ho_ten"]
+        elif not ho_ten and mrz_data.get("ho_ten"):
             ho_ten = mrz_data["ho_ten"]
         if not ngay_sinh and mrz_data.get("ngay_sinh"):
             ngay_sinh = mrz_data["ngay_sinh"]
@@ -157,17 +161,18 @@ class CCCDExtractor:
             return False
         # Không phải từ khóa nhãn và tiêu đề quốc hiệu / thẻ
         lower = text.lower()
+        lower_clean = re.sub(r"[^\w\s]", "", lower)
         blacklist = [
             "ngày", "tháng", "năm", "giới tính", "quốc tịch", "nơi cư trú", "nơi thường trú",
-            "quê quán", "công an", "bộ công an", "date", "birth", "sex", "camscanner", "căn cước",
+            "quê quán", "công an", "bộ công an", "date", "birth", "sex", "camscanner", "căn cước", "can cuoc",
             "chữ đệm", "khai sinh", "full name", "fuli name", "socialist", "republic", "citizen",
             "identity", "card", "hạnh phúc", "độc lập", "tự do", "cộng hòa", "vietnam", "việt nam",
-            "doc lap", "tu do", "hanh phuc", "cong hoa"
+            "doc lap", "tu do", "hanh phuc", "cong hoa", "personal", "identification"
         ]
-        if any(k in lower for k in blacklist):
+        if any(k in lower or k in lower_clean for k in blacklist):
             return False
         words = text.split()
-        if not (2 <= len(words) <= 6):
+        if not (1 <= len(words) <= 6):
             return False
         # Đa số từ viết hoa
         upper_count = sum(1 for w in words if w.isupper())
@@ -181,7 +186,7 @@ class CCCDExtractor:
     def _extract_date_of_birth(self, texts: List[str], full_text: str) -> str:
         """Trích xuất ngày sinh dạng dd/mm/yyyy."""
         for i, t in enumerate(texts):
-            if re.search(r"(?:ng[aà]y\s*sinh|date\s*of\s*birth|sinh\s*ng[aà]y|n[aă]m\s*sinh)", t, re.IGNORECASE):
+            if re.search(r"(?:ng[aà]y\s*sinh|date\s*of\s*birth|sinh\s*ng[aà]y|n[aă]m\s*sinh|dateofbi)", t, re.IGNORECASE):
                 m = re.search(r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})", t)
                 if m:
                     return self._format_date(m.group(1))
@@ -212,12 +217,19 @@ class CCCDExtractor:
         return date_str
 
     def _extract_gender(self, texts: List[str], full_text: str) -> str:
-        """Trích xuất giới tính: nam hoặc nữ."""
-        for t in texts:
-            if re.search(r"(?:gi[oớ]i\s*t[ií]nh|sex)\s*[:/.]?\s*(nam|n[uữ])\b", t, re.IGNORECASE):
-                m = re.search(r"\b(nam|n[uữ])\b", t, re.IGNORECASE)
+        """Trích xuất giới tính (Nam / Nữ)."""
+        for i, t in enumerate(texts):
+            if re.search(r"(?:gi[oớ]i\s*t[ií]nh|sex\b)", t, re.IGNORECASE):
+                m = re.search(r"(?:gi[oớ]i\s*t[ií]nh|sex)\s*[:/.]?\s*([A-Za-zÀ-ỹ]+)", t, re.IGNORECASE)
                 if m:
-                    return "nữ" if "n" in m.group(1).lower() and "ữ" in m.group(1).lower() or "nu" in m.group(1).lower() else "nam"
+                    val = m.group(1).lower()
+                    return "nữ" if "n" in val and ("ữ" in val or "u" in val) else "nam"
+                if i + 1 < len(texts):
+                    nxt = texts[i + 1].strip().lower()
+                    if nxt in ["nam", "male", "m"]:
+                        return "nam"
+                    if nxt in ["nữ", "nu", "female", "f"]:
+                        return "nữ"
 
         if re.search(r"\bGi[oớ]i\s*t[ií]nh\s*[:/.]?\s*N[uữ]\b", full_text, re.IGNORECASE) or re.search(r"\bSex\s*[:/.]?\s*F\b", full_text, re.IGNORECASE):
             return "nữ"
@@ -233,13 +245,18 @@ class CCCDExtractor:
 
     def _extract_residence(self, texts: List[str], full_text: str) -> str:
         """Trích xuất nơi thường trú / nơi cư trú."""
-        res_anchors = ["noi thuong tru", "nơi thường trú", "noi cu tru", "nơi cư trú", "place of residence", "residence", "residenọc"]
+        res_anchors = [
+            "noi thuong tru", "nơi thường trú", "noi cu tru", "nơi cư trú",
+            "noicutru", "noithuongtru", "place of residence", "residence",
+            "residenco", "placeofrasidenco", "place of residenco"
+        ]
         collected = []
 
         for i, t in enumerate(texts):
             t_lower = t.lower()
-            if any(anchor in t_lower for anchor in res_anchors):
-                cleaned = re.sub(r"^.*?(?:n[oơ]i\s*(?:th[uư][oờ]ng\s*tr[uú]|c[uư]\s*tr[uú])|p[lt]ace\s*of\s*residen[ceọc]+)\s*[:/;.]?\s*", "", t, flags=re.IGNORECASE).strip()
+            t_clean_anchor = re.sub(r"[^\w]", "", t_lower)
+            if any(anchor in t_lower or anchor.replace(" ", "") in t_clean_anchor for anchor in res_anchors):
+                cleaned = re.sub(r"^.*?(?:n[oơ]i\s*(?:th[uư][oờ]ng\s*tr[uú]|c[uư]\s*tr[uú])|noicutru|p[lt]ace\s*of\s*r[ea]siden[ceọc]+|placeofr[ea]siden[ceọc]+)\s*[:/;.]?\s*", "", t, flags=re.IGNORECASE).strip()
                 if cleaned and not self._is_noisy_address_fragment(cleaned):
                     collected.append(cleaned)
                 for offset in [1, 2, 3]:
@@ -255,12 +272,10 @@ class CCCDExtractor:
             addr = ", ".join(collected)
             addr = re.sub(r"\s+", " ", addr).strip()
             addr = re.sub(r"^,\s*", "", addr)
-            # Dọn dẹp các từ thừa
             addr = re.sub(r"(?:có\s*giá\s*trị\s*đến|và\s*giá\s*trị\s*đến|date\s*of\s*expiry).*$", "", addr, flags=re.IGNORECASE).strip()
             addr = addr.rstrip(";,.")
             return addr
 
-        # Fallback quét từ Xóm / Thôn / Xã
         m_addr = re.search(r"((?:Xóm|Thôn|Số)\s*\d+[^,\n]+,\s*[^,\n]+,\s*[^,\n]+)", full_text, re.IGNORECASE)
         if m_addr:
             return m_addr.group(1).strip()
@@ -270,38 +285,48 @@ class CCCDExtractor:
     def _is_noisy_address_fragment(self, text: str) -> bool:
         lower = text.lower()
         return any(k in lower for k in [
-            "nơi đăng ký", "ngày cấp", "quê quán", "bộ công an", "date of expiry",
+            "nơi đăng ký", "đảng ký", "ngày cấp", "quê quán", "bộ công an", "date of expiry",
             "camscanner", "quốc tịch", "giới tính", "có giá trị đến", "và giá trị đến",
-            "ngày, tháng, năm", "thủ trưởng", "cục trưởng"
+            "ngày, tháng, năm", "thủ trưởng", "cục trưởng", "ngay.thang.nam", "ngay,thang,nam",
+            "khai sinh", "khai sĩnh", "place of birth"
         ])
 
     def _extract_origin(self, texts: List[str], full_text: str) -> str:
         """Trích xuất quê quán / Nơi đăng ký khai sinh."""
         for i, t in enumerate(texts):
-            if re.search(r"(?:qu[eê]\s*qu[aá]n|place\s*of\s*origin|n[oơ]i\s*sinh|khai\s*sinh)", t, re.IGNORECASE):
-                cleaned = re.sub(r"^.*?(?:qu[eê]\s*qu[aá]n|place\s*of\s*origin|khai\s*s[iĩ]nh)\s*[:/.]?\s*", "", t, flags=re.IGNORECASE).strip()
-                if cleaned:
+            if re.search(r"(?:qu[eê]\s*qu[aá]n|place\s*of\s*origin|n[oơ]i\s*sinh|khai\s*sinh|khai\s*s[iĩ]nh|place\s*of\s*birth)", t, re.IGNORECASE):
+                cleaned = re.sub(r"^.*?(?:qu[eê]\s*qu[aá]n|place\s*of\s*origin|khai\s*s[iĩ]nh|place\s*of\s*birth|n[oơ]i\s*(?:đ[aả]ng\s*k[yý]\s*)?(?:sinh|khai\s*s[iĩ]nh))\s*[:/.'?7\s-]*", "", t, flags=re.IGNORECASE).strip()
+                cleaned = re.sub(r"^[7'\"]\s*", "", cleaned).strip()
+                if cleaned and not self._is_noisy_address_fragment(cleaned):
                     return cleaned
                 if i + 1 < len(texts):
-                    return texts[i + 1].strip()
+                    nxt = texts[i + 1].strip()
+                    if not self._is_noisy_address_fragment(nxt):
+                        return nxt
         return ""
 
     def _extract_issue_date(self, texts: List[str], full_text: str) -> str:
         """Trích xuất ngày cấp thẻ CCCD."""
-        m = re.search(r"(?:ng[aà]y\s*c[aá]p|date\s*of\s*issue)\s*[:/.]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4})", full_text, re.IGNORECASE)
+        m = re.search(r"(?:ng[aà]y\s*c[aá]p|date\s*of\s*issue|namcap|dateof\s*iss)\s*[:/.]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4})", full_text, re.IGNORECASE)
         if m:
             return self._format_date(m.group(1))
+        for i, t in enumerate(texts):
+            if re.search(r"(?:ng[aà]y\s*c[aá]p|date\s*of\s*issue|namcap|dateof\s*iss)", t, re.IGNORECASE):
+                if i + 1 < len(texts):
+                    m_next = re.search(r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})", texts[i + 1])
+                    if m_next:
+                        return self._format_date(m_next.group(1))
         return ""
 
     def _extract_expiry_date(self, texts: List[str], full_text: str) -> str:
         """Trích xuất ngày hết hạn thẻ CCCD."""
-        m = re.search(r"(?:h[eế]t\s*h[aạ]n|date\s*of\s*expiry)\s*[:/.]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4})", full_text, re.IGNORECASE)
+        m = re.search(r"(?:h[eế]t\s*h[aạ]n|date\s*of\s*expiry|hel\s*han|date\s*of\s*oxpiry)\s*[:/.]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4})", full_text, re.IGNORECASE)
         if m:
             return self._format_date(m.group(1))
         return ""
 
     def _parse_mrz(self, texts: List[str]) -> Dict[str, str]:
-        """Phân tích dòng mã máy MRZ ở mặt sau thẻ CCCD."""
+        """Phân tích dòng mã máy MRZ ở mặt sau thẻ CCCD (chuẩn ICAO Doc 9303)."""
         res = {}
         for t in texts:
             clean = t.replace(" ", "").upper()
@@ -317,4 +342,9 @@ class CCCDExtractor:
                 yy, mm, dd = dob_raw[:2], dob_raw[2:4], dob_raw[4:6]
                 year_full = f"19{yy}" if int(yy) > 25 else f"20{yy}"
                 res["ngay_sinh"] = f"{dd}/{mm}/{year_full}"
+            # Dòng họ và tên MRZ: PHAM<<VAN<TUAN<<<<<<<<...
+            if "<<" in clean and not re.search(r"\d", clean):
+                raw_parts = [p.strip() for p in clean.split("<") if p.strip()]
+                if raw_parts and len(raw_parts) >= 2:
+                    res["ho_ten"] = " ".join(raw_parts)
         return res

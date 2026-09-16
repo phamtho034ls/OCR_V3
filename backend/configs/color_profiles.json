@@ -37,6 +37,25 @@
       "c_value": 6
     }
   },
+  "mau_2024": {
+    "description": "GCN 2 trang kiểu tờ đôi có QR - nền xanh/xám nhạt",
+    "channel_strategy": "blue",
+    "comment": "Dùng kênh Blue tương tự mẫu mới để làm nổi chữ in và chữ viết trên nền watermark",
+    "clahe": {
+      "clip_limit": 2.5,
+      "tile_grid_size": [8, 8]
+    },
+    "background_color_range": {
+      "lower_hsv": [90, 10, 180],
+      "upper_hsv": [170, 100, 255],
+      "comment": "Nền xanh/xám nhạt của mẫu GCN 2 trang"
+    },
+    "adaptive_threshold": {
+      "method": "ADAPTIVE_THRESH_GAUSSIAN_C",
+      "block_size": 11,
+      "c_value": 6
+    }
+  },
   "seal_mask": {
     "red_seal": {
       "lower1_hsv": [0, 80, 80],

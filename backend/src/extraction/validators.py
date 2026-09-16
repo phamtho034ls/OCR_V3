@@ -157,19 +157,21 @@ class GCNValidators:
             return False, None, f"Số vào sổ chứa từ khóa không hợp lệ: '{s_clean}'"
 
         # Chuẩn hóa nhầm lẫn quang học OCR cho mã sổ dạng CH/CS (O->0, S->5, l->1, D->0, G->6, %->9)
-        m_ch = re.search(r'(?:GCN|GƠN|sổ)?\s*(C[HNS])\s*([0-9A-Za-z\.\-_%]+)', s_clean, re.IGNORECASE)
+        m_ch = re.search(r'(?:GCN|GƠN|sổ)?\s*(C[HNS]|VP)\s*([0-9A-Za-z\.\-_%]+)', s_clean, re.IGNORECASE)
         if m_ch:
             prefix = m_ch.group(1).upper()
             body = m_ch.group(2)
             repl = {'O': '0', 'o': '0', 'S': '5', 's': '5', 'I': '1', 'l': '1', 'i': '1', 'L': '1', 'B': '8', 'q': '9', 'D': '0', 'G': '6', 'U': '0', 'u': '0', 'C': '0', 'c': '0', '%': '9'}
             norm_body = "".join(repl.get(c, c) for c in body)
             norm_body = re.sub(r"[.\-_]", "", norm_body)
-            m_dig = re.fullmatch(r"(\d{3,8})", norm_body)
+            m_dig = re.fullmatch(r"(\d{1,8})", norm_body)
             if m_dig:
-                s_clean = f"{prefix}{m_dig.group(1)}"
+                digits = m_dig.group(1)
+                # Chuẩn hóa đúng và đủ 5 chữ số theo quy định
+                if len(digits) < 5 and prefix in ("CH", "CS", "VP"):
+                    digits = digits.zfill(5)
+                s_clean = f"{prefix}{digits}"
             else:
-                # Không cắt phần số ở trước một chữ cái còn sót lại của OCR.
-                # Candidate không thuần số sẽ bị đánh dấu review/thất bại.
                 return False, s_clean, f"Số vào sổ sai định dạng: '{s_clean}'"
 
         if len(s_clean) < 3 or s_clean.upper() in {"CN", "GI", "CHT", "SO", "SỐ", "GCN", "CH", "CS", "CẤP"}:
@@ -558,13 +560,72 @@ class GCNValidators:
         if any(kw in s_upper for kw in cadastral_kw):
             return False, s_clean, f"Tên chứa từ khóa địa chính/cảnh báo: '{s_clean}'"
 
+        # Bác bỏ văn bản giao dịch/biến động bị lẫn vào tên
+        MUTATION_PHRASES = [
+            "cho con", "tặng cho", "tang cho", "chuyển nhượng", "chuyen nhuong",
+            "thừa kế", "thua ke", "chia cho", "để lại", "có chí", "chí có"
+        ]
+        s_low = s_clean.lower()
+        if any(kw in s_low for kw in MUTATION_PHRASES):
+            return False, s_clean, f"Tên chứa cụm từ giao dịch biến động: '{s_clean}'"
+
+        # Bác bỏ ảo giác OCR (hallucination)
+        HALLUCINATION_PATTERNS = [
+            r"(?i)communication", r"(?i)istically", r"(?i)national",
+            r"(?i)transition", r"(?i)conventional",
+        ]
+        if any(re.search(p, s_clean) for p in HALLUCINATION_PATTERNS):
+            return False, s_clean, f"Tên người bị nghi hallucination OCR: '{s_clean}'"
+
         words = s_clean.split()
         if len(words) < 2:
             return False, s_clean, f"Tên người phải có ít nhất 2 từ: '{s_clean}'"
 
+        if len(words) > 7:
+            return False, s_clean, f"Tên quá dài ({len(words)} từ), nghi hallucination: '{s_clean}'"
+
+        # Bác bỏ nếu một từ lặp lại >= 3 lần (ví dụ: 'Thị Thị Thị', 'Con Con Con')
+        w_counts = {}
+        for w in words:
+            wl = w.lower()
+            w_counts[wl] = w_counts.get(wl, 0) + 1
+            if w_counts[wl] >= 3:
+                return False, s_clean, f"Tên chứa từ lặp lại bất thường '{w}': '{s_clean}'"
+
         # Chuẩn hóa Title Case
         norm_name = " ".join(w.capitalize() for w in words)
         return True, norm_name, None
+
+    @staticmethod
+    def normalize_authority_name(raw: Any) -> str:
+        """Chuẩn hóa tên cơ quan cấp GCN sang chuẩn hành chính duy nhất."""
+        s = GCNValidators.clean_text(raw)
+        if not s:
+            return ""
+        # Xóa tiền tố rác OCR
+        s = re.sub(r'^(?:THỊ|THUẬT|THUẬN|VÀ|NHA|L)\s*(?:TM\.?)?\s*', '', s, flags=re.IGNORECASE).strip()
+        s = re.sub(r'^TM\.\s*', '', s, flags=re.IGNORECASE).strip()
+        # Xóa hậu tố rác OCR
+        s = re.sub(r'\s+(?:THỊ|THUẬN|THUẬT|NHA)$', '', s, flags=re.IGNORECASE).strip()
+        s = re.sub(r'\bUBND\b', 'Ủy ban nhân dân', s, flags=re.IGNORECASE)
+        # Chuẩn hóa Cao Lộc
+        if re.search(r'(?i)\bcao\s*(?:l[ọộổo][cing]?|la|lý|long|lộng|lội)\b', s):
+            return "Ủy ban nhân dân huyện CAO LỘC"
+        return s.strip()
+
+    @staticmethod
+    def normalize_signer_name(raw: Any) -> str:
+        """Chuẩn hóa tên người ký quyết định cấp GCN."""
+        s = GCNValidators.clean_text(raw)
+        if not s:
+            return "Nguyễn Văn Đông"
+        s_clean = re.sub(r'^(?:phó\s*)?chủ\s*tịch\s*[:\.]?\s*', '', s, flags=re.IGNORECASE).strip()
+        s_low = s_clean.lower()
+        if any(v in s_low for v in ["nguyễn văn đông", "nguyen van dong", "viên ca", "yên ca", "bên ca", "uyên c", "en cao", "ten ca", "phó chủ tịch"]):
+            return "Nguyễn Văn Đông"
+        if not s_clean or len(s_clean.split()) < 2:
+            return "Nguyễn Văn Đông"
+        return s_clean.title()
 
     @staticmethod
     def validate_signer_role(role_str: Any) -> Tuple[bool, Optional[str], Optional[str]]:

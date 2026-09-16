@@ -45,24 +45,30 @@ class SpatialTableExtractor:
 
     @classmethod
     def _detect_column_bounds(cls, ocr_boxes: List[Dict[str, Any]], img_w: float) -> Dict[str, Optional[Tuple[float, float]]]:
-        """Detect table columns from header positions, with fixed bounds as fallback.
-
-        Some certificate templates omit the parcel-address column.  Applying the
-        old fixed layout to those pages routed area values into ``dia_chi``.  The
-        header-derived layout keeps the coordinates in the original image space
-        and therefore does not require canvas normalization.
-        """
+        """Detect table columns from header positions, with fixed bounds as fallback."""
         scale_x = img_w / 1280.0
         defaults: Dict[str, Optional[Tuple[float, float]]] = {
-            k: (v[0] * scale_x, v[1] * scale_x) for k, v in cls.DEFAULT_COL_BOUNDS.items()
+            "to_ban_do": (30.0 * scale_x, 125.0 * scale_x),
+            "so_thua": (120.0 * scale_x, 210.0 * scale_x),
+            "dien_tich_rieng": (205.0 * scale_x, 290.0 * scale_x),
+            "dien_tich_chung": (285.0 * scale_x, 370.0 * scale_x),
+            "muc_dich": (365.0 * scale_x, 510.0 * scale_x),
+            "thoi_han": (505.0 * scale_x, 650.0 * scale_x),
+            "nguon_goc": (645.0 * scale_x, img_w),
+            "dia_chi": None
         }
-        header_x: Dict[str, List[float]] = {k: [] for k in ("to_ban_do", "so_thua", "dia_chi", "dien_tich_rieng", "muc_dich", "thoi_han", "nguon_goc")}
-        max_header_y = 520.0 * scale_x
+        header_x: Dict[str, List[float]] = {k: [] for k in ("to_ban_do", "so_thua", "dia_chi", "dien_tich_rieng", "dien_tich_chung", "muc_dich", "thoi_han", "nguon_goc")}
+        max_header_y = 350.0 * scale_x
+        min_header_y = 165.0 * scale_x
         for b in ocr_boxes:
             text = _strip_accents(str(b.get("text", "")).strip())
             x, y, w, h = cls._box_geometry(b)
-            if not text or y > max_header_y:
+            if not text or y < min_header_y or y > max_header_y:
                 continue
+            # Skip section headers, field titles, and address lines
+            if any(kw in text for kw in ["dia chi:", "thon ", "xa ", "huyen ", "tinh ", "ii.", "iii.", "1. thua"]):
+                continue
+
             x_mid = x + w / 2.0
             if "nguon goc" in text:
                 header_x["nguon_goc"].append(x_mid)
@@ -70,47 +76,29 @@ class SpatialTableExtractor:
                 header_x["thoi_han"].append(x_mid)
             elif "muc dich" in text:
                 header_x["muc_dich"].append(x_mid)
-            elif "dien tich" in text:
+            elif "rieng" in text:
                 header_x["dien_tich_rieng"].append(x_mid)
-            elif "dia chi" in text:
+            elif "chung" in text:
+                header_x["dien_tich_chung"].append(x_mid)
+            elif "dien tich" in text:
+                header_x["dien_tich_rieng"].append(x_mid - 25.0 * scale_x)
+                header_x["dien_tich_chung"].append(x_mid + 25.0 * scale_x)
+            elif "dia chi" in text and ":" not in text:
                 header_x["dia_chi"].append(x_mid)
-            elif "thua dat" in text or text == "thua dat":
+            elif any(k in text for k in ["thua dat", "thua", "dat so"]):
                 header_x["so_thua"].append(x_mid)
-            elif "to ban do" in text or text == "to ban":
+            elif any(k in text for k in ["to ban do", "to ban", "do so", "to so"]):
                 header_x["to_ban_do"].append(x_mid)
 
         centers = {k: float(np.median(v)) for k, v in header_x.items() if v}
-        # At least four headers are needed to replace the template fallback.
-        if len(centers) < 4:
-            return defaults
-
-        ordered = sorted(centers.items(), key=lambda item: item[1])
-        bounds: Dict[str, Optional[Tuple[float, float]]] = {k: None for k in defaults}
-        for idx, (name, center) in enumerate(ordered):
-            left = 0.0 if idx == 0 else (ordered[idx - 1][1] + center) / 2.0
-            right = img_w if idx == len(ordered) - 1 else (center + ordered[idx + 1][1]) / 2.0
-            bounds[name] = (left, right)
-
-        # Preserve separate common-area handling when a template explicitly has
-        # it; otherwise route the single area column to ``dien_tich_rieng``.
-        if bounds["dien_tich_rieng"] is not None:
-            bounds["dien_tich_chung"] = bounds["dien_tich_rieng"]
-        else:
-            bounds["dien_tich_chung"] = defaults["dien_tich_chung"]
-        for name, value in defaults.items():
-            if bounds.get(name) is None and name != "dia_chi":
-                bounds[name] = value
-
-        # Một số bản scan không OCR được hai tiêu đề "Tờ bản đồ" và
-        # "Thửa đất". Khi đó suy ra hai cột đầu từ histogram các token số
-        # nằm bên trái cột diện tích, thay vì dùng canvas cố định.
+        # If not enough headers detected, fallback to numeric token clustering
         if not header_x["to_ban_do"] or not header_x["so_thua"]:
-            area_center = centers.get("dien_tich_rieng", img_w * 0.30)
+            area_center = centers.get("dien_tich_rieng", 250.0 * scale_x)
             numeric_x = []
             for b in ocr_boxes:
                 text = str(b.get("text", "")).strip()
                 x, y, w, h = cls._box_geometry(b)
-                if y < 300 * scale_x or x + w / 2.0 >= area_center - 5:
+                if y < 270.0 * scale_x or y > 850.0 * scale_x or x + w / 2.0 >= area_center - 10:
                     continue
                 if re.fullmatch(r"\d{1,4}[A-Za-z]?", text):
                     numeric_x.append(x + w / 2.0)
@@ -122,13 +110,21 @@ class SpatialTableExtractor:
                 else:
                     clusters[-1].append(x_mid)
             if len(clusters) >= 2:
-                map_center = float(np.median(clusters[0]))
-                parcel_center = float(np.median(clusters[1]))
-                bounds["to_ban_do"] = (0.0, (map_center + parcel_center) / 2.0)
-                bounds["so_thua"] = ((map_center + parcel_center) / 2.0, (parcel_center + area_center) / 2.0)
-                area_right = (area_center + centers["muc_dich"]) / 2.0 if centers.get("muc_dich") else img_w
-                bounds["dien_tich_rieng"] = ((parcel_center + area_center) / 2.0, area_right)
-                bounds["dien_tich_chung"] = bounds["dien_tich_rieng"]
+                centers["to_ban_do"] = float(np.median(clusters[0]))
+                centers["so_thua"] = float(np.median(clusters[1]))
+
+        if len(centers) < 3:
+            return defaults
+
+        bounds = dict(defaults)
+        ordered_keys = [k for k in ("to_ban_do", "so_thua", "dia_chi", "dien_tich_rieng", "dien_tich_chung", "muc_dich", "thoi_han", "nguon_goc") if k in centers]
+        for i in range(len(ordered_keys) - 1):
+            k1 = ordered_keys[i]
+            k2 = ordered_keys[i + 1]
+            mid = (centers[k1] + centers[k2]) / 2.0
+            bounds[k1] = (bounds[k1][0] if bounds[k1] else 0.0, mid)
+            bounds[k2] = (mid, bounds[k2][1] if bounds[k2] else img_w)
+
         return bounds
 
     @staticmethod
@@ -295,18 +291,25 @@ class SpatialTableExtractor:
 
         # 3. Định vị các mốc diện tích (Row Anchors)
         area_anchors = []
+        area_min_x = cols["dien_tich_rieng"][0] - 30.0 if cols.get("dien_tich_rieng") else 200.0 * scale_x
+        area_max_x = cols["dien_tich_chung"][1] + 30.0 if cols.get("dien_tich_chung") else 380.0 * scale_x
         for b in table_boxes:
             x, y, w, h = cls._box_geometry(b)
             x_mid = x + w / 2.0
             t = b.get("text", "").strip()
-            area_bounds = cols["dien_tich_rieng"]
-            if area_bounds and area_bounds[0] - 25 <= x_mid <= area_bounds[1] + 25:
-                m_num = re.search(r"^(\d+[\.,]\d+|\d{2,5})$", t)
-                if m_num:
+            if (area_min_x <= x_mid <= area_max_x) or (x < area_max_x and x + w > area_min_x):
+                m_num = re.search(r"(\d+[\.,]\d+|\b\d{2,5}\b)", t)
+                if m_num and not re.search(r"\d{1,2}/\d{1,2}/\d{4}", t):
                     val_dt = float(m_num.group(1).replace(",", "."))
                     area_anchors.append({"y": y + h / 2.0, "val": val_dt, "box": b})
 
         area_anchors.sort(key=lambda a: a["y"])
+        # Lọc bỏ các anchor quá gần nhau trên cùng 1 dòng
+        filtered_anchors = []
+        for a in area_anchors:
+            if not filtered_anchors or abs(a["y"] - filtered_anchors[-1]["y"]) > 15.0:
+                filtered_anchors.append(a)
+        area_anchors = filtered_anchors
 
         N = expected_n or len(area_anchors)
         if N <= 0:
@@ -345,6 +348,7 @@ class SpatialTableExtractor:
             r_muc_dich_parts = []
             r_thoi_han_parts = []
             r_nguon_goc_parts = []
+            left_num_boxes = []
 
             for b in r_boxes:
                 x, y, w, h = cls._box_geometry(b)
@@ -354,66 +358,68 @@ class SpatialTableExtractor:
                     continue
 
                 # 1. Cột Tờ bản đồ & Thửa đất
-                if x_mid <= cols["so_thua"][1] + 10:
-                    m_joint = re.match(r"^(\d{2,4})[\s\/\-\._]+(\d{1,4})$", t)
+                if x_mid < cols["so_thua"][1] + 15.0:
+                    m_joint = re.match(r"^(\d{1,4})[\s\/\-\._]+(\d{1,4})$", t)
                     if m_joint:
                         r_to_ban_do = m_joint.group(1)
                         r_so_thua = m_joint.group(2)
                     elif len(t) >= 4 and t.isdigit() and known_sheet_nos:
                         for tb in known_sheet_nos:
-                            if t.startswith(tb):
+                            if t.startswith(tb) and len(t) > len(tb):
                                 r_to_ban_do = tb
                                 r_so_thua = t[len(tb):]
                                 break
-                    elif x_mid <= cols["to_ban_do"][1] + 10:
-                        m_num = re.match(r"^(\d{1,4})$", t)
-                        if m_num:
-                            r_to_ban_do = m_num.group(1)
-                    elif cols["so_thua"][0] - 10 <= x_mid:
-                        m_num = re.match(r"^(\d{1,4}[A-Za-z]?)$", t)
-                        if m_num:
-                            r_so_thua = m_num.group(1)
+                    elif re.fullmatch(r"\d{1,4}[A-Za-z]?", t):
+                        left_num_boxes.append((x_mid, t))
 
-                # 2. Cột Địa chỉ thửa đất
-                elif cols["dia_chi"] and cols["dia_chi"][0] - 10 <= x_mid < cols["dien_tich_rieng"][0] - 10:
+                # 2. Cột Địa chỉ thửa đất (nếu có cột riêng)
+                elif cols.get("dia_chi") and cols["dia_chi"][0] - 10 <= x_mid < cols["dien_tich_rieng"][0] - 10:
                     t_low = t.lower()
                     if not any(k in t_low for k in ["diện tích", "thời hạn", "mục đích", "đất bằng", "đất trồng"]):
                         r_dia_chi_parts.append(t)
 
-                # 3. Cột Diện tích riêng
-                elif cols["dien_tich_rieng"][0] - 10 <= x_mid < cols["dien_tich_chung"][0]:
-                    m_num = re.search(r"(\d+[\.,]\d+|\d{2,5})", t)
-                    if m_num:
+                # 3. Cột Diện tích riêng & chung
+                if (cols["dien_tich_rieng"][0] - 20 <= x_mid <= cols["dien_tich_chung"][1] + 30) or (x < cols["dien_tich_chung"][1] and x + w > cols["dien_tich_rieng"][0]):
+                    m_num = re.search(r"(\d+[\.,]\d+|\b\d{2,5}\b)", t)
+                    if m_num and not re.search(r"\d{1,2}/\d{1,2}/\d{4}", t):
                         try:
                             r_dien_tich = float(m_num.group(1).replace(",", "."))
                         except Exception:
                             pass
-
-                # 4. Cột Diện tích chung
-                elif cols["dien_tich_chung"][0] <= x_mid < cols["muc_dich"][0]:
                     if "không" in t.lower() or "khong" in t.lower():
                         r_dien_tich_chung = "không"
-                    else:
-                        m_num = re.search(r"(\d+[\.,]\d+)", t)
-                        if m_num:
-                            r_dien_tich_chung = m_num.group(1)
 
-                # 5. Cột Mục đích sử dụng
-                elif cols["muc_dich"][0] <= x_mid < cols["thoi_han"][0]:
-                    r_muc_dich_parts.append(t)
+                # 4. Cột Mục đích sử dụng
+                if cols["muc_dich"][0] - 10 <= x_mid < cols["thoi_han"][0]:
+                    if not re.search(r"\d{1,2}/\d{1,2}/\d{4}", t) and not any(k in t.lower() for k in ["đến ngày", "den ngay"]):
+                        r_muc_dich_parts.append(t)
 
-                # 6. Cột Thời hạn sử dụng
-                elif cols["thoi_han"][0] <= x_mid < cols["nguon_goc"][0]:
+                # 5. Cột Thời hạn sử dụng
+                if cols["thoi_han"][0] <= x_mid < cols["nguon_goc"][0]:
                     r_thoi_han_parts.append(t)
 
-                # 7. Cột Nguồn gốc sử dụng.  A wide OCR box may begin just left
-                # of the column boundary, so use horizontal overlap as well as
-                # its centre point; this avoids dropping wrapped legal phrases.
-                elif x_mid >= cols["nguon_goc"][0] or (
+                # 6. Cột Nguồn gốc sử dụng
+                if x_mid >= cols["nguon_goc"][0] or (
                     max(0.0, min(x + w, cols["nguon_goc"][1]) - max(x, cols["nguon_goc"][0]))
                     >= max(12.0, w * 0.55)
                 ):
                     r_nguon_goc_parts.append(t)
+
+            # Phân định to_ban_do và so_thua từ left_num_boxes
+            if not r_so_thua:
+                if len(left_num_boxes) >= 2:
+                    r_to_ban_do = left_num_boxes[0][1]
+                    r_so_thua = left_num_boxes[1][1]
+                elif len(left_num_boxes) == 1:
+                    val = left_num_boxes[0][1]
+                    if left_num_boxes[0][0] <= cols["to_ban_do"][1]:
+                        r_to_ban_do = val
+                    else:
+                        r_so_thua = val
+
+            # Gán diện tích từ anchor nếu chưa nhận diện được
+            if r_dien_tich is None and row_idx < len(area_anchors):
+                r_dien_tich = area_anchors[row_idx]["val"]
 
             # Cứu nguy nếu detector bỏ sót ô Thửa đất:
             if not r_so_thua and image is not None and recognize_crop_fn is not None:
@@ -431,6 +437,22 @@ class SpatialTableExtractor:
                             logger.info(f"Khôi phục số thửa thành công qua Spatial Grid: {r_so_thua}")
                 except Exception as exc:
                     logger.debug(f"Lỗi crop ô thửa đất bù: {exc}")
+
+            # Cứu nguy nếu diện tích vẫn chưa có:
+            if r_dien_tich is None and image is not None and recognize_crop_fn is not None:
+                try:
+                    c_x1 = int(max(0, cols["dien_tich_rieng"][0]))
+                    c_x2 = int(min(image.shape[1], cols["dien_tich_chung"][1] + 10))
+                    c_y1 = int(max(0, y_min_row + 5))
+                    c_y2 = int(min(image.shape[0], y_max_row - 5))
+                    if c_y2 > c_y1 and c_x2 > c_x1:
+                        cell_crop = image[c_y1:c_y2, c_x1:c_x2]
+                        rec_t, rec_c = recognize_crop_fn(cell_crop)
+                        m_rec = re.search(r"(\d+[\.,]\d+|\b\d{2,5}\b)", rec_t)
+                        if m_rec and not re.search(r"\d{1,2}/\d{1,2}/\d{4}", rec_t):
+                            r_dien_tich = float(m_rec.group(1).replace(",", "."))
+                except Exception as exc:
+                    logger.debug(f"Lỗi crop ô diện tích bù: {exc}")
 
             if r_to_ban_do and r_to_ban_do not in known_sheet_nos:
                 known_sheet_nos.append(r_to_ban_do)

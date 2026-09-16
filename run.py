@@ -212,6 +212,101 @@ def cmd_test(args):
     sys.exit(result.returncode)
 
 
+def cmd_scan_pairs(args):
+    """Quét toàn bộ các file trong thư mục có tên trùng nhau (GCN & GT) và xuất Excel 129 Cột."""
+    from extraction.gcn_cccd_pair_merger import GCNCCCDPairMerger
+    from ocr_so_do.infrastructure.exporters.excel_129_exporter import Excel129Exporter
+    from ocr_so_do.infrastructure.memory import cleanup_memory
+
+    dir_p = Path(args.dir)
+    if not dir_p.exists():
+        logger.error(f"Thư mục không tồn tại: {args.dir}")
+        sys.exit(1)
+
+    use_gpu = not args.cpu
+    logger.info(f"Khởi tạo bộ ghép cặp hồ sơ GCN - GT (GPU: {use_gpu})...")
+    merger = GCNCCCDPairMerger(use_gpu=use_gpu)
+
+    pairs = merger.scan_directory_pairs(str(dir_p))
+    sorted_keys = sorted(list(pairs.keys()))
+    if args.limit and args.limit > 0:
+        sorted_keys = sorted_keys[:args.limit]
+
+    both_count = sum(1 for k in sorted_keys if pairs[k].get("status") == "both")
+    logger.info(f"Tổng số hồ sơ xử lý: {len(sorted_keys)} (đủ cả GCN+GT: {both_count})")
+
+    out_excel = Path(args.output) if args.output else (PROJECT_ROOT / "output" / f"KetQua_129Cot_{dir_p.name}.xlsx")
+    out_excel.parent.mkdir(parents=True, exist_ok=True)
+
+    crops_dir = Path(args.crops_dir) if args.crops_dir else (PROJECT_ROOT / "output" / "crops")
+    crops_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Thư mục lưu ảnh crop kiểm tra: {crops_dir.resolve()}")
+
+    all_129_rows = []
+    current_stt = 1
+    t_start = time.time()
+
+    for idx, pid in enumerate(sorted_keys, 1):
+        p_info = pairs[pid]
+        logger.info(f"\n[{idx}/{len(sorted_keys)}] Đang xử lý: {pid}")
+        t0 = time.time()
+        try:
+            merged = merger.process_single_pair(
+                pair_id=pid,
+                gcn_path=p_info.get("gcn_path"),
+                gt_path=p_info.get("gt_path"),
+                crops_dir=str(crops_dir)
+            )
+            rows = merged.get("chuyen_doi_rows", [])
+            for offset, r in enumerate(rows):
+                r["STT"] = current_stt + offset
+                r["DDK_maDon"] = f"DON_{current_stt + offset}"
+                all_129_rows.append(r)
+            current_stt += len(rows)
+
+            nguoi = merged.get("nguoi_su_dung", {}) or {}
+            thua = merged.get("thua_dat", {}) or {}
+            cccd = merged.get("cccd_data", {}) or {}
+
+            ten = cccd.get("ho_ten") or nguoi.get("ho_ten_chu_1") or nguoi.get("ten") or "N/A"
+            cid = cccd.get("so_cccd") or nguoi.get("cmnd_chu_1") or "N/A"
+            so_gcn = merged.get("so_phat_hanh") or pid
+            st = thua.get("so_thua") or "N/A"
+            tbd = thua.get("to_ban_do") or "N/A"
+            dt = thua.get("dien_tich_cap") or thua.get("dien_tich") or "N/A"
+
+            logger.info(f"  ✓ {so_gcn} | Chủ: {ten} | CCCD: {cid} | Tờ/Thửa: {tbd}/{st} | DT: {dt} ({time.time() - t0:.1f}s)")
+            if merged.get("crops"):
+                logger.info(f"  📸 Đã lưu {merged['crops'].get('total_crops', 0)} ảnh crop đối soát tại: {merged['crops'].get('crops_dir')}")
+
+            # Ghi checkpoint Excel mỗi 3 cặp
+            if idx % 3 == 0 and all_129_rows:
+                Excel129Exporter.export(
+                    mapped_rows=all_129_rows,
+                    output_path=str(out_excel),
+                    template_path=args.template
+                )
+        except Exception as e:
+            logger.error(f"  ✗ Lỗi xử lý {pid}: {e}")
+        finally:
+            cleanup_memory(force_os_trim=True)
+
+    # Xuất file hoàn tất
+    if all_129_rows:
+        Excel129Exporter.export(
+            mapped_rows=all_129_rows,
+            output_path=str(out_excel),
+            template_path=args.template
+        )
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Hoàn tất! Đã xuất {len(all_129_rows)} hàng vào file Excel 129 Cột:")
+        logger.info(f"File lưu tại: {out_excel.resolve()}")
+        logger.info(f"Ảnh crop đối soát lưu tại: {crops_dir.resolve()}")
+        logger.info(f"Tổng thời gian: {time.time() - t_start:.1f} giây")
+    else:
+        logger.warning("Không có dữ liệu nào được trích xuất thành công.")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="OCR Sổ đỏ/Sổ hồng - Pipeline trích xuất dữ liệu"
@@ -233,6 +328,16 @@ def main():
     ocr_parser.add_argument("--cpu", action="store_true", help="Chạy CPU-only (không dùng GPU)")
     ocr_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     ocr_parser.set_defaults(func=cmd_ocr)
+
+    # ─── scan-pairs ──────────────────────────────────────────────────────────
+    scan_pairs_parser = subparsers.add_parser("scan-pairs", help="Quét thư mục ghép cặp GCN & GT (CCCD) và xuất Excel 129 Cột")
+    scan_pairs_parser.add_argument("--dir", required=True, help="Đường dẫn thư mục chứa các file GCN và GT")
+    scan_pairs_parser.add_argument("--output", "-o", help="Đường dẫn file Excel 129 Cột đầu ra (.xlsx)")
+    scan_pairs_parser.add_argument("--crops-dir", help="Thư mục lưu ảnh crop đối soát (mặc định: output/crops)")
+    scan_pairs_parser.add_argument("--limit", type=int, default=0, help="Giới hạn số cặp xử lý (0 = tất cả)")
+    scan_pairs_parser.add_argument("--template", help="Đường dẫn file template Excel mẫu")
+    scan_pairs_parser.add_argument("--cpu", action="store_true", help="Chạy CPU-only")
+    scan_pairs_parser.set_defaults(func=cmd_scan_pairs)
 
     # ─── test ────────────────────────────────────────────────────────────────
     test_parser = subparsers.add_parser("test", help="Chạy unit tests")

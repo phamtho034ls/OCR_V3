@@ -12,6 +12,7 @@ import numpy as np
 from ..pipeline.orchestrator import PipelineOrchestrator
 from ..projections.cadastral_129_mapper import Cadastral129Mapper as ExcelChuyenDoiMapper
 from extraction.gcn_merger import GCNMerger
+from extraction.two_page_gcn_profile import TwoPageGCNProfile
 from ...domain.rules.raw_markdown.generator import RawMarkdownGenerator
 from ...infrastructure.persistence.sqlite_raw_store import get_sqlite_raw_store
 from ...infrastructure.persistence.postgres_store import get_postgres_store
@@ -105,6 +106,10 @@ class ProcessDocumentUseCase:
         if page_count == 0:
             raise ValueError(f"Không thể đọc trang nào từ file: {document_path}")
 
+        # Chỉ gắn metadata cấu trúc cho mẫu 2 trang; không đổi template/mapping
+        # hiện hữu để bảo đảm các hồ sơ cũ đi qua đúng nhánh trước đây.
+        document_profile = TwoPageGCNProfile.annotate(page_results)
+
         merged = GCNMerger.merge(page_results, bo_gcn_id=document_id)
         elapsed = round(time.time() - t_start, 2)
         merged["tong_thoi_gian_sec"] = elapsed
@@ -113,6 +118,11 @@ class ProcessDocumentUseCase:
         merged["so_trang"] = page_count
         merged["job_id"] = document_id
         merged["document_id"] = document_id
+        if document_profile:
+            merged["document_profile"] = document_profile
+        qr_pages = [p for p in page_results if p.get("qr_detected")]
+        merged["qr_detected"] = bool(qr_pages)
+        merged["qr_payload"] = next((p.get("qr_payload", "") for p in qr_pages if p.get("qr_payload")), "")
 
         # Đảm bảo danh_sach_thua có mặt ở cả cấp merged lẫn thua_dat
         if merged.get("thua_dat", {}).get("danh_sach_thua"):
@@ -138,6 +148,11 @@ class ProcessDocumentUseCase:
                 "crops": p.get("crops", []),
                 "ocr_results": p.get("ocr_results", []),
                 "raw_ocr_markdown": p.get("raw_ocr_markdown", ""),
+                "document_profile": p.get("document_profile", ""),
+                "page_role": p.get("page_role", ""),
+                "qr_detected": bool(p.get("qr_detected")),
+                "qr_payload": p.get("qr_payload", ""),
+                "qr_bbox": p.get("qr_bbox", []),
             }
             for i, p in enumerate(page_results)
         ]

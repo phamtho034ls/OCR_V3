@@ -328,6 +328,111 @@
       ]
     }
   },
+  "mau_2024": {
+    "_meta": {
+      "description": "Mẫu GCN 2 trang kiểu tờ đôi có QR, phát hành theo Luật Đất đai 2024",
+      "diagram_region": "dedicated_page",
+      "pages": 2,
+      "page_roles": {
+        "summary": 0,
+        "diagram": 1
+      }
+    },
+    "ho_ten": {
+      "label": "1. Người sử dụng đất, chủ sở hữu tài sản gắn liền với đất",
+      "aliases": [
+        "1. Người sử dụng đất",
+        "Người sử dụng đất, chủ sở hữu tài sản gắn liền với đất",
+        "Người sử dụng đất"
+      ]
+    },
+    "cmnd": {
+      "label": "CCCD",
+      "direction": "right",
+      "aliases": [
+        "CCCD:",
+        "CCCD số:",
+        "Số CCCD",
+        "CMND số"
+      ]
+    },
+    "so_phat_hanh": {
+      "label": "Số phát hành",
+      "aliases": [
+        "Mã số phát hành",
+        "Số GCN"
+      ]
+    },
+    "so_thua": {
+      "label": "a. Thửa đất số",
+      "aliases": [
+        "a) Thửa đất số",
+        "Thửa đất số",
+        "Thửa đất số:"
+      ]
+    },
+    "to_ban_do": {
+      "label": "tờ bản đồ số",
+      "aliases": [
+        "a. Tờ bản đồ số",
+        "Tờ bản đồ số:"
+      ]
+    },
+    "dien_tich": {
+      "label": "b. Diện tích",
+      "aliases": [
+        "b) Diện tích",
+        "Diện tích:"
+      ]
+    },
+    "muc_dich_su_dung": {
+      "label": "c. Loại đất",
+      "aliases": [
+        "c) Loại đất",
+        "Mục đích sử dụng",
+        "Loại đất:"
+      ]
+    },
+    "thoi_han": {
+      "label": "d. Thời hạn sử dụng",
+      "aliases": [
+        "d) Thời hạn sử dụng",
+        "Thời hạn sử dụng:"
+      ]
+    },
+    "hinh_thuc_su_dung": {
+      "label": "đ. Hình thức sử dụng",
+      "aliases": [
+        "đ) Hình thức sử dụng",
+        "Hình thức sử dụng:"
+      ]
+    },
+    "dia_chi": {
+      "label": "e. Địa chỉ",
+      "aliases": [
+        "e) Địa chỉ",
+        "Địa chỉ thửa đất:",
+        "Địa chỉ:"
+      ]
+    },
+    "so_vao_so": {
+      "label": "Số vào sổ cấp GCN",
+      "direction": "right",
+      "aliases": [
+        "Vào sổ cấp GCN số:",
+        "Vào sổ cấp GCN:",
+        "So vao so cap GCN"
+      ]
+    },
+    "ngay_cap": {
+      "label": "ngày tháng năm",
+      "aliases": [
+        "Ngày cấp",
+        "Ngày ký",
+        "ngày"
+      ]
+    }
+  },
   "_extension_guide": {
     "description": "Để thêm mẫu mới (mẫu C, D...), thêm key mau_C vào đây với cùng cấu trúc",
     "required_keys": [

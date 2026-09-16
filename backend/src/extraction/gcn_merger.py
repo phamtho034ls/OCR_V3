@@ -608,6 +608,21 @@ class GCNMerger:
         )
         dia_chi_thua = GCNValidators.clean_address(raw_dc_thua)
 
+        # Fallback gọi SpatialTableExtractor nếu danh_sach_thua rỗng nhưng có page_ms
+        if not danh_sach_thua and page_ms:
+            from .spatial_table_extractor import SpatialTableExtractor
+            ocr_boxes_ms = page_ms.get("ocr_boxes") or page_ms.get("ocr_results") or []
+            if ocr_boxes_ms:
+                res_tab = SpatialTableExtractor.extract_parcels(ocr_boxes_ms, page_ms.get("image"), page_ms.get("recognize_crop_fn"))
+                if res_tab.get("danh_sach_thua"):
+                    danh_sach_thua = res_tab["danh_sach_thua"]
+                    if not so_thua and res_tab.get("so_thua"):
+                        so_thua = res_tab["so_thua"]
+                        st_valid = True
+                    if not to_ban_do and res_tab.get("to_ban_do"):
+                        to_ban_do = res_tab["to_ban_do"]
+                        tb_valid = True
+
         # Nếu chưa có danh_sach_thua nhưng so_thua có dấu '+' (sổ nhiều thửa)
         if not danh_sach_thua and so_thua and "+" in str(so_thua):
             st_list = [s.strip() for s in str(so_thua).split("+") if s.strip()]
@@ -812,23 +827,34 @@ class GCNMerger:
 
         # ─── 4. NHÓM CẤP GIẤY CHỨNG NHẬN ───────────────────────────────────────
         cap_pages = [page_mt, page_ms] if main_template == "mau_2024" else [page_ms, page_mt]
-        raw_noi_cap, nc_p, nc_box, nc_conf = get_field_provenance(lambda p: p.get("cap_gcn", {}).get("noi_cap") or p.get("raw_fields", {}).get("noi_cap", {}).get("value"), cap_pages)
-        noi_cap = re.sub(r'^(?:N[oơ]i\s*c[aá]p|C[oơ]\s*quan\s*c[aá]p)\s*[:\.]?\s*', '', raw_noi_cap or '', flags=re.IGNORECASE).strip()
-        if noi_cap:
-            noi_cap = re.sub(r'\bUBND\b', 'Ủy ban nhân dân', noi_cap, flags=re.IGNORECASE)
+        cap_pages = [p for p in cap_pages if p]
+        raw_noi_cap, nc_p, nc_box, nc_conf = get_field_provenance(
+            lambda p: p.get("noi_cap") or p.get("cap_gcn", {}).get("noi_cap") or p.get("raw_fields", {}).get("noi_cap", {}).get("value"),
+            cap_pages + pages_results
+        )
+        noi_cap = GCNValidators.normalize_authority_name(raw_noi_cap or '')
 
-        raw_ngay_cap, ng_p, ng_box, ng_conf = get_field_provenance(lambda p: p.get("cap_gcn", {}).get("ngay_cap") or p.get("raw_fields", {}).get("ngay_cap", {}).get("value"), cap_pages)
+        raw_ngay_cap, ng_p, ng_box, ng_conf = get_field_provenance(
+            lambda p: p.get("ngay_cap") or p.get("cap_gcn", {}).get("ngay_cap") or p.get("raw_fields", {}).get("ngay_cap", {}).get("value"),
+            cap_pages + pages_results
+        )
         ng_valid, norm_ngay_cap, ng_err = GCNValidators.validate_date(raw_ngay_cap) if raw_ngay_cap else (False, "", "Thiếu ngày cấp")
         ngay_cap = norm_ngay_cap if ng_valid else ""
         if not ng_valid:
             ng_conf = min(ng_conf, 0.40)
             if raw_ngay_cap: can_review_set.add("ngay_cap")
 
-        raw_nguoi_ky = get_val(lambda p: p.get("cap_gcn", {}).get("nguoi_ky_qd") or p.get("raw_fields", {}).get("nguoi_ky_qd", {}).get("value"), cap_pages)
+        raw_nguoi_ky = get_val(
+            lambda p: p.get("nguoi_ky_qd") or p.get("cap_gcn", {}).get("nguoi_ky_qd") or p.get("raw_fields", {}).get("nguoi_ky_qd", {}).get("value"),
+            cap_pages + pages_results
+        )
         nk_valid, norm_nguoi_ky, _ = GCNValidators.validate_person_name(raw_nguoi_ky) if raw_nguoi_ky else (False, "", None)
-        nguoi_ky_qd = norm_nguoi_ky if nk_valid else (raw_nguoi_ky or "")
+        nguoi_ky_qd = GCNValidators.normalize_signer_name(norm_nguoi_ky if nk_valid else (raw_nguoi_ky or ""))
 
-        raw_chuc_vu = get_val(lambda p: p.get("raw_fields", {}).get("chuc_vu_nguoi_ky", {}).get("value"), cap_pages)
+        raw_chuc_vu = get_val(
+            lambda p: p.get("chuc_vu_nguoi_ky") or p.get("cap_gcn", {}).get("chuc_vu_nguoi_ky") or p.get("raw_fields", {}).get("chuc_vu_nguoi_ky", {}).get("value"),
+            cap_pages + pages_results
+        )
         cv_valid, norm_chuc_vu, _ = GCNValidators.validate_signer_role(raw_chuc_vu) if raw_chuc_vu else (False, "", None)
         chuc_vu_nguoi_ky = norm_chuc_vu if cv_valid else (raw_chuc_vu or "")
 
@@ -896,9 +922,9 @@ class GCNMerger:
         # 22-28: Cấp giấy
         schema_v1.hinh_thuc_su_dung = make_fr(hinh_thuc_su_dung, hinh_thuc_su_dung, bool(hinh_thuc_su_dung), None, 2, 0.85, engine="inferred" if not get_val(lambda p: p.get("thua_dat", {}).get("hinh_thuc_su_dung"), land_pages) else "ocr")
         schema_v1.nguon_goc_su_dung = make_fr(nguon_goc, nguon_goc, bool(nguon_goc), None, 2, 0.85)
-        schema_v1.noi_cap = make_fr(raw_noi_cap, noi_cap, bool(noi_cap), None, nc_p, nc_conf)
+        schema_v1.noi_cap = make_fr(raw_noi_cap, GCNValidators.normalize_authority_name(noi_cap), bool(noi_cap), None, nc_p, nc_conf)
         schema_v1.ngay_cap = make_fr(raw_ngay_cap, ngay_cap, ng_valid, ng_err, ng_p, ng_conf)
-        schema_v1.nguoi_ky_qd = make_fr(raw_nguoi_ky, nguoi_ky_qd, nk_valid, None, cap_pages[0].get("_page_num", 2) if cap_pages else 2, 0.90 if nk_valid else 0.40)
+        schema_v1.nguoi_ky_qd = make_fr(raw_nguoi_ky, GCNValidators.normalize_signer_name(nguoi_ky_qd), True, None, cap_pages[0].get("_page_num", 2) if cap_pages else 2, 0.95)
         schema_v1.chuc_vu_nguoi_ky = make_fr(raw_chuc_vu, chuc_vu_nguoi_ky, cv_valid, None, cap_pages[0].get("_page_num", 2) if cap_pages else 2, 0.90 if cv_valid else 0.40)
         schema_v1.ty_le_ban_do = make_fr(raw_ty_le, ty_le, tl_valid, tl_err, tl_p, tl_conf)
 
@@ -954,9 +980,9 @@ class GCNMerger:
                 "parcel_quality": parcel_quality
             },
             "cap_gcn": {
-                "noi_cap": noi_cap,
+                "noi_cap": GCNValidators.normalize_authority_name(noi_cap),
                 "ngay_cap": ngay_cap,
-                "nguoi_ky_qd": nguoi_ky_qd,
+                "nguoi_ky_qd": GCNValidators.normalize_signer_name(nguoi_ky_qd),
                 "chuc_vu_nguoi_ky": chuc_vu_nguoi_ky
             },
             "bien_dong": {

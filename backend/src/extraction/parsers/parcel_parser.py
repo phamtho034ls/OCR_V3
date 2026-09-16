@@ -212,15 +212,13 @@ class ParcelParser:
             return None, None
 
         counts = Counter(num_candidates)
-        KNOWN_SHEETS = {90, 91, 97, 98, 105, 106, 113, 78, 86, 69, 33}
+        KNOWN_SHEETS = {90, 91, 93, 97, 98, 105, 106, 113, 84, 85, 86, 88, 89, 92, 96, 69, 33}
         to_ban_do_list = []
         if explicit_tb:
             to_ban_do_list.append(explicit_tb)
         else:
             for val, count in counts.most_common():
-                if count >= 2 and val in KNOWN_SHEETS:
-                    to_ban_do_list.append(str(val))
-                elif count >= 3 and val > 10:
+                if count >= 2 and val > 10:
                     to_ban_do_list.append(str(val))
             # Nếu chưa có tờ bản đồ lặp lại >= 2, kiểm tra các tờ xuất hiện trong KNOWN_SHEETS
             if not to_ban_do_list:

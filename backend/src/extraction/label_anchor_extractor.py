@@ -77,9 +77,21 @@ class LabelAnchorExtractor:
 
         results: Dict[str, Dict[str, Any]] = {}
 
+        # Trang 2 của mẫu GCN 2024 là trang sơ đồ. Các nhãn số thửa/diện tích
+        # trên sơ đồ không phải dữ liệu thửa được cấp; chỉ cho phép các field
+        # chứng nhận cần đọc ở cuối trang để tránh lấy nhầm nhãn hình học.
+        is_diagram_page = self._is_diagram_table_page(sorted_ocr)
+        diagram_skip_fields = {
+            "ho_ten", "cmnd", "ngay_sinh", "dia_chi_thuong_tru", "so_phat_hanh",
+            "so_thua", "to_ban_do", "dien_tich", "dien_tich_bang_chu", "muc_dich_su_dung",
+            "hinh_thuc_su_dung", "thoi_han", "nguon_goc", "dia_chi",
+        }
+
         # 1. Trích xuất cơ bản từ Template Labels bằng 2D Spatial Engine
         for field_name, field_cfg in fields_config.items():
             if field_name.startswith("_"):
+                continue
+            if is_diagram_page and field_name in diagram_skip_fields:
                 continue
 
             if isinstance(field_cfg, dict):
@@ -137,14 +149,11 @@ class LabelAnchorExtractor:
         all_lines = [b.get("text", "").strip() for b in sorted_ocr if b.get("text", "").strip()]
         full_text = " \n ".join(all_lines)
 
-        # Kiểm tra xem đây có phải trang thuần sơ đồ tọa độ không
-        is_diagram_table_page = bool(re.search(
-            r"(?:BẢNG\s*LIỆT\s*KÊ|BANG\s*LIET\s*KE|tọa\s*độ|toa\s*do|chiều\s*dài|chieu\s*dai|4\.\s*sơ\s*đồ|4\.\s*so\s*do)",
-            full_text, re.IGNORECASE
-        )) and not bool(re.search(
-            r"(?:GIẤY\s*CHỨNG\s*NHẬN|GIAY\s*CHUNG\s*NHAN|CỘNG\s*HÒA\s*XÃ\s*HỘI|CONG\s*HOA\s*XA\s*HOI|1\.\s*người\s*sử\s*dụng|1\.\s*nguoi\s*su\s*dung)",
-            full_text, re.IGNORECASE
-        ))
+        # Kiểm tra xem đây có phải trang thuần sơ đồ tọa độ không. Chỉ coi
+        # "Giấy chứng nhận" là header khi đi cùng mục chủ sử dụng; câu cảnh
+        # báo ở chân trang 2 cũng chứa cụm này nhưng không biến trang thành
+        # trang thông tin chủ/thửa.
+        is_diagram_table_page = self._is_diagram_table_page(sorted_ocr)
 
         def set_val(field: str, val: Any, conf: float = 0.95):
             if val is not None and str(val).strip():
@@ -268,3 +277,23 @@ class LabelAnchorExtractor:
         for f in ALL_STANDARD_FIELDS:
             if f not in results:
                 set_val(f, None)
+
+    @staticmethod
+    def _is_diagram_table_page(ocr_boxes: List[Dict[str, Any]]) -> bool:
+        """Nhận diện trang sơ đồ mà không bị câu cảnh báo chân trang đánh lừa."""
+        full_text = " ".join(
+            str(b.get("text", "")) for b in ocr_boxes if b.get("text")
+        )
+        has_diagram_anchor = bool(re.search(
+            r"(?:BẢNG\s*LIỆT\s*KÊ|BANG\s*LIET\s*KE|tọa\s*độ|toa\s*do|"
+            r"chiều\s*dài|chieu\s*dai|4\.\s*sơ\s*đồ|4\.\s*so\s*do)",
+            full_text,
+            re.IGNORECASE,
+        ))
+        has_summary_header = bool(re.search(
+            r"(?:1\.\s*người\s*sử\s*dụng|1\.\s*nguoi\s*su\s*dung|"
+            r"2\.\s*thông\s*tin\s*thửa\s*đất|2\.\s*thong\s*tin\s*thua\s*dat)",
+            full_text,
+            re.IGNORECASE,
+        ))
+        return has_diagram_anchor and not has_summary_header

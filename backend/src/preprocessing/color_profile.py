@@ -41,6 +41,15 @@ _DEFAULT_CONFIG = {
                 "C": 8
             }
         },
+        "mau_2024": {
+            "channel": 0,            # Mẫu GCN 2 trang: ưu tiên kênh Blue
+            "clahe_clip_limit": 2.5,
+            "clahe_tile_size": [8, 8],
+            "adaptive_threshold": {
+                "block_size": 11,
+                "C": 6
+            }
+        },
         "unknown": {
             "channel": -1,           # -1 = grayscale toàn bộ
             "clahe_clip_limit": 2.0,
@@ -255,7 +264,7 @@ class ColorProfile:
                     
                     # Hỗ trợ schema phẳng trực tiếp theo template
                     parsed_profiles = {}
-                    for tmpl in ["mau_A", "mau_B", "unknown"]:
+                    for tmpl in ["mau_A", "mau_B", "mau_2024", "unknown"]:
                         if tmpl in data:
                             tmpl_cfg = data[tmpl]
                             strat = tmpl_cfg.get("channel_strategy", "")

@@ -486,11 +486,10 @@ class Cadastral129Mapper:
         thua = merged.get("thua_dat", {})
         danh_sach = thua.get("danh_sach_thua", [])
 
-        # Lọc danh sách thửa: loại bỏ bản ghi rỗng số thửa, chỉ coi là nhiều thửa nếu có từ 2 thửa hợp lệ khác nhau
+        # Lọc danh sách thửa: loại bỏ bản ghi rỗng số thửa
         if danh_sach:
-            valid_p = [p for p in danh_sach if str(p.get("so_thua") or "").strip() and str(p.get("so_thua") or "").strip() != "-"]
-            unique_st = set(str(p.get("so_thua") or "").strip() for p in valid_p)
-            if len(valid_p) >= 2 and len(unique_st) >= 2:
+            valid_p = [p for p in danh_sach if str(p.get("so_thua") or "").strip() and str(p.get("so_thua") or "").strip() not in ("-", "None")]
+            if valid_p:
                 danh_sach = valid_p
             else:
                 danh_sach = []
@@ -665,6 +664,12 @@ class Cadastral129Mapper:
         chu1_gender = cls.detect_gender(raw_ten1)
         if chu1_gender is None:
             chu1_gender = cls.detect_gender(nguoi.get("ho_ten_goc", ""))
+        if chu1_gender is None and (nguoi.get("gioi_tinh_chu_1") or nguoi.get("gioi_tinh")):
+            g_str = str(nguoi.get("gioi_tinh_chu_1") or nguoi.get("gioi_tinh")).strip().lower()
+            if "nam" in g_str or g_str == "1":
+                chu1_gender = 1
+            elif "nữ" in g_str or "nu" in g_str or g_str == "0":
+                chu1_gender = 0
 
         chu2_hoten = cls.clean_person_name(raw_ten2)
         chu2_gender = 0 if chu1_gender == 1 else (1 if chu1_gender == 0 else 0)
@@ -917,8 +922,8 @@ class Cadastral129Mapper:
             # Giấy tờ tùy thân Chủ 1 (37 -> 40)
             "GT_loaiGiayTo": chu1_loai_gt,
             "GT_soGiayTo": chu1_cid,
-            "GT_ngayCap": "",
-            "GT_noiCap": "",
+            "GT_ngayCap": nguoi.get("gt_ngay_cap") or merged.get("cccd_data", {}).get("ngay_cap") or "",
+            "GT_noiCap": nguoi.get("gt_noi_cap") or merged.get("cccd_data", {}).get("noi_cap") or "",
 
             # Thông tin vợ hoặc chồng (41 -> 54)
             "VC_hoTen": chu2_hoten,

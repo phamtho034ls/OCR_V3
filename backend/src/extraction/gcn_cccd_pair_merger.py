@@ -8,11 +8,16 @@ Phục vụ chiến dịch làm sạch CSDL Đất đai (Kế hoạch 515/KH-BCA
 """
 
 import os
+import sys
 import re
 import unicodedata
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
+
+_SRC_DIR = Path(__file__).resolve().parent.parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 from preprocessing.ingestion import Ingestion
 from detection.paddleocr_detect import PaddleOCRDetector
@@ -52,13 +57,19 @@ class GCNCCCDPairMerger:
         self.gcn_merger = GCNMerger()
         self.cccd_extractor = CCCDExtractor()
 
-    def scan_directory_pairs(self, directory_path: str) -> Dict[str, Dict[str, Optional[str]]]:
+    def scan_directory_pairs(self, directory_path: str) -> Dict[str, Dict[str, Any]]:
         """
         Quét thư mục và gom nhóm các file thành từng cặp hồ sơ:
         {
             "AA 00476432": {
+                "pair_id": "AA 00476432",
                 "gcn_path": ".../AA 00476432-GCN.pdf",
-                "gt_path": ".../AA 00476432-GT.pdf"
+                "gt_path": ".../AA 00476432-GT.pdf",
+                "gcn_file": "AA 00476432-GCN.pdf",
+                "gt_file": "AA 00476432-GT.pdf",
+                "has_gcn": True,
+                "has_gt": True,
+                "status": "both"
             },
             ...
         }
@@ -67,39 +78,88 @@ class GCNCCCDPairMerger:
         if not dir_path.exists():
             raise FileNotFoundError(f"Thư mục không tồn tại: {directory_path}")
 
-        all_files = [p for p in dir_path.glob("*.*") if p.suffix.lower() in [".pdf", ".png", ".jpg", ".jpeg"]]
-        pairs: Dict[str, Dict[str, Optional[str]]] = {}
+        # Tìm toàn bộ file PDF và ảnh
+        valid_exts = {".pdf", ".png", ".jpg", ".jpeg"}
+        all_files = [p for p in dir_path.glob("*.*") if p.suffix.lower() in valid_exts]
+        if not all_files:
+            # Thử tìm đệ quy nếu thư mục con chứa file
+            all_files = [p for p in dir_path.rglob("*.*") if p.suffix.lower() in valid_exts]
+
+        pairs: Dict[str, Dict[str, Any]] = {}
 
         for f in all_files:
             name = f.stem
-            # Nhận diện pattern [ID]-GCN hoặc [ID]-GT
-            m_gcn = re.search(r"^(.*?)[-_]GCN$", name, re.IGNORECASE)
-            m_gt = re.search(r"^(.*?)[-_]GT$", name, re.IGNORECASE)
+            # Nhận diện pattern [ID]-GCN, [ID]_GCN, [ID] GCN hoặc [ID]-GT...
+            m_gcn = re.search(r"^(.*?)(?:[-_\s]+)GCN$", name, re.IGNORECASE)
+            m_gt = re.search(r"^(.*?)(?:[-_\s]+)GT$", name, re.IGNORECASE)
 
             if m_gcn:
                 pair_id = m_gcn.group(1).strip()
                 if pair_id not in pairs:
-                    pairs[pair_id] = {"gcn_path": None, "gt_path": None}
+                    pairs[pair_id] = {
+                        "pair_id": pair_id,
+                        "gcn_path": None,
+                        "gt_path": None,
+                        "gcn_file": None,
+                        "gt_file": None,
+                    }
                 pairs[pair_id]["gcn_path"] = str(f)
+                pairs[pair_id]["gcn_file"] = f.name
             elif m_gt:
                 pair_id = m_gt.group(1).strip()
                 if pair_id not in pairs:
-                    pairs[pair_id] = {"gcn_path": None, "gt_path": None}
+                    pairs[pair_id] = {
+                        "pair_id": pair_id,
+                        "gcn_path": None,
+                        "gt_path": None,
+                        "gcn_file": None,
+                        "gt_file": None,
+                    }
                 pairs[pair_id]["gt_path"] = str(f)
+                pairs[pair_id]["gt_file"] = f.name
             else:
                 # File đơn lẻ không theo quy ước -GCN / -GT
                 pair_id = name.strip()
                 if pair_id not in pairs:
-                    pairs[pair_id] = {"gcn_path": str(f), "gt_path": None}
+                    pairs[pair_id] = {
+                        "pair_id": pair_id,
+                        "gcn_path": str(f),
+                        "gt_path": None,
+                        "gcn_file": f.name,
+                        "gt_file": None,
+                    }
 
-        logger.info(f"Đã phát hiện {len(pairs)} bộ hồ sơ trong thư mục '{directory_path}'.")
+        # Cập nhật cờ và trạng thái
+        for pid, pinfo in pairs.items():
+            has_gcn = bool(pinfo.get("gcn_path"))
+            has_gt = bool(pinfo.get("gt_path"))
+            pinfo["has_gcn"] = has_gcn
+            pinfo["has_gt"] = has_gt
+            if has_gcn and has_gt:
+                pinfo["status"] = "both"
+            elif has_gcn:
+                pinfo["status"] = "gcn_only"
+            else:
+                pinfo["status"] = "gt_only"
+
+        both_count = sum(1 for p in pairs.values() if p["status"] == "both")
+        gcn_count = sum(1 for p in pairs.values() if p["status"] == "gcn_only")
+        gt_count = sum(1 for p in pairs.values() if p["status"] == "gt_only")
+
+        logger.info(
+            f"Đã quét '{directory_path}': tổng {len(pairs)} bộ ({both_count} đủ cặp GCN+GT, "
+            f"{gcn_count} chỉ GCN, {gt_count} chỉ GT)."
+        )
         return pairs
 
     def process_single_pair(
         self,
         pair_id: str,
         gcn_path: Optional[str],
-        gt_path: Optional[str]
+        gt_path: Optional[str],
+        crops_dir: Optional[str] = None,
+        url_prefix: Optional[str] = None,
+        enable_cccd_audit: bool = False,
     ) -> Dict[str, Any]:
         """
         Xử lý OCR một cặp hồ sơ Sổ Đỏ + CCCD và kết hợp kết quả.
@@ -123,6 +183,66 @@ class GCNCCCDPairMerger:
 
         # 3. Ghép nối và làm giàu dữ liệu
         merged = self._merge_gcn_and_gt(pair_id, gcn_data, gt_data, gcn_path, gt_path)
+
+        # 3.5. Cắt và lưu ảnh crop phục vụ kiểm tra đối soát
+        if crops_dir:
+            try:
+                from extraction.pair_cropper import PairCropper
+                crop_manifest = PairCropper.crop_and_save_pair(
+                    pair_id=pair_id,
+                    gcn_imgs=gcn_data.get("_raw_imgs", []),
+                    gcn_pages_results=gcn_data.get("_pages_results", []),
+                    gt_imgs=gt_data.get("_raw_imgs", []),
+                    gt_boxes_per_page=gt_data.get("_boxes_per_page", []),
+                    gt_data=gt_data,
+                    crops_base_dir=Path(crops_dir),
+                    url_prefix=url_prefix,
+                )
+                if enable_cccd_audit:
+                    # Audit chỉ đọc lại file crop, không sửa ``gt_data`` hoặc dữ liệu mapping.
+                    from extraction.cccd_crop_auditor import CCCDCropAuditor
+                    crop_manifest["cccd_audit"] = CCCDCropAuditor(
+                        self.detector.recognize_crop
+                    ).audit_manifest(
+                        pair_id=pair_id,
+                        manifest=crop_manifest,
+                        source_value=gt_data.get("so_cccd"),
+                    )
+                    PairCropper.save_manifest(crop_manifest)
+                merged["crops"] = crop_manifest
+                logger.info(
+                    f"[{pair_id}] Đã lưu {crop_manifest.get('total_crops', 0)} ảnh crop đối soát "
+                    f"tại {crop_manifest.get('crops_dir')}"
+                )
+            except Exception as e_crop:
+                logger.warning(f"[{pair_id}] Không thể lưu ảnh crop đối soát: {e_crop}", exc_info=True)
+                merged["crops"] = {}
+
+        # Thu hồi bộ nhớ ảnh thô
+        gcn_data.pop("_raw_imgs", None)
+        gcn_data.pop("_pages_results", None)
+        gt_data.pop("_raw_imgs", None)
+        gt_data.pop("_boxes_per_page", None)
+        merged.pop("_raw_imgs", None)
+        merged.pop("_pages_results", None)
+
+        # 4. Map sang các dòng dữ liệu 129 cột
+        try:
+            from ocr_so_do.application.projections.cadastral_129_mapper import Cadastral129Mapper
+            f_name = os.path.basename(gcn_path) if gcn_path else os.path.basename(gt_path or "")
+            rows = Cadastral129Mapper.map_merged_to_rows(merged, start_stt=1, file_name=f_name)
+            merged["chuyen_doi_rows"] = rows
+        except Exception as e_map:
+            logger.warning(f"[{pair_id}] Không thể map 129 cột: {e_map}")
+            merged["chuyen_doi_rows"] = []
+
+        # 5. Dọn dẹp RAM/GPU
+        try:
+            from ocr_so_do.infrastructure.memory import cleanup_memory
+            cleanup_memory(force_os_trim=True)
+        except Exception:
+            pass
+
         return merged
 
     def _process_gcn(self, pdf_path: str, pair_id: str) -> Dict[str, Any]:
@@ -172,6 +292,11 @@ class GCNCCCDPairMerger:
                 "so_phat_hanh": fields.get("so_phat_hanh", {}).get("value"),
                 "so_vao_so": fields.get("so_vao_so", {}).get("value"),
                 "ma_vach": fields.get("ma_vach", {}).get("value"),
+                "cap_gcn": {
+                    "noi_cap": fields.get("noi_cap", {}).get("value"),
+                    "ngay_cap": fields.get("ngay_cap", {}).get("value"),
+                    "nguoi_ky_qd": fields.get("nguoi_ky_qd", {}).get("value"),
+                },
                 "nguoi_su_dung": {
                     "ten": fields.get("ho_ten", {}).get("value"),
                     "cmnd": fields.get("cmnd", {}).get("value"),
@@ -193,12 +318,15 @@ class GCNCCCDPairMerger:
             })
 
         merged_gcn = self.gcn_merger.merge(pages_results, bo_gcn_id=pair_id)
+        merged_gcn["_raw_imgs"] = imgs
+        merged_gcn["_pages_results"] = pages_results
         return merged_gcn
 
     def _process_gt(self, pdf_path: str) -> Dict[str, Any]:
         """OCR file Giấy tờ tùy thân (CCCD) qua CCCDExtractor."""
         imgs = self.ingestion.load(pdf_path, split_a3=False)
         all_raw = []
+        boxes_per_page = []
 
         for p_idx, img in enumerate(imgs):
             raw_boxes = self.detector.detect(img)
@@ -229,8 +357,11 @@ class GCNCCCDPairMerger:
                     logger.debug(f"VietOCR error on CCCD page {p_idx}: {e}")
 
             all_raw.extend(raw_boxes)
+            boxes_per_page.append(raw_boxes)
 
         res = self.cccd_extractor.extract(all_raw)
+        res["_raw_imgs"] = imgs
+        res["_boxes_per_page"] = boxes_per_page
         return res
 
     def _merge_gcn_and_gt(
@@ -295,6 +426,14 @@ class GCNCCCDPairMerger:
             # Địa chỉ thường trú từ CCCD
             if cccd_addr and (not nguoi.get("dia_chi_thuong_tru") or len(cccd_addr) > len(nguoi.get("dia_chi_thuong_tru", ""))):
                 nguoi["dia_chi_thuong_tru"] = cccd_addr
+
+            # Ngày cấp và Nơi cấp CCCD
+            if gt_data.get("ngay_cap"):
+                nguoi["gt_ngay_cap"] = str(gt_data.get("ngay_cap", "")).strip()
+            if gt_data.get("noi_cap"):
+                nguoi["gt_noi_cap"] = str(gt_data.get("noi_cap", "")).strip()
+            elif not nguoi.get("gt_noi_cap"):
+                nguoi["gt_noi_cap"] = "Cục Cảnh sát QLHC về TTXH"
 
         # Pháp nhân trên GCN mặc định
         if not nguoi.get("phap_nhan"):

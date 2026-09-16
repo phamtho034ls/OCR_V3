@@ -150,6 +150,24 @@ class PostgresStore:
                             );
                         """)
 
+                        # 3. Audit độc lập cho ảnh crop CCCD của luồng ghép cặp.
+                        # Không dùng bảng này cho luồng OCR đơn lẻ để tránh thay đổi dữ liệu cũ.
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS cccd_crop_audits (
+                                id BIGSERIAL PRIMARY KEY,
+                                batch_id VARCHAR(100) NOT NULL REFERENCES ocr_batches(batch_id) ON DELETE CASCADE,
+                                pair_id VARCHAR(255) NOT NULL,
+                                crop_id VARCHAR(128) NOT NULL,
+                                crop_path TEXT,
+                                crop_url TEXT,
+                                audit_status VARCHAR(32) NOT NULL,
+                                audit_data JSONB NOT NULL,
+                                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                                UNIQUE (batch_id, pair_id, crop_id)
+                            );
+                        """)
+
                         # Index tối ưu hóa truy vấn và lọc
                         cur.execute("""
                             CREATE INDEX IF NOT EXISTS idx_ocr_batches_created ON ocr_batches(created_at DESC);
@@ -158,6 +176,8 @@ class PostgresStore:
                             CREATE INDEX IF NOT EXISTS idx_ocr_records_source_folder ON ocr_records(source_folder);
                             CREATE INDEX IF NOT EXISTS idx_ocr_records_created ON ocr_records(created_at DESC);
                             CREATE INDEX IF NOT EXISTS idx_ocr_records_file_name ON ocr_records(file_name);
+                            CREATE INDEX IF NOT EXISTS idx_cccd_crop_audits_batch ON cccd_crop_audits(batch_id);
+                            CREATE INDEX IF NOT EXISTS idx_cccd_crop_audits_status ON cccd_crop_audits(audit_status);
                         """)
                         conn.commit()
                 logger.info("Khởi tạo Schema PostgreSQL ocr_so_do thành công.")
@@ -376,6 +396,54 @@ class PostgresStore:
                         conn.commit()
         except Exception as e:
             logger.warning(f"Không thể kiểm tra/tạo trước batch {batch_id}: {e}")
+
+    def save_cccd_crop_audit(
+        self,
+        batch_id: str,
+        pair_id: str,
+        audit: Dict[str, Any],
+        source_path: str = "",
+    ) -> bool:
+        """Lưu audit CCCD của batch pair, không can thiệp ocr_records của luồng cũ."""
+        if not self._pool or not batch_id or not pair_id:
+            return False
+
+        crop_id = str(audit.get("crop_id") or "")
+        if not crop_id:
+            logger.warning("Bỏ qua audit CCCD không có crop_id cho pair %s.", pair_id)
+            return False
+
+        try:
+            self._ensure_batch_exists(batch_id, batch_id, source_path)
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO cccd_crop_audits (
+                            batch_id, pair_id, crop_id, crop_path, crop_url,
+                            audit_status, audit_data, created_at, updated_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        ON CONFLICT (batch_id, pair_id, crop_id) DO UPDATE SET
+                            crop_path = EXCLUDED.crop_path,
+                            crop_url = EXCLUDED.crop_url,
+                            audit_status = EXCLUDED.audit_status,
+                            audit_data = EXCLUDED.audit_data,
+                            updated_at = CURRENT_TIMESTAMP;
+                    """, (
+                        batch_id,
+                        pair_id,
+                        crop_id,
+                        audit.get("crop_path"),
+                        audit.get("crop_url"),
+                        audit.get("status", "not_available"),
+                        Json(audit),
+                    ))
+                    conn.commit()
+            return True
+        except Exception as e:
+            # Lưu DB là best-effort: lỗi DB không được chặn Excel/JSON/crop của batch pair.
+            logger.warning("Không thể lưu audit CCCD batch=%s pair=%s: %s", batch_id, pair_id, e)
+            return False
 
     def list_records(
         self,
