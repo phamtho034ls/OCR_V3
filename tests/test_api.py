@@ -82,10 +82,10 @@ class TestAPIHealth:
 
 
 class TestOCREndpoint:
-    """Test POST /ocr endpoint với mock pipeline."""
+    """Test POST /api/v1/documents endpoint với mock use case."""
 
     def test_ocr_endpoint_with_mock(self):
-        """OCR endpoint với pipeline được mock."""
+        """OCR endpoint với use case được mock."""
         try:
             from fastapi.testclient import TestClient
             from api.main import app
@@ -93,39 +93,32 @@ class TestOCREndpoint:
             pytest.skip("fastapi[testclient] không được cài.")
 
         mock_result = make_mock_pipeline_result()
+        mock_container = MagicMock()
+        mock_container.process_document_uc.execute.return_value = {
+            "document_id": "doc_test_123",
+            "file_name": "test.jpg",
+            "elapsed_seconds": 1.2,
+            "merged": mock_result,
+            "chuyen_doi_rows": [],
+            "raw_ocr_markdown": "# Test",
+        }
 
-        with patch("api.main.get_pipeline") as mock_get_pipeline, \
-             patch("api.main.run_pipeline_on_image") as mock_run:
-
-            # Mock pipeline
-            mock_pipeline = MagicMock()
-            mock_pipeline.__getitem__.return_value = MagicMock()
-
-            # Mock ingestion.load trả về list ảnh
-            mock_ingestion = MagicMock()
-            test_img = np.ones((400, 300, 3), dtype=np.uint8) * 200
-            mock_ingestion.load.return_value = [test_img]
-            mock_pipeline.__getitem__ = lambda self, key: mock_ingestion if key == "ingestion" else MagicMock()
-
-            import asyncio
-            async def async_pipeline():
-                return mock_pipeline
-            mock_get_pipeline.return_value = async_pipeline()
-            mock_run.return_value = mock_result
-
+        with patch("ocr_so_do.interfaces.api.routers.documents.get_container", return_value=mock_container):
             client = TestClient(app)
             jpeg_bytes = make_test_jpeg_bytes()
 
             response = client.post(
-                "/ocr",
+                "/api/v1/documents",
                 files={"file": ("test.jpg", io.BytesIO(jpeg_bytes), "image/jpeg")}
             )
 
-            # Phải không lỗi server
-            assert response.status_code in [200, 422, 500]
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "success"
+            assert "document_id" in data and data["document_id"].startswith("doc_")
 
     def test_ocr_invalid_format(self):
-        """Upload file text → lỗi 400."""
+        """Upload file không hợp lệ (.xyz) → lỗi 400."""
         try:
             from fastapi.testclient import TestClient
             from api.main import app
@@ -134,11 +127,10 @@ class TestOCREndpoint:
 
         client = TestClient(app)
         response = client.post(
-            "/ocr",
+            "/api/v1/documents",
             files={"file": ("test.xyz", io.BytesIO(b"not an image"), "application/octet-stream")}
         )
-        # 400 hoặc 422 (validation error)
-        assert response.status_code in [400, 422]
+        assert response.status_code == 400
 
     def test_health_returns_json(self):
         """Health response phải là JSON hợp lệ."""

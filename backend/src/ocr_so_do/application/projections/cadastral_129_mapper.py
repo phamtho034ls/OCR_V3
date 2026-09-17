@@ -203,9 +203,11 @@ class Cadastral129Mapper:
                 s = m_loc.group(1).strip(' -:;,')
             else:
                 return ""
+        # Tách từ dính liền giữa tiền tố thường trú và đơn vị hành chính (ví dụ: truThon -> tru Thon)
+        s = re.sub(r'(tr[uúùứtnữĩí]+)(Th[oôòóỏõọôốồổỗộơớờởỡợaáàảãạ]n|Xóm|Bản|Tổ|Đồng|Khu|Xã|Phường|Huyện|Tỉnh)', r'\1 \2', s, flags=re.IGNORECASE)
         # Bỏ nhãn tiền tố thường trú / thửa đất (bao gồm các biến thể lỗi OCR: Đưa chỉ, thường trữ, thương trí, ...)
         s = re.sub(
-            r"^.*?(?:(?:(?:Địa|Đia|Đĩa|Đụi|Đui|D[i1]a|D[uư]i|Sinh|Đình|Đưa)\s*ch[ỉíĩìi]\s*)?(?:thường|thương|thubng|mương|mường|chường)?\s*tr[úùứtnữĩí]+[A-Za-zÀ-Ỹà-ỹ]*|b\)\s*Địa\s*chỉ|hộ\s*khẩu\s*thường\s*tr[úùứ]*)\s*[:\.,]?\s*",
+            r"^.*?(?:(?:(?:Địa|Đia|Đĩa|Đụi|Đui|D[i1]a|D[uư]i|Sinh|Đình|Đưa)\s*ch[ỉíĩìi]?\s*)?(?:thường|thương|thubng|mương|mường|chường|thuong)?\s*tr[uúùứtnữĩí]{1,4}|b\)\s*Địa\s*chỉ|hộ\s*khẩu\s*(?:thường|thuong)?\s*tr[uúùứ]*)\s*[:\.,]?\s*",
             "",
             s,
             flags=re.IGNORECASE
@@ -252,6 +254,11 @@ class Cadastral129Mapper:
         s = re.sub(r"\bVàog\s*ứn\b", "Vằng Ứn", s, flags=re.IGNORECASE)
         s = re.sub(r"\bVùng\s*ứn\b", "Vằng Ứn", s, flags=re.IGNORECASE)
         s = re.sub(r"\bVàng\s*ơn\b", "Vằng Ứn", s, flags=re.IGNORECASE)
+        s = re.sub(r"(\w+)(tinh\b|tỉnh\b)", r"\1, \2", s, flags=re.IGNORECASE)
+        s = re.sub(r"[\.;,]?\s*\bxa\b\s*", ", xã ", s, flags=re.IGNORECASE)
+        s = re.sub(r"[\.;,]?\s*\bhuyen\b\s*", ", huyện ", s, flags=re.IGNORECASE)
+        s = re.sub(r"[\.;,]?\s*\btinh\b\s*", ", tỉnh ", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bL\s*ang\s*Son\b", "Lạng Sơn", s, flags=re.IGNORECASE)
         s = re.sub(r",\s*Lạng\s*Sơn\b", ", tỉnh Lạng Sơn", s, flags=re.IGNORECASE)
         s = re.sub(r"(?<=[^\s,;])\s+(?=(?:xã|phường|thị\s*trấn|huyện|quận|thị\s*xã|tỉnh|thành\s*phố)\b)", ", ", s, flags=re.IGNORECASE)
         s = re.sub(r"\s*,\s*", ", ", s)
@@ -265,7 +272,7 @@ class Cadastral129Mapper:
         ).strip(" -:;,.")
         s = truncate_address_after_province(s)
         # Nếu sau khi làm sạch chuỗi chỉ còn lại tên người (không hề có cấp hành chính thôn/xã/huyện/tỉnh/đường/phố/số nhà)
-        if s and not any(k in s.lower() for k in ["thôn", "xóm", "bản", "tổ", "làng", "phố", "đường", "xã", "phường", "thị trấn", "huyện", "quận", "thị xã", "tỉnh", "thành phố", "tp", "đồng", "khu"]):
+        if s and not any(k in s.lower() for k in ["thôn", "thon", "xóm", "xom", "bản", "ban", "tổ", "to", "làng", "lang", "phố", "pho", "đường", "duong", "xã", "xa", "phường", "phuong", "thị trấn", "thi tran", "huyện", "huyen", "quận", "quan", "thị xã", "thi xa", "tỉnh", "tinh", "thành phố", "thanh pho", "tp", "đồng", "dong", "khu"]):
             return ""
         return s
 
@@ -375,7 +382,7 @@ class Cadastral129Mapper:
             m_sn = re.match(r"^(?:số\s*)?([0-9A-Za-z\/\-]+)\s*(?:đường|phố)?\s*(.*)$", rem, re.IGNORECASE)
             if m_sn and re.search(r"\d", m_sn.group(1)):
                 res["so_nha"] = m_sn.group(1).strip()
-                res["ten_duong_pho"] = m_sn.group(2).strip()
+                res["ten_duong_pho"] = m_sn.group(2).strip(" ,")
             else:
                 res["ten_duong_pho"] = rem
 
@@ -411,6 +418,8 @@ class Cadastral129Mapper:
         if not raw_mdsd:
             return ""
         s = str(raw_mdsd).strip()
+        if s.upper() == "LUA":
+            return "LUC"
         # 1. Nếu đã là mã loại đất hợp lệ (đơn hoặc ghép bằng '+')
         v_code, n_code, _ = GCNValidators.validate_land_code(s)
         if v_code and n_code:
@@ -440,7 +449,7 @@ class Cadastral129Mapper:
         if "chuyên trồng lúa" in s_low:
             return "LUC"
         if "lúa" in s_low or "lua" in s_low:
-            return "LUA"
+            return "LUC"
         if "rừng sản xuất" in s_low or "rung san xuat" in s_low:
             return "RSX"
         if "rừng phòng hộ" in s_low:

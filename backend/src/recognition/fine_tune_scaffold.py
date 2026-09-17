@@ -35,6 +35,7 @@ Script scaffold để fine-tune mô hình VietOCR trên dữ liệu sổ đỏ/s
 # ============================================================
 # TODO: Thêm dữ liệu thật rồi chạy script này
 # ============================================================
+"""
 
 import argparse
 import csv

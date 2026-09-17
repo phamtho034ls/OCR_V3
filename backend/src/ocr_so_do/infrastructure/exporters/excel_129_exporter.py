@@ -149,15 +149,18 @@ class Excel129Exporter(CadastralExporterPort):
                 else:
                     cell.alignment = align_left
 
-                # Cảnh báo mềm màu vàng nhạt cho ô thiếu trường cốt lõi (Priority 5)
-                if code in cls.CORE_ALERT_FIELDS and (val is None or str(val).strip() == "" or str(val).lower() == "nan"):
-                    cell.fill = core_alert_fill
-                elif code == "GCN_soVaoSo" and val:
-                    # Bôi đỏ ô Số vào sổ nếu có giá trị nhưng không đúng và đủ 5 chữ số theo yêu cầu
-                    digits_match = re.findall(r"\d", str(val))
-                    if len(digits_match) != 5:
+                # Thiếu dữ liệu là cảnh báo mềm; có dữ liệu nhưng sai cấu trúc mới là
+                # lỗi đỏ để nhân viên ưu tiên kiểm tra lại bản gốc.
+                if code == "GCN_soVaoSo":
+                    digits_match = re.findall(r"\d", str(val or ""))
+                    if val is None or str(val).strip() == "" or str(val).lower() == "nan":
+                        cell.fill = core_alert_fill
+                    elif len(digits_match) != 5:
                         cell.fill = red_alert_fill
                         cell.font = red_font
+                elif code in cls.CORE_ALERT_FIELDS and (val is None or str(val).strip() == "" or str(val).lower() == "nan"):
+                    # Cảnh báo mềm màu vàng nhạt cho các ô thiếu trường cốt lõi khác (Priority 5)
+                    cell.fill = core_alert_fill
 
             sheet.row_dimensions[r_idx].height = 20
 

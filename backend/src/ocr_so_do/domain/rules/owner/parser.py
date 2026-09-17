@@ -3,6 +3,7 @@ extraction/parsers/owner_parser.py - Modular parser for land owner and personal 
 """
 
 import re
+import unicodedata
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 from ..spatial_engine import SpatialEngine
@@ -20,8 +21,10 @@ INVALID_OWNER_KEYWORDS = [
     "văn phòng", "van phong", "chi nhánh", "chi nhanh", "giám đốc", "chủ tịch", "ký tên",
     "qsdđ", "qsd", "kết cấu", "ket cau", "tài sản", "tai san", "sơ đồ", "so do",
     "bảng liệt kê", "tọa độ", "chiều dài", "cạnh thửa", "đỉnh thửa",
-    "giấy chứng nhận", "giay chung nhan", "khai báo", "khai bao", "sửa chữa", "sua chua",
-    "tẩy xóa", "tay xoa", "bổ sung", "bo sung", "mã vạch", "ma vach", "lưu ý", "luu y"
+    "giấy chứng nhận", "giay chung nhan", "chung nhan", "khai báo", "khai bao", "sửa chữa", "sua chua",
+    "tẩy xóa", "tay xoa", "bổ sung", "bo sung", "mã vạch", "ma vach", "lưu ý", "luu y",
+    "nội dung", "noi dung", "bất kỳ", "bat ky", "bị mất", "bi mat", "hư hỏng", "hu hong",
+    "không được", "khong duoc", "tự ý", "tu y"
 ]
 
 
@@ -38,8 +41,7 @@ class OwnerParser:
         "Chủ sử dụng đất",
         "Chủ sở hữu",
         "Họ và tên",
-        "Cấp cho",
-        "Chứng nhận"
+        "Cấp cho"
     ]
 
     RESIDENCE_LABELS = [
@@ -195,7 +197,11 @@ class OwnerParser:
         if re.search(r'\d{3,}', text):
             return False
         t_lower = text.lower()
-        if any(kw in t_lower for kw in INVALID_OWNER_KEYWORDS):
+        t_norm = unicodedata.normalize("NFKD", t_lower)
+        t_clean = "".join(c for c in t_norm if not unicodedata.combining(c))
+        if any(kw in t_lower or kw in t_clean for kw in INVALID_OWNER_KEYWORDS):
+            return False
+        if any(w in t_clean for w in ["noi dung", "bi mat", "chung nhan", "chuing nhan", "hu hong", "khai bao", "sua chua", "tay xoa", "bo sung", "khong duoc"]):
             return False
         words = text.replace(":", " ").replace("-", " ").split()
         return len(words) >= 2
@@ -366,7 +372,7 @@ class OwnerParser:
         s = s.strip(" -:;,.")
 
         # Cắt bỏ triệt để mọi tiền tố OCR rác đứng trước đơn vị hành chính đầu tiên
-        m_admin = re.search(r'\b(Th[ôoóòõọỏơớờỡợởôốồỗộổaáàãạả]n|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]m|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]n|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]a|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]o|Thơ|Xóm|Bản|Tổ|Đồng|Khu|Số\s*\d+[\w\/\-]*|Đội|Đoàn|Phố|Đường|Xã|Phường|Thị\s*trấn)\b', s, re.IGNORECASE)
+        m_admin = re.search(r'\b(Th[ôoóòõọỏơớờỡợởôốồỗộổaáàãạảâầấẩẫậ]n|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]m|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]n|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]a|Th[òóỏõọôốồổỗộơớờởỡợaáàảãạ]o|Thơ|Xóm|Bản|Tổ|Đồng|Khu|Số\s*\d+[\w\/\-]*|Đội|Đoàn|Phố|Đường|Xã|Phường|Thị\s*trấn)\b', s, re.IGNORECASE)
         if m_admin:
             s = s[m_admin.start():].strip(" -:;,.")
 

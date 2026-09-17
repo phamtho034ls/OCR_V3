@@ -25,19 +25,21 @@ import {
   Database,
   Layers,
   Eye,
+  RotateCcw,
 } from 'lucide-react';
 import { BatchItemSummary, BatchProgressResponse } from '../../shared/types';
 
 interface BatchScanPageProps {
   onView129Table: (rows: Record<string, any>[]) => void;
   onOpenPgStorage?: () => void;
+  onRunningChange?: (isRunning: boolean) => void;
 }
 
-export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, onOpenPgStorage }) => {
-  const [scanMode, setScanMode] = useState<'client_folder' | 'server_path' | 'pair_scan'>('pair_scan');
+export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, onOpenPgStorage, onRunningChange }) => {
+  const [scanMode, setScanMode] = useState<'client_folder' | 'server_path' | 'pair_scan'>('client_folder');
 
   // Pair Scan State (GCN & GT -> 129 Cột)
-  const [pairServerPath, setPairServerPath] = useState<string>('D:\\13. XOM 9\\XOM 9\\XOM 9 VAN LA');
+  const [pairServerPath, setPairServerPath] = useState<string>('');
   const [pairSampleLimit, setPairSampleLimit] = useState<number>(0);
   const [isPreviewingPairs, setIsPreviewingPairs] = useState<boolean>(false);
   const [pairPreviewData, setPairPreviewData] = useState<{
@@ -76,7 +78,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Server Path State
-  const [serverPath, setServerPath] = useState<string>('D:\\Tho\\OCR\\DataOCR\\Ho so quet_VINHYEN');
+  const [serverPath, setServerPath] = useState<string>('');
   const [sampleCount, setSampleCount] = useState<number>(0);
   const [isServerScanning, setIsServerScanning] = useState<boolean>(false);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
@@ -88,7 +90,9 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
   const [totalFilesCount, setTotalFilesCount] = useState<number>(0);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [speedPerMin, setSpeedPerMin] = useState<number>(0);
-  const [batchStatus, setBatchStatus] = useState<'idle' | 'running' | 'completed' | 'cancelled' | 'error'>('idle');
+  const [batchStatus, setBatchStatus] = useState<'idle' | 'running' | 'completed' | 'cancelled' | 'error' | 'paused'>('idle');
+  const [clientPausedIndex, setClientPausedIndex] = useState<number>(0);
+  const clientPausedIndexRef = useRef<number>(0);
   const [results, setResults] = useState<BatchItemSummary[]>([]);
   const [chuyenDoiRows, setChuyenDoiRows] = useState<Record<string, any>[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -118,6 +122,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
     }
 
     setClientFiles(filtered);
+    setClientPausedIndex(0);
+    clientPausedIndexRef.current = 0;
     // Detect folder name from webkitRelativePath
     const firstRel = filtered[0].webkitRelativePath;
     if (firstRel) {
@@ -136,33 +142,52 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
     setTotalFilesCount(filtered.length);
   };
 
-  // Run Client Folder Processing sequentially
-  const startClientProcessing = async () => {
+  // Run Client Folder Processing sequentially (hỗ trợ tiếp tục sau khi dừng)
+  const startClientProcessing = async (resume: boolean = false) => {
     if (clientFiles.length === 0) return;
+
+    const startIdx = resume ? clientPausedIndexRef.current : 0;
+    if (startIdx >= clientFiles.length) {
+      return;
+    }
 
     setIsClientProcessing(true);
     setBatchStatus('running');
     setErrorMessage(null);
-    setResults([]);
-    setChuyenDoiRows([]);
-    setProgressPercent(0);
-    setProcessedCount(0);
+
+    let tempResults: BatchItemSummary[] = [];
+    let tempRows: Record<string, any>[] = [];
+
+    if (!resume) {
+      setResults([]);
+      setChuyenDoiRows([]);
+      setProgressPercent(0);
+      setProcessedCount(0);
+      setElapsedSeconds(0);
+      setSpeedPerMin(0);
+      setClientPausedIndex(0);
+      clientPausedIndexRef.current = 0;
+    } else {
+      tempResults = [...results];
+      tempRows = [...chuyenDoiRows];
+    }
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
-    const tStart = Date.now();
-    const tempResults: BatchItemSummary[] = [];
-    const tempRows: Record<string, any>[] = [];
+    const previousElapsed = resume ? elapsedSeconds : 0;
+    const tStart = Date.now() - previousElapsed * 1000;
 
-    for (let i = 0; i < clientFiles.length; i++) {
+    for (let i = startIdx; i < clientFiles.length; i++) {
       if (abortController.signal.aborted) {
-        setBatchStatus('cancelled');
+        setBatchStatus('paused');
+        clientPausedIndexRef.current = i;
+        setClientPausedIndex(i);
         break;
       }
 
       const file = clientFiles[i];
-      setCurrentFileName(file.name);
+      setCurrentFileName(`(${i + 1}/${clientFiles.length}) ${file.name}`);
       const tFileStart = Date.now();
 
       const formData = new FormData();
@@ -203,9 +228,13 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
         if (docData.chuyen_doi_rows && Array.isArray(docData.chuyen_doi_rows)) {
           tempRows.push(...docData.chuyen_doi_rows);
         }
+        clientPausedIndexRef.current = i + 1;
+        setClientPausedIndex(i + 1);
       } catch (err: any) {
-        if (axios.isCancel(err)) {
-          setBatchStatus('cancelled');
+        if (axios.isCancel(err) || abortController.signal.aborted) {
+          setBatchStatus('paused');
+          clientPausedIndexRef.current = i;
+          setClientPausedIndex(i);
           break;
         }
         const elapsedFile = ((Date.now() - tFileStart) / 1000).toFixed(1);
@@ -216,6 +245,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
           error: err.response?.data?.detail || err.message || 'Lỗi không xác định',
           elapsed_seconds: parseFloat(elapsedFile),
         });
+        clientPausedIndexRef.current = i + 1;
+        setClientPausedIndex(i + 1);
       }
 
       const totalElapsed = (Date.now() - tStart) / 1000;
@@ -234,31 +265,39 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
     if (!abortController.signal.aborted) {
       setBatchStatus('completed');
       setCurrentFileName('Hoàn thành toàn bộ thư mục');
+      setClientPausedIndex(0);
+      clientPausedIndexRef.current = 0;
     }
   };
 
   const stopClientProcessing = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      setIsClientProcessing(false);
-      setBatchStatus('cancelled');
     }
+    setIsClientProcessing(false);
+    setBatchStatus('paused');
   };
 
-  // Run Server Path Batch Scanning
-  const startServerScan = async () => {
+  // Run Server Path Batch Scanning (hỗ trợ tiếp tục quét dở dang)
+  const startServerScan = async (resume: boolean = false) => {
     if (!serverPath.trim()) {
       alert('Vui lòng nhập đường dẫn thư mục máy chủ!');
       return;
     }
 
+    const startIdx = resume ? processedCount : 0;
+    const resumeBatchId = resume ? activeBatchId : null;
+
     setIsServerScanning(true);
     setBatchStatus('running');
     setErrorMessage(null);
-    setResults([]);
-    setChuyenDoiRows([]);
-    setProgressPercent(0);
-    setProcessedCount(0);
+    if (!resume) {
+      setResults([]);
+      setChuyenDoiRows([]);
+      setProgressPercent(0);
+      setProcessedCount(0);
+      setActiveBatchId(null);
+    }
 
     try {
       const res = await axios.post('/api/v1/batch/scan-directory', {
@@ -266,6 +305,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
         sample_count: sampleCount,
         split_a3: true,
         smart_gcn_filter: true,
+        start_index: startIdx,
+        resume_batch_id: resumeBatchId,
       });
 
       const batchId = res.data?.batch_id;
@@ -305,7 +346,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
             clearInterval(timer);
           } else if (data.status === 'cancelled') {
             setIsServerScanning(false);
-            setBatchStatus('cancelled');
+            setBatchStatus('paused');
             clearInterval(timer);
           } else if (data.status === 'error') {
             setIsServerScanning(false);
@@ -329,7 +370,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
       try {
         await axios.post(`/api/v1/batch/${activeBatchId}/cancel`);
         setIsServerScanning(false);
-        setBatchStatus('cancelled');
+        setBatchStatus('paused');
       } catch (err) {
         console.error('Lỗi hủy batch:', err);
       }
@@ -464,25 +505,15 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
         });
       } else if (chuyenDoiRows.length > 0) {
         resp = await axios.post(
-          '/api/v1/exports/excel',
+          '/api/v1/exports/excel-129',
           {
             rows: chuyenDoiRows,
-            file_name: `OCR_ThuMuc_${new Date().toISOString().slice(0, 10)}.xlsx`,
+            filename: `OCR_ThuMuc_${new Date().toISOString().slice(0, 10)}.xlsx`,
           },
           { responseType: 'blob' }
         );
       } else {
-        const rowRes = await axios.get('/api/v1/raw-ocr/to-129-rows?limit=2000');
-        const rows = rowRes.data?.rows || [];
-        if (rows.length === 0) throw new Error('Chưa có dữ liệu Markdown để xuất Excel');
-        resp = await axios.post(
-          '/api/v1/exports/excel',
-          {
-            rows,
-            file_name: `OCR_ThuMuc_${new Date().toISOString().slice(0, 10)}.xlsx`,
-          },
-          { responseType: 'blob' }
-        );
+        throw new Error('Chưa có dữ liệu để xuất Excel. Vui lòng quét hồ sơ trước.');
       }
       const url = window.URL.createObjectURL(new Blob([resp.data]));
       const link = document.createElement('a');
@@ -517,14 +548,18 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
     }
   };
 
-  // Xem trên bảng 129 cột (On-Demand từ Markdown)
+  // Xem đúng dữ liệu của đợt quét đang mở; không trộn lịch sử từ SQLite.
   const handleView129Table = async () => {
     if (chuyenDoiRows.length > 0) {
       onView129Table(chuyenDoiRows);
       return;
     }
     try {
-      const res = await axios.get('/api/v1/raw-ocr/to-129-rows?limit=2000');
+      if (!activeBatchId) {
+        alert('Chưa có đợt quét nào đang mở. Vui lòng quét hồ sơ trước.');
+        return;
+      }
+      const res = await axios.get(`/api/v1/batch/${activeBatchId}/rows-129`);
       const rows = res.data?.rows || [];
       if (rows.length > 0) {
         setChuyenDoiRows(rows);
@@ -550,12 +585,17 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
   };
 
   const isRunning = isClientProcessing || isServerScanning;
+
+  useEffect(() => {
+    onRunningChange?.(isRunning);
+  }, [isRunning, onRunningChange]);
+
   const successCount = results.filter(r => r.status === 'success').length;
   const errorCount = results.filter(r => r.status === 'error').length;
   const avgTimePerFile = processedCount > 0 ? (elapsedSeconds / processedCount).toFixed(1) : '0.0';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="space-y-6">
       
       {/* ── HEADER ── */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
@@ -566,11 +606,11 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                 <FolderUp size={22} />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-slate-900 leading-tight">
-                  Quét Thư Mục & Xử Lý Hàng Loạt (Batch OCR)
+                <h2 className="text-xl font-semibold tracking-tight text-slate-950 leading-tight">
+                  Xử lý hồ sơ hàng loạt
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Tải cả thư mục từ máy tính hoặc quét đệ quy thư mục máy chủ (Zero-OOM Pipeline)
+                  Chọn cách nạp hồ sơ phù hợp, theo dõi tiến độ và kiểm tra kết quả trước khi xuất.
                 </p>
               </div>
             </div>
@@ -588,7 +628,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
               }`}
             >
               <FolderUp size={15} />
-              <span>Tải Thư Mục Từ Máy Tính</span>
+              <span>Từ máy tính</span>
             </button>
             <button
               onClick={() => { if (!isRunning && !isPairScanning) setScanMode('server_path'); }}
@@ -600,8 +640,10 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
               }`}
             >
               <Server size={15} />
-              <span>Quét Thư Mục Máy Chủ</span>
+              <span>Từ máy chủ</span>
             </button>
+            {/* TODO: Tạm ẩn chức năng ghép cặp GCN */}
+            {false && (
             <button
               onClick={() => { if (!isRunning && !isPairScanning) setScanMode('pair_scan'); }}
               disabled={isRunning || isPairScanning}
@@ -612,9 +654,9 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
               }`}
             >
               <Layers size={15} />
-              <span>Ghép Cặp GCN & GT (129 Cột)</span>
-              <span className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">Mới</span>
+              <span>Ghép GCN & giấy tờ</span>
             </button>
+            )}
           </div>
         </div>
 
@@ -683,22 +725,39 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
 
               {/* Action Buttons */}
               <div className="md:col-span-4 flex flex-col gap-2">
-                {!isClientProcessing ? (
-                  <button
-                    onClick={startClientProcessing}
-                    disabled={clientFiles.length === 0}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-sm font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-2"
-                  >
-                    <Play size={16} />
-                    <span>Bắt Đầu Xử Lý ({clientFiles.length} files)</span>
-                  </button>
-                ) : (
+                {isClientProcessing ? (
                   <button
                     onClick={stopClientProcessing}
                     className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-2"
                   >
                     <Square size={16} />
                     <span>Dừng Tiến Trình</span>
+                  </button>
+                ) : clientPausedIndex > 0 && clientPausedIndex < clientFiles.length ? (
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => startClientProcessing(true)}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-2"
+                    >
+                      <Play size={16} />
+                      <span>Tiếp Tục Xử Lý (Từ file {clientPausedIndex + 1}/{clientFiles.length})</span>
+                    </button>
+                    <button
+                      onClick={() => startClientProcessing(false)}
+                      className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 border border-slate-200"
+                    >
+                      <RotateCcw size={14} />
+                      <span>Quét lại từ đầu</span>
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => startClientProcessing(false)}
+                    disabled={clientFiles.length === 0}
+                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-sm font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-2"
+                  >
+                    <Play size={16} />
+                    <span>Bắt Đầu Xử Lý ({clientFiles.length} files)</span>
                   </button>
                 )}
 
@@ -736,7 +795,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                   value={serverPath}
                   onChange={e => setServerPath(e.target.value)}
                   disabled={isRunning}
-                  placeholder="VD: D:\Tho\OCR\DataOCR\Ho so quet_VINHYEN"
+                  placeholder="Nhập đường dẫn thư mục trên máy chủ"
                   className="w-full text-sm font-mono bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-indigo-500"
                 />
               </div>
@@ -759,15 +818,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
               </div>
 
               <div className="md:col-span-3 flex gap-2">
-                {!isServerScanning ? (
-                  <button
-                    onClick={startServerScan}
-                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
-                  >
-                    <Play size={15} />
-                    <span>Bắt Đầu Quét</span>
-                  </button>
-                ) : (
+                {isServerScanning ? (
                   <button
                     onClick={stopServerScan}
                     className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
@@ -775,26 +826,36 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                     <Square size={15} />
                     <span>Dừng Quét</span>
                   </button>
+                ) : (batchStatus === 'paused' || batchStatus === 'cancelled') && activeBatchId && processedCount > 0 && processedCount < totalFilesCount ? (
+                  <div className="flex-1 flex gap-1.5">
+                    <button
+                      onClick={() => startServerScan(true)}
+                      className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1"
+                      title={`Tiếp tục quét từ file ${processedCount + 1}`}
+                    >
+                      <Play size={14} />
+                      <span>Tiếp tục ({processedCount + 1}/{totalFilesCount})</span>
+                    </button>
+                    <button
+                      onClick={() => startServerScan(false)}
+                      className="px-2.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center justify-center border border-slate-200"
+                      title="Quét lại từ đầu"
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => startServerScan(false)}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
+                  >
+                    <Play size={15} />
+                    <span>Bắt Đầu Quét</span>
+                  </button>
                 )}
               </div>
             </div>
 
-            {/* Quick Suggestions */}
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-slate-500 font-medium">Gợi ý đường dẫn:</span>
-              <button
-                onClick={() => setServerPath('D:\\Tho\\OCR\\DataOCR\\Ho so quet_VINHYEN')}
-                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-mono text-[11px] transition"
-              >
-                📁 Ho so quet_VINHYEN (50 Sổ Vĩnh Yên)
-              </button>
-              <button
-                onClick={() => setServerPath('D:\\Tho\\OCR\\DataOCR\\Du Hang sau VILG\\ClearData')}
-                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-mono text-[11px] transition"
-              >
-                📁 Du Hang sau VILG\\ClearData
-              </button>
-            </div>
           </div>
         )}
 
@@ -811,7 +872,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                   value={pairServerPath}
                   onChange={e => setPairServerPath(e.target.value)}
                   disabled={isPairScanning}
-                  placeholder="VD: D:\13. XOM 9\XOM 9\XOM 9 VAN LA"
+                  placeholder="Nhập đường dẫn thư mục chứa các cặp hồ sơ"
                   className="w-full text-sm font-mono bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-emerald-500"
                 />
               </div>
@@ -863,17 +924,6 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                   </button>
                 )}
               </div>
-            </div>
-
-            {/* Quick Gợi Ý Thư Mục */}
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-slate-500 font-medium">Gợi ý thư mục:</span>
-              <button
-                onClick={() => setPairServerPath('D:\\13. XOM 9\\XOM 9\\XOM 9 VAN LA')}
-                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg font-mono text-[11px] border border-emerald-200 transition"
-              >
-                📁 D:\13. XOM 9\XOM 9\XOM 9 VAN LA (82 bộ hồ sơ)
-              </button>
             </div>
 
             {/* Thống kê Preview nếu đã phân tích */}
@@ -1057,10 +1107,10 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
               {pairExcelReady ? (
                 <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
                   <CheckCircle2 size={14} className="text-emerald-600" />
-                  File Excel 129 Cột đã sẵn sàng để tải về!
+                  Bảng dữ liệu đã sẵn sàng để tải.
                 </span>
               ) : (
-                <span>Đang tự động ghi dữ liệu vào bảng 129 cột và lưu checkpoint mỗi 3 cặp...</span>
+                <span>Đang xử lý và cập nhật kết quả...</span>
               )}
             </div>
 
@@ -1170,13 +1220,21 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className={`w-3 h-3 rounded-full ${
-                isRunning ? 'bg-indigo-500 animate-pulse' : batchStatus === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'
+                isRunning
+                  ? 'bg-indigo-500 animate-pulse'
+                  : batchStatus === 'completed'
+                  ? 'bg-emerald-500'
+                  : batchStatus === 'paused' || batchStatus === 'cancelled'
+                  ? 'bg-amber-500'
+                  : 'bg-slate-400'
               }`} />
               <h3 className="text-base font-bold text-slate-900">
                 {isRunning
                   ? 'Đang tiến hành nhận dạng OCR hàng loạt...'
                   : batchStatus === 'completed'
                   ? 'Đã hoàn thành toàn bộ thư mục!'
+                  : (batchStatus === 'paused' || batchStatus === 'cancelled') && processedCount > 0
+                  ? `Đang tạm dừng tại file ${processedCount + 1}/${totalFilesCount} (Kết quả đã xử lý được lưu an toàn)`
                   : 'Tiến trình tạm dừng'}
               </h3>
             </div>
@@ -1189,7 +1247,11 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs text-slate-600">
               <span className="font-mono truncate max-w-md">
-                {isRunning ? `Đang xử lý: ${currentFileName}` : currentFileName}
+                {isRunning
+                  ? `Đang xử lý: ${currentFileName}`
+                  : (batchStatus === 'paused' || batchStatus === 'cancelled') && processedCount > 0
+                  ? `Tạm dừng sau file thứ ${processedCount}. Bạn có thể bấm Tiếp tục để chạy tiếp.`
+                  : currentFileName}
               </span>
               <span className="font-bold text-indigo-600">{progressPercent}%</span>
             </div>
@@ -1248,11 +1310,11 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
           {results.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
               <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2">
-                <span>Đã lưu ảnh crop & Markdown: <b>{results.length}</b> hồ sơ.</span>
+                <span>Đã xử lý <b>{results.length}</b> hồ sơ.</span>
                 {lastCheckpointIdx > 0 && (
                   <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg font-medium border border-emerald-200 text-xs flex items-center gap-1.5">
                     <CheckCircle2 size={13} />
-                    <span>{lastCheckpointMsg || `Checkpoint: Đã lưu ${lastCheckpointIdx} hồ sơ vào Excel & Reset RAM`}</span>
+                    <span>{lastCheckpointMsg || `Đã cập nhật kết quả cho ${lastCheckpointIdx} hồ sơ`}</span>
                   </span>
                 )}
               </div>
@@ -1262,40 +1324,12 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                   <button
                     onClick={handleDownloadCheckpointExcel}
                     className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-                    title="Tải ngay file Excel 129 cột đã lưu tại checkpoint gần nhất"
+                    title="Tải bảng dữ liệu đã cập nhật gần nhất"
                   >
                     <Download size={14} />
-                    <span>Tải Excel Checkpoint ({lastCheckpointIdx} hồ sơ)</span>
+                    <span>Tải Excel ({lastCheckpointIdx} hồ sơ)</span>
                   </button>
                 )}
-
-                {onOpenPgStorage && (
-                  <button
-                    onClick={onOpenPgStorage}
-                    className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 border border-indigo-200"
-                    title="Mở Kho Dữ Liệu PostgreSQL để xem, lọc và quản lý hồ sơ"
-                  >
-                    <Database size={14} />
-                    <span>Kho Dữ Liệu PG</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={handleExportJSON}
-                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
-                >
-                  <Download size={14} /> JSON
-                </button>
-
-                <button
-                  onClick={handleExportExcel}
-                  disabled={exportingExcel || (results.length === 0 && chuyenDoiRows.length === 0)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-                  title="Chuyển đổi on-demand từ Markdown sang Excel 129 cột"
-                >
-                  {exportingExcel ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
-                  <span>Chuyển đổi sang Excel (129 Cột)</span>
-                </button>
 
                 <button
                   onClick={handleView129Table}

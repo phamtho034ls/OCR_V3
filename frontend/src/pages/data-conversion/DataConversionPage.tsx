@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
-import { Download, Search, Maximize2, Minimize2, Database, FileSpreadsheet, Folder, RefreshCw, Layers } from 'lucide-react';
+import { Download, Search, Maximize2, Minimize2, FileSpreadsheet, Folder, RefreshCw } from 'lucide-react';
 import { ChuyenDoiColumn, PgFolderOption } from '../../shared/types';
 
 interface DataConversionPageProps {
@@ -15,7 +15,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
   const [fullscreen, setFullscreen] = useState<boolean>(false);
   const [activeSection, setActiveSection] = useState<string>('all');
 
-  // Thư mục kết quả PostgreSQL
+  // Thư mục kết quả đã lưu
   const [folderOptions, setFolderOptions] = useState<PgFolderOption[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [currentLoadedLabel, setCurrentLoadedLabel] = useState<string>(
@@ -29,7 +29,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
       .catch(err => console.error('Lỗi nạp cột:', err));
   }, []);
 
-  // Nạp danh sách thư mục từ PostgreSQL
+  // Nạp danh sách thư mục đã lưu
   const fetchFolders = useCallback(async () => {
     try {
       const res = await axios.get('/api/v1/pg/filters');
@@ -50,7 +50,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
     }
   }, [initialRows]);
 
-  // Nạp dữ liệu từ PostgreSQL theo Thư Mục Kết Quả (Folder)
+  // Nạp dữ liệu theo thư mục kết quả
   const loadFromPostgres = async (folderToLoad: string = selectedFolder) => {
     setLoading(true);
     try {
@@ -64,10 +64,10 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
       if (folderToLoad !== 'all') {
         setCurrentLoadedLabel(`Thư mục: ${folderToLoad} (${loadedRows.length} dòng)`);
       } else {
-        setCurrentLoadedLabel(`Toàn bộ kho dữ liệu PostgreSQL (${loadedRows.length} dòng)`);
+        setCurrentLoadedLabel(`Toàn bộ kho hồ sơ (${loadedRows.length} dòng)`);
       }
     } catch (err: any) {
-      alert('Không thể nạp dữ liệu từ PostgreSQL: ' + (err.response?.data?.detail || err.message));
+      alert('Không thể nạp dữ liệu: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
@@ -131,16 +131,13 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <h2 className="text-lg font-semibold tracking-tight text-slate-950 flex items-center gap-2">
               <FileSpreadsheet className="text-emerald-600" />
-              <span>Bảng Kết Quả Chuyển Đổi Địa Chính (129 Cột Chuẩn Mẫu Excel)</span>
+              <span>Bảng dữ liệu 129 cột</span>
             </h2>
-            <span className="bg-emerald-50 text-emerald-700 text-xs px-2.5 py-0.5 rounded-full font-bold border border-emerald-200">
-              Chuẩn KeKhaiDangKy
-            </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Ánh xạ toàn bộ thông tin Giấy chứng nhận, Chủ sử dụng, Vợ/Chồng, Thửa đất, Tài sản gắn liền với đất
+            Lọc, kiểm tra và xuất dữ liệu hồ sơ theo biểu mẫu địa chính.
           </p>
         </div>
 
@@ -164,7 +161,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
         </div>
       </div>
 
-      {/* ── BỘ CHỌN THƯ MỤC KẾT QUẢ POSTGRESQL & TÌM KIẾM ── */}
+      {/* ── BỘ CHỌN THƯ MỤC KẾT QUẢ & TÌM KIẾM ── */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
           
@@ -183,7 +180,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
               }}
               className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-indigo-500 focus:bg-white truncate"
             >
-              <option value="all">🌟 Toàn bộ kho PostgreSQL</option>
+              <option value="all">Toàn bộ kho hồ sơ</option>
               {folderOptions.map(f => (
                 <option key={f.name} value={f.name}>
                   📁 {f.name} ({f.count} hồ sơ) - {f.date}
@@ -194,7 +191,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
               onClick={() => loadFromPostgres(selectedFolder)}
               disabled={loading}
               className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl border border-indigo-200 transition flex items-center gap-1 shrink-0"
-              title="Tải lại dữ liệu từ PostgreSQL"
+              title="Tải lại dữ liệu"
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
               <span>Nạp</span>
@@ -232,7 +229,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
             </div>
             {folderOptions.length > 0 && (
               <span className="text-slate-400 text-[11px]">
-                Tổng cộng có {folderOptions.length} thư mục kết quả đã lưu trong PostgreSQL
+                Có {folderOptions.length} thư mục kết quả đã lưu
               </span>
             )}
           </div>
@@ -287,7 +284,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
                 <tr>
                   <td colSpan={filteredColumns.length + 2} className="text-center py-20 text-slate-400">
                     <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-indigo-500" />
-                    <span>Đang nạp dữ liệu từ PostgreSQL...</span>
+                    <span>Đang nạp dữ liệu...</span>
                   </td>
                 </tr>
               ) : filteredRows.length === 0 ? (
@@ -296,7 +293,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
                     <FileSpreadsheet size={32} className="mx-auto mb-2 text-slate-300" />
                     <p className="text-sm font-semibold text-slate-600">Chưa có dữ liệu hiển thị</p>
                     <p className="text-xs text-slate-400 mt-1">
-                      Hãy chọn Thư mục kết quả ở trên hoặc bấm "Nạp" để tải dữ liệu từ PostgreSQL.
+                      Hãy chọn thư mục kết quả ở trên hoặc bấm “Nạp” để tải dữ liệu.
                     </p>
                   </td>
                 </tr>

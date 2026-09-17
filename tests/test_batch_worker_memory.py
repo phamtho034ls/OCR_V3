@@ -11,7 +11,7 @@ class RecordingQueue:
 
 
 class SuccessfulUseCase:
-    def execute(self, document_path, document_id, split_a3, smart_gcn_filter, stt):
+    def execute(self, document_path, document_id, split_a3, smart_gcn_filter, stt, batch_id, folder_result):
         return {
             "file_name": Path(document_path).name,
             "merged": {

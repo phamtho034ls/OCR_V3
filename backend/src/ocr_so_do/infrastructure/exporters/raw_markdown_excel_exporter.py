@@ -754,8 +754,9 @@ class RawMarkdownExcelExporter:
 
         curr_row = 3
         headers = [
-            "STT", "Mã Hồ Sơ (Job ID)", "Tên Tệp Hồ Sơ",
-            "Mẫu Nhận Diện", "Số Trang", "Dung Lượng (Bytes)", "Thời Gian Quét"
+            "STT", "Mã Hồ Sơ (Job ID)", "Tên Tệp Hồ Sơ", "Thư Mục Kết Quả",
+            "Mẫu Nhận Diện", "Số Phát Hành", "Họ Tên Chủ", "Số CMND/CCCD",
+            "Số Thửa", "Tờ Bản Đồ", "Diện Tích (m2)", "Thời Gian Lưu"
         ]
         for c_idx, h in enumerate(headers, 1):
             cell = ws.cell(row=curr_row, column=c_idx, value=h)
@@ -770,49 +771,36 @@ class RawMarkdownExcelExporter:
             is_zebra = (idx % 2 == 0)
             row_fill = fill_alt if is_zebra else None
 
-            c1 = ws.cell(row=curr_row, column=1, value=idx)
-            c1.alignment = Alignment(horizontal="center", vertical="center")
-            c1.font = font_data
-            c1.border = border_box
+            row_values = [
+                idx,
+                r.get("id", ""),
+                r.get("file_name", ""),
+                r.get("folder_result", "") or r.get("source_folder", ""),
+                r.get("template", ""),
+                r.get("so_phat_hanh", ""),
+                r.get("ten_chu", ""),
+                r.get("cmnd", ""),
+                r.get("so_thua", ""),
+                r.get("to_ban_do", ""),
+                r.get("dien_tich", ""),
+                r.get("created_at", "")
+            ]
 
-            c2 = ws.cell(row=curr_row, column=2, value=r.get("id", ""))
-            c2.alignment = Alignment(horizontal="center", vertical="center")
-            c2.font = font_data
-            c2.border = border_box
-
-            c3 = ws.cell(row=curr_row, column=3, value=r.get("file_name", ""))
-            c3.alignment = Alignment(horizontal="left", vertical="center")
-            c3.font = font_data_bold
-            c3.border = border_box
-
-            c4 = ws.cell(row=curr_row, column=4, value=r.get("template", ""))
-            c4.alignment = Alignment(horizontal="center", vertical="center")
-            c4.font = font_data
-            c4.border = border_box
-
-            c5 = ws.cell(row=curr_row, column=5, value=r.get("total_pages", 1))
-            c5.alignment = Alignment(horizontal="center", vertical="center")
-            c5.font = font_data
-            c5.border = border_box
-
-            c6 = ws.cell(row=curr_row, column=6, value=r.get("content_length", 0))
-            c6.alignment = Alignment(horizontal="right", vertical="center")
-            c6.font = font_data
-            c6.border = border_box
-
-            c7 = ws.cell(row=curr_row, column=7, value=r.get("created_at", ""))
-            c7.alignment = Alignment(horizontal="center", vertical="center")
-            c7.font = font_data
-            c7.border = border_box
-
-            if row_fill:
-                for col_i in range(1, 8):
-                    ws.cell(row=curr_row, column=col_i).fill = row_fill
+            for c_i, val in enumerate(row_values, 1):
+                c = ws.cell(row=curr_row, column=c_i, value=val)
+                c.font = font_data_bold if c_i in (3, 7) else font_data
+                c.alignment = Alignment(
+                    horizontal="left" if c_i in (3, 4, 7) else "center",
+                    vertical="center"
+                )
+                c.border = border_box
+                if row_fill:
+                    c.fill = row_fill
 
             ws.row_dimensions[curr_row].height = 22
             curr_row += 1
 
-        widths = [8, 30, 35, 16, 12, 18, 22]
+        widths = [8, 24, 32, 20, 15, 18, 25, 18, 12, 12, 15, 20]
         for idx, w in enumerate(widths, 1):
             ws.column_dimensions[get_column_letter(idx)].width = w
 

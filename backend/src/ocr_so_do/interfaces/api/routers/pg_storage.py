@@ -9,6 +9,8 @@ Hỗ trợ:
 - Xóa nhiều hồ sơ được chọn (multi-select IDs)
 """
 import os
+import json
+from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Query, Response, Body
 from fastapi.responses import JSONResponse
@@ -28,8 +30,10 @@ async def check_pg_health():
     store = get_postgres_store()
     connected = store.is_connected()
     return JSONResponse(content={
-        "status": "ok" if connected else "error",
+        "status": "ok" if connected else "degraded",
         "connected": connected,
+        "fallback_storage": "sqlite" if not connected else None,
+        "message": "PostgreSQL chưa sẵn sàng; dữ liệu mới vẫn được lưu cục bộ bằng SQLite." if not connected else None,
         "host": store.host,
         "port": store.port,
         "database": store.database
@@ -186,6 +190,174 @@ async def export_pg_129_excel(
 
     filename_part = folder_result or batch_id or "KetQua_Loc"
     filename = f"KetQua_129Cot_{filename_part}.xlsx"
+
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+
+
+@router.get("/export-raw-db", summary="Tải toàn bộ cơ sở dữ liệu thô dạng JSON")
+async def export_pg_raw_db(
+    folder_result: Optional[str] = Query(None),
+    source_path: Optional[str] = Query(None),
+    batch_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    ids: Optional[str] = Query(None, description="Danh sách ID hồ sơ cách nhau bởi dấu phẩy"),
+):
+    """
+    Xuất và tải về toàn bộ cơ sở dữ liệu thô dạng JSON phục vụ sao lưu hoặc đối soát ngoại tuyến.
+    Bao gồm toàn văn Markdown thô, thông tin bóc tách, dữ liệu cấu trúc và metadata.
+    """
+    folder_res = folder_result if isinstance(folder_result, str) else None
+    src_path = source_path if isinstance(source_path, str) else None
+    b_id = batch_id if isinstance(batch_id, str) else None
+    q_search = search if isinstance(search, str) else None
+    id_list = [i.strip() for i in ids.split(",") if i.strip()] if (ids and isinstance(ids, str)) else None
+
+    store = get_postgres_store()
+    records = store.get_raw_records_dump(
+        folder_result=folder_res,
+        source_path=src_path,
+        batch_id=b_id,
+        search=q_search,
+        ids=id_list,
+        limit=10000
+    )
+    if not records:
+        raise HTTPException(status_code=400, detail="Không có dữ liệu thô thỏa mãn điều kiện lọc")
+
+    filename_part = folder_res or b_id or "KhoDuLieu"
+    filename = f"CSDL_DuLieuTho_{filename_part}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+    export_payload = {
+        "export_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "total_records": len(records),
+        "filter": {
+            "folder_result": folder_res,
+            "source_path": src_path,
+            "batch_id": b_id,
+            "search": q_search
+        },
+        "records": records
+    }
+
+    content_bytes = json.dumps(export_payload, ensure_ascii=False, indent=2).encode("utf-8")
+    return Response(
+        content=content_bytes,
+        media_type="application/json; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+
+
+@router.get("/export-raw-markdown", summary="Tải gói toàn bộ file Markdown thô (.zip)")
+async def export_pg_raw_markdown(
+    folder_result: Optional[str] = Query(None),
+    source_path: Optional[str] = Query(None),
+    batch_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    ids: Optional[str] = Query(None, description="Danh sách ID hồ sơ cách nhau bởi dấu phẩy"),
+):
+    """
+    Xuất và tải về gói ZIP chứa toàn bộ file văn bản Markdown (.md) thô của các hồ sơ.
+    Bao gồm từng file .md riêng biệt theo tên hồ sơ và 1 file tổng hợp toàn bộ.
+    """
+    import io
+    import re
+    import zipfile
+
+    folder_res = folder_result if isinstance(folder_result, str) else None
+    src_path = source_path if isinstance(source_path, str) else None
+    b_id = batch_id if isinstance(batch_id, str) else None
+    q_search = search if isinstance(search, str) else None
+    id_list = [i.strip() for i in ids.split(",") if i.strip()] if (ids and isinstance(ids, str)) else None
+
+    store = get_postgres_store()
+    records = store.get_raw_records_dump(
+        folder_result=folder_res,
+        source_path=src_path,
+        batch_id=b_id,
+        search=q_search,
+        ids=id_list,
+        limit=10000
+    )
+    if not records:
+        raise HTTPException(status_code=400, detail="Không có dữ liệu Markdown thô thỏa mãn điều kiện")
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        combined_lines = [
+            "# TỔNG HỢP VĂN BẢN MARKDOWN THÔ TỪ KHO HỒ SƠ",
+            f"- Thời gian xuất: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"- Tổng số hồ sơ: {len(records)}",
+            "",
+            "---",
+            ""
+        ]
+
+        for idx, rec in enumerate(records, start=1):
+            file_name = rec.get("file_name") or f"ho_so_{idx}"
+            doc_id = rec.get("id") or str(idx)
+            raw_md = rec.get("raw_markdown") or "(Không có nội dung markdown)"
+
+            base_name = os.path.splitext(file_name)[0]
+            clean_name = re.sub(r'[\\/*?:"<>|]', "_", base_name).strip() or f"ho_so_{idx}"
+            short_id = doc_id[:8] if len(doc_id) >= 8 else doc_id
+            entry_name = f"{idx:03d}_{clean_name}_{short_id}.md"
+
+            zf.writestr(entry_name, raw_md.encode("utf-8"))
+
+            combined_lines.append(f"## Hồ sơ {idx}: {file_name} (ID: {short_id})")
+            combined_lines.append(f"- Mẫu: {rec.get('template', 'unknown')} | Số phát hành: {rec.get('so_phat_hanh') or '-'} | Chủ: {rec.get('ten_chu') or '-'}")
+            combined_lines.append(f"- Đường dẫn: {rec.get('source_path') or '-'}")
+            combined_lines.append("")
+            combined_lines.append(raw_md)
+            combined_lines.append("")
+            combined_lines.append("---")
+            combined_lines.append("")
+
+        zf.writestr("00_TONG_HOP_TOAN_BO.md", "\n".join(combined_lines).encode("utf-8"))
+
+    filename_part = folder_result or batch_id or "KhoDuLieu"
+    clean_fn = re.sub(r'[\\/*?:"<>|]', "_", filename_part)
+    filename = f"GoiMarkdown_DuLieuTho_{clean_fn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+
+
+@router.get("/export-raw-excel", summary="Xuất file Excel bảng tổng hợp dữ liệu thô")
+async def export_pg_raw_excel(
+    folder_result: Optional[str] = Query(None),
+    source_path: Optional[str] = Query(None),
+    batch_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+):
+    from ....infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
+    store = get_postgres_store()
+    records = store.get_raw_records_dump(
+        folder_result=folder_result,
+        source_path=source_path,
+        batch_id=batch_id,
+        search=search,
+        limit=10000
+    )
+    if not records:
+        raise HTTPException(status_code=400, detail="Không có dữ liệu thô thỏa mãn điều kiện lọc")
+
+    excel_bytes = RawMarkdownExcelExporter.export_table_summary_to_excel(records)
+    filename_part = folder_result or batch_id or "KhoDuLieu"
+    filename = f"BangTongHop_DuLieuTho_{filename_part}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
     return Response(
         content=excel_bytes,

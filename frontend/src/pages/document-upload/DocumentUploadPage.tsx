@@ -287,7 +287,7 @@ export const DocumentUploadPage: React.FC = () => {
               {file ? file.name : 'Kéo thả file PDF hoặc ảnh Giấy chứng nhận vào đây'}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Hỗ trợ tự động tách scan đôi A3, nắn thẳng Deskew, xoay đúng chiều & nhận dạng toàn diện 29 trường
+              Hỗ trợ PDF và ảnh. Kiểm tra kết quả trước khi tải bảng dữ liệu.
             </p>
           </div>
           <div className="flex items-center justify-center gap-3 pt-1">
@@ -304,7 +304,7 @@ export const DocumentUploadPage: React.FC = () => {
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-md transition flex items-center gap-2"
               >
                 {loading && <Loader2 size={15} className="animate-spin" />}
-                {loading ? 'Đang OCR pipeline...' : 'Bắt Đầu Nhận Dạng'}
+                {loading ? 'Đang xử lý hồ sơ...' : 'Bắt đầu xử lý'}
               </button>
             )}
           </div>

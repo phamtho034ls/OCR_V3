@@ -13,8 +13,6 @@ import {
   FileSpreadsheet,
   Layers,
   Filter,
-  CheckSquare,
-  Square,
   AlertTriangle,
   Folder,
   HardDrive,
@@ -22,12 +20,14 @@ import {
   ExternalLink,
   Eye,
   SlidersHorizontal,
-  FileText
+  FileText,
+  ChevronDown
 } from 'lucide-react';
 import { PgRecordSummary, PgFolderOption, PgSourceOption, PgStats } from '../../shared/types';
 
 interface RawMarkdownPageProps {
   onView129Table?: (rows: Record<string, any>[]) => void;
+  isActive?: boolean;
 }
 
 interface SummaryFieldItem {
@@ -55,7 +55,7 @@ interface ExcelPreviewPayload {
   total_ocr_lines: number;
 }
 
-export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table }) => {
+export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table, isActive }) => {
   // Dữ liệu hồ sơ
   const [records, setRecords] = useState<PgRecordSummary[]>([]);
   const [totalRecords, setTotalRecords] = useState<number>(0);
@@ -69,21 +69,20 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   // Trạng thái bộ lọc
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [selectedSource, setSelectedSource] = useState<string>('all');
-  const [fileCountFilter, setFileCountFilter] = useState<'all' | 'small' | 'medium' | 'large'>('all');
   const [search, setSearch] = useState<string>('');
   const [limit, setLimit] = useState<number>(50);
   const [page, setPage] = useState<number>(1);
 
-  // Chọn dòng để xóa có chọn lọc (Multi-select)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  // Trạng thái xuất Excel
+  // Trạng thái xuất Excel & tải DB
   const [exportingExcel, setExportingExcel] = useState<boolean>(false);
+  const [downloadingRawDb, setDownloadingRawDb] = useState<boolean>(false);
+  const [downloadingRawMarkdown, setDownloadingRawMarkdown] = useState<boolean>(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState<boolean>(false);
 
   // Modal xác nhận xóa
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean;
-    type: 'single' | 'selected' | 'folder' | 'source';
+    type: 'single' | 'folder' | 'source';
     targetName: string;
     targetIds?: string[];
   } | null>(null);
@@ -121,17 +120,6 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   const fetchRecords = useCallback(async () => {
     setLoading(true);
     try {
-      let min_files: number | undefined;
-      let max_files: number | undefined;
-      if (fileCountFilter === 'small') {
-        max_files = 10;
-      } else if (fileCountFilter === 'medium') {
-        min_files = 10;
-        max_files = 50;
-      } else if (fileCountFilter === 'large') {
-        min_files = 50;
-      }
-
       const offset = (page - 1) * limit;
       const res = await axios.get('/api/v1/pg/records', {
         params: {
@@ -139,8 +127,6 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
           offset,
           folder_result: selectedFolder !== 'all' ? selectedFolder : undefined,
           source_path: selectedSource !== 'all' ? selectedSource : undefined,
-          min_files,
-          max_files,
           search: search.trim() || undefined
         }
       });
@@ -151,7 +137,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
     } finally {
       setLoading(false);
     }
-  }, [limit, page, selectedFolder, selectedSource, fileCountFilter, search]);
+  }, [limit, page, selectedFolder, selectedSource, search]);
 
   useEffect(() => {
     fetchFilterOptionsAndStats();
@@ -161,26 +147,15 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
     fetchRecords();
   }, [fetchRecords]);
 
-  // Xử lý chọn / bỏ chọn checkbox
-  const handleToggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const handleToggleSelectAll = () => {
-    if (selectedIds.size === records.length && records.length > 0) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(records.map(r => r.id)));
+  // Tự động làm mới khi người dùng chuyển sang tab Kho hồ sơ
+  useEffect(() => {
+    if (isActive) {
+      fetchRecords();
+      fetchFilterOptionsAndStats();
     }
-  };
+  }, [isActive, fetchRecords, fetchFilterOptionsAndStats]);
+
+
 
   // Xem Markdown chi tiết
   const handleViewDetail = async (docId: string) => {
@@ -272,7 +247,63 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
     }
   };
 
-  // Thực thi xóa có chọn lọc sau khi người dùng xác nhận
+  // Tải tệp sao lưu CSDL thô (JSON Dump)
+  const handleDownloadRawDb = async () => {
+    setDownloadingRawDb(true);
+    try {
+      const params: any = {};
+      if (selectedFolder !== 'all') params.folder_result = selectedFolder;
+      if (selectedSource !== 'all') params.source_path = selectedSource;
+      if (search.trim()) params.search = search.trim();
+
+      const res = await axios.get('/api/v1/pg/export-raw-db', {
+        params,
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      const fn = selectedFolder !== 'all' ? selectedFolder : 'KhoDuLieu_PG';
+      link.setAttribute('download', `CSDL_DuLieuTho_${fn}_${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err: any) {
+      alert('Không thể tải CSDL dữ liệu thô: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setDownloadingRawDb(false);
+    }
+  };
+
+  // Tải gói toàn bộ file Markdown thô (.zip)
+  const handleDownloadRawMarkdown = async () => {
+    setDownloadingRawMarkdown(true);
+    try {
+      const params: any = {};
+      if (selectedFolder !== 'all') params.folder_result = selectedFolder;
+      if (selectedSource !== 'all') params.source_path = selectedSource;
+      if (search.trim()) params.search = search.trim();
+
+      const res = await axios.get('/api/v1/pg/export-raw-markdown', {
+        params,
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }));
+      const link = document.createElement('a');
+      link.href = url;
+      const fn = selectedFolder !== 'all' ? selectedFolder : 'KhoDuLieu_PG';
+      link.setAttribute('download', `GoiMarkdown_DuLieuTho_${fn}_${new Date().toISOString().slice(0, 10)}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err: any) {
+      alert('Không thể tải gói Markdown thô: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setDownloadingRawMarkdown(false);
+    }
+  };
+
+  // Thực thi xóa sau khi người dùng xác nhận
   const executeDelete = async () => {
     if (!deleteConfirm) return;
     setDeleting(true);
@@ -281,11 +312,6 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
         await axios.delete('/api/v1/pg/records', {
           data: { ids: deleteConfirm.targetIds }
         });
-      } else if (deleteConfirm.type === 'selected' && deleteConfirm.targetIds) {
-        await axios.delete('/api/v1/pg/records', {
-          data: { ids: deleteConfirm.targetIds }
-        });
-        setSelectedIds(new Set());
       } else if (deleteConfirm.type === 'folder') {
         await axios.delete('/api/v1/pg/by-folder', {
           params: { folder_result: deleteConfirm.targetName }
@@ -334,7 +360,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
 
   return (
     <div className="space-y-6">
-      {/* ── HEADER & THỐNG KÊ POSTGRESQL ── */}
+      {/* ── HEADER & THỐNG KÊ ── */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -343,16 +369,16 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-slate-900 leading-tight">
-                  Kho Lưu Trữ & Quản Lý Dữ Liệu PostgreSQL
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950 leading-tight">
+                  Kho hồ sơ
                 </h2>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
-                  Port 5433 (ocr_so_do)
+                  Sẵn sàng
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Tự động lưu trữ bền vững sau mỗi lần quét. Tra cứu, lọc theo thư mục/số lượng file và xóa có chọn lọc.
+                Tự động lưu trữ bền vững sau mỗi lần quét. Tra cứu, lọc theo thư mục kết quả, link máy và quản lý dữ liệu bóc tách.
               </p>
             </div>
           </div>
@@ -381,7 +407,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
               onClick={() => { fetchRecords(); fetchFilterOptionsAndStats(); }}
               disabled={loading}
               className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition shadow-sm"
-              title="Làm mới dữ liệu từ PostgreSQL"
+              title="Làm mới dữ liệu"
             >
               <RefreshCw size={15} className={loading ? 'animate-spin text-indigo-600' : ''} />
             </button>
@@ -392,7 +418,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
         <div className="mt-5 pt-5 border-t border-slate-100 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
           
           {/* Lọc theo Thư Mục Kết Quả (Folder) */}
-          <div className="md:col-span-4">
+          <div className="md:col-span-5">
             <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1">
               <Folder size={13} className="text-indigo-600" />
               <span>Thư mục kết quả đã lưu:</span>
@@ -411,26 +437,8 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
             </select>
           </div>
 
-          {/* Lọc theo Số Lượng File (File Count) */}
-          <div className="md:col-span-3">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1">
-              <SlidersHorizontal size={13} className="text-indigo-600" />
-              <span>Số lượng file mẻ quét:</span>
-            </label>
-            <select
-              value={fileCountFilter}
-              onChange={e => { setFileCountFilter(e.target.value as any); setPage(1); }}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-indigo-500 focus:bg-white"
-            >
-              <option value="all">Tất cả quy mô mẻ</option>
-              <option value="small">Mẻ nhỏ (≤ 10 file)</option>
-              <option value="medium">Mẻ vừa (10 - 50 file)</option>
-              <option value="large">Mẻ lớn (&gt; 50 file)</option>
-            </select>
-          </div>
-
           {/* Lọc theo Đường Dẫn Máy (Source Path) */}
-          <div className="md:col-span-3">
+          <div className="md:col-span-4">
             <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1">
               <HardDrive size={13} className="text-indigo-600" />
               <span>Đường dẫn trên máy:</span>
@@ -450,7 +458,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
           </div>
 
           {/* Ô Tìm Kiếm Từ Khóa */}
-          <div className="md:col-span-2">
+          <div className="md:col-span-3">
             <label className="block text-[11px] font-bold text-slate-600 mb-1">Tìm từ khóa:</label>
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -458,7 +466,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                 type="text"
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }}
-                placeholder="Tên file, tên chủ..."
+                placeholder="Tên file, tên chủ, số phát hành..."
                 className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-indigo-500 focus:bg-white"
               />
             </div>
@@ -466,19 +474,13 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
         </div>
 
         {/* Active Filter Chips & Reset */}
-        {(selectedFolder !== 'all' || selectedSource !== 'all' || fileCountFilter !== 'all' || search) && (
+        {(selectedFolder !== 'all' || selectedSource !== 'all' || search) && (
           <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-slate-400 text-[11px] font-semibold">Đang lọc:</span>
             {selectedFolder !== 'all' && (
               <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold flex items-center gap-1">
                 Folder: {selectedFolder}
                 <button onClick={() => setSelectedFolder('all')} className="hover:text-rose-600">×</button>
-              </span>
-            )}
-            {fileCountFilter !== 'all' && (
-              <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold flex items-center gap-1">
-                Quy mô: {fileCountFilter}
-                <button onClick={() => setFileCountFilter('all')} className="hover:text-rose-600">×</button>
               </span>
             )}
             {selectedSource !== 'all' && (
@@ -497,7 +499,6 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
               onClick={() => {
                 setSelectedFolder('all');
                 setSelectedSource('all');
-                setFileCountFilter('all');
                 setSearch('');
                 setPage(1);
               }}
@@ -509,25 +510,10 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
         )}
       </div>
 
-      {/* ── ACTION BAR: XÓA CÓ CHỌN LỌC & XUẤT DỮ LIỆU ── */}
+      {/* ── ACTION BAR: QUẢN LÝ & XUẤT DỮ LIỆU ── */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
-        {/* Nhóm Hành Động Xóa Có Chọn Lọc */}
+        {/* Nhóm Thông Tin & Xóa Theo Bộ Lọc */}
         <div className="flex flex-wrap items-center gap-2">
-          {selectedIds.size > 0 && (
-            <button
-              onClick={() => setDeleteConfirm({
-                open: true,
-                type: 'selected',
-                targetName: `${selectedIds.size} hồ sơ đã chọn`,
-                targetIds: Array.from(selectedIds)
-              })}
-              className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm animate-in fade-in duration-150"
-            >
-              <Trash2 size={14} />
-              <span>Xóa {selectedIds.size} mục đã chọn</span>
-            </button>
-          )}
-
           {selectedFolder !== 'all' && (
             <button
               onClick={() => setDeleteConfirm({
@@ -563,8 +549,59 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
           </div>
         </div>
 
-        {/* Nhóm Hành Động Xuất 129 Cột & Xem Bảng */}
+        {/* Nhóm Hành Động Tải Dữ Liệu Thô, Xuất 129 Cột & Xem Bảng */}
         <div className="flex items-center gap-2">
+          {/* Menu Tải Dữ Liệu Thô (Chỉ JSON & Markdown thô) */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+              disabled={records.length === 0 || downloadingRawDb || downloadingRawMarkdown}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+              title="Tải dữ liệu thô (JSON / Markdown) về máy"
+            >
+              <Database size={14} />
+              <span>
+                {downloadingRawDb ? 'Đang tải JSON...' : downloadingRawMarkdown ? 'Đang tải Markdown...' : 'Tải Dữ Liệu Thô'}
+              </span>
+              <ChevronDown size={13} className={`transition-transform duration-200 ${showDownloadMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showDownloadMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-20"
+                  onClick={() => setShowDownloadMenu(false)}
+                />
+                <div className="absolute right-0 mt-1.5 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in duration-100">
+                  <button
+                    onClick={() => { setShowDownloadMenu(false); handleDownloadRawDb(); }}
+                    className="w-full px-3.5 py-2.5 text-left text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-start gap-2.5 transition"
+                  >
+                    <FileCode size={16} className="text-indigo-600 mt-0.5 shrink-0" />
+                    <div>
+                      <div className="font-bold text-slate-800">Tải CSDL Thô (.json)</div>
+                      <div className="text-[11px] text-slate-500 font-normal mt-0.5">
+                        Bản sao lưu toàn bộ bản ghi & dữ liệu bóc tách dạng JSON
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => { setShowDownloadMenu(false); handleDownloadRawMarkdown(); }}
+                    className="w-full px-3.5 py-2.5 text-left text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-start gap-2.5 transition border-t border-slate-100"
+                  >
+                    <FileText size={16} className="text-emerald-600 mt-0.5 shrink-0" />
+                    <div>
+                      <div className="font-bold text-slate-800">Tải Gói Markdown Thô (.zip)</div>
+                      <div className="text-[11px] text-slate-500 font-normal mt-0.5">
+                        Tập hợp file văn bản Markdown (.md) thô của các hồ sơ
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
           <button
             onClick={handleExport129Excel}
             disabled={exportingExcel || records.length === 0}
@@ -593,15 +630,6 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
           <table className="w-full text-left text-xs text-slate-700 border-collapse">
             <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
               <tr>
-                <th className="py-3 px-3 w-10 text-center">
-                  <button onClick={handleToggleSelectAll} className="text-slate-500 hover:text-indigo-600">
-                    {selectedIds.size === records.length && records.length > 0 ? (
-                      <CheckSquare size={16} className="text-indigo-600" />
-                    ) : (
-                      <Square size={16} />
-                    )}
-                  </button>
-                </th>
                 <th className="py-3 px-3 w-12 text-center">STT</th>
                 <th className="py-3 px-3 min-w-[200px]">Tên tệp & Link máy</th>
                 <th className="py-3 px-3 min-w-[140px]">Thư mục kết quả</th>
@@ -617,14 +645,14 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
             <tbody className="divide-y divide-slate-100 font-medium">
               {loading && records.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-16 text-center text-slate-400">
+                  <td colSpan={10} className="py-16 text-center text-slate-400">
                     <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-indigo-500" />
                     <span>Đang tải dữ liệu từ PostgreSQL...</span>
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-16 text-center text-slate-400">
+                  <td colSpan={10} className="py-16 text-center text-slate-400">
                     <FileText size={36} className="mx-auto mb-2 text-slate-300" />
                     <p className="text-sm font-semibold text-slate-600">Không tìm thấy hồ sơ nào trong PostgreSQL</p>
                     <p className="text-xs text-slate-400 mt-1">Hãy quét thư mục hoặc nhận dạng file để lưu dữ liệu vào đây.</p>
@@ -632,15 +660,9 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                 </tr>
               ) : (
                 records.map((r, idx) => {
-                  const isSelected = selectedIds.has(r.id);
                   const sttNumber = (page - 1) * limit + idx + 1;
                   return (
-                    <tr key={r.id} className={`hover:bg-indigo-50/40 transition ${isSelected ? 'bg-indigo-50/70' : ''}`}>
-                      <td className="py-3 px-3 text-center">
-                        <button onClick={() => handleToggleSelect(r.id)} className="text-slate-500 hover:text-indigo-600">
-                          {isSelected ? <CheckSquare size={16} className="text-indigo-600" /> : <Square size={16} />}
-                        </button>
-                      </td>
+                    <tr key={r.id} className="hover:bg-indigo-50/40 transition">
                       <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
                         {sttNumber}
                       </td>
@@ -770,9 +792,6 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
               <p className="text-xs text-slate-500 mt-2 leading-relaxed">
                 {deleteConfirm.type === 'single' && (
                   <>Bạn có chắc chắn muốn xóa hồ sơ <b>"{deleteConfirm.targetName}"</b> khỏi PostgreSQL?</>
-                )}
-                {deleteConfirm.type === 'selected' && (
-                  <>Bạn có chắc chắn muốn xóa có chọn lọc <b>{deleteConfirm.targetName}</b> khỏi PostgreSQL?</>
                 )}
                 {deleteConfirm.type === 'folder' && (
                   <>Bạn có chắc chắn muốn xóa toàn bộ hồ sơ thuộc thư mục kết quả <b>"{deleteConfirm.targetName}"</b> khỏi PostgreSQL?</>

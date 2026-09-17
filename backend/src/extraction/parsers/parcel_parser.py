@@ -448,9 +448,10 @@ class ParcelParser:
                 if v_st:
                     result["so_thua"] = n_st
             if not result["so_thua"]:
+                norm_text = re.sub(r'\bs6\b', 'so', full_text, flags=re.IGNORECASE)
                 m_thua = re.search(
-                    r'(?<!tổng\s)(?<!tong\s)(?:(?:[aâ]\)|ai|[0-9][,\.]?|\-)?\s*)?(?:th[ửừứaảãạu]\s*đ[ấa]t\s*số|th[ửừứaảãạu]\s*số|thua\s*dat\s*so)\s*[:\.]?\s*(\d+[A-Za-z]?(?:\s*[\+]\s*\d+[A-Za-z]?)*)',
-                    full_text, re.IGNORECASE
+                    r'(?<!tổng\s)(?<!tong\s)(?:[a-zA-Z\d\.\)\-]*\s*)?(?:th[ửừứaảãạu]\w*\s*đ[ấa]t\s*s[ốóoô6]|th[ửừứaảãạu]\w*\s*s[ốóoô6]|thua\s*dat\s*s[ốóoô6])\s*[:\.\s]*(\d+[A-Za-z]?(?:\s*[\+]\s*\d+[A-Za-z]?)*)',
+                    norm_text, re.IGNORECASE
                 )
                 if m_thua:
                     v_st, n_st, _ = GCNValidators.validate_parcel_number(m_thua.group(1))
@@ -468,7 +469,7 @@ class ParcelParser:
                     result["to_ban_do"] = n_tb
             if not result["to_ban_do"]:
                 m_to = re.search(
-                    r'(?:tờ\s*bản\s*đồ\s*số|to\s*ban\s*do\s*so|tờ\s*số|tờ\s*bản\s*đồ)\s*[:\.]?\s*(\d+[A-Za-z]?(?:\s*[\+]\s*\d+[A-Za-z]?)*)',
+                    r'(?:tờ\s*bản\s*đồ\s*số|to\s*ban\s*do\s*so|to\s*ban\s*d\s*so|to\s*ban\s*d\s*s[oốóô]|tờ\s*số|tờ\s*bản\s*đồ|to\s*so)\s*[:\.\s]*(\d+[A-Za-z]?(?:\s*[\+]\s*\d+[A-Za-z]?)*)',
                     full_text, re.IGNORECASE
                 )
                 if m_to:

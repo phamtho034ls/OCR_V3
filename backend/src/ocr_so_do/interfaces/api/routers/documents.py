@@ -1,34 +1,69 @@
 """
 API Router /api/v1/documents: Upload và truy vấn tài liệu OCR.
 """
+import os
 import uuid
 import tempfile
-import shutil
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
 from ....bootstrap import get_container
-from ....domain.models import Job, JobStatus
 
 import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".pdf"}
+
+
+def _read_max_upload_bytes() -> int:
+    """Return a bounded upload limit so one request cannot exhaust local disk."""
+    try:
+        size_mb = int(os.getenv("OCR_MAX_UPLOAD_MB", "200"))
+    except (TypeError, ValueError):
+        size_mb = 200
+    return min(500, max(1, size_mb)) * 1024 * 1024
+
+
+MAX_UPLOAD_BYTES = _read_max_upload_bytes()
+
+
+async def _save_upload_to_tempfile(file: UploadFile) -> str:
+    """Stream an accepted upload to disk while enforcing its size limit."""
+    suffix = Path(file.filename or "document.pdf").suffix.lower()
+    if suffix not in ALLOWED_EXTENSIONS:
+        allowed = ", ".join(sorted(ALLOWED_EXTENSIONS))
+        raise HTTPException(status_code=400, detail=f"Chỉ hỗ trợ tệp: {allowed}")
+
+    tmp_path = ""
+    written = 0
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp_path = tmp.name
+            while chunk := await file.read(1024 * 1024):
+                written += len(chunk)
+                if written > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Tệp vượt quá giới hạn {MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
+                    )
+                tmp.write(chunk)
+        return tmp_path
+    except Exception:
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
+        raise
+
 
 @router.post("", summary="Upload tài liệu và khởi tạo OCR")
 async def upload_document(
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None
 ):
-    container = get_container()
     doc_id = f"doc_{uuid.uuid4().hex[:8]}"
-    
-    # Lưu file tạm an toàn
-    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename or "doc.pdf").suffix) as tmp:
-        shutil.copyfileobj(file.file, tmp)
-        tmp_path = tmp.name
+    tmp_path = await _save_upload_to_tempfile(file)
+    container = get_container()
 
     try:
         # Chạy use case
@@ -53,7 +88,8 @@ async def upload_document(
         })
     except Exception as e:
         logger.exception(f"[{doc_id}] Lỗi xử lý document: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        status_code = 503 if "PostgreSQL" in str(e) else 500
+        raise HTTPException(status_code=status_code, detail=str(e))
     finally:
         if Path(tmp_path).exists():
             try:

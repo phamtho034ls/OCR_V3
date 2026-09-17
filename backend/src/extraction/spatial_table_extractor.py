@@ -43,6 +43,21 @@ class SpatialTableExtractor:
     # trở thành số hàng cần cấp phát cho bảng thửa đất.
     MAX_PARCELS_PER_DOCUMENT = 200
 
+    @staticmethod
+    def _safe_area_float(val: Any) -> Optional[float]:
+        if val is None:
+            return None
+        s = str(val).strip().replace(',', '.')
+        s = re.sub(r'^[^\d]+', '', s)
+        s = re.sub(r'[^\d]+$', '', s)
+        parts = s.split('.')
+        if len(parts) > 2:
+            s = parts[0] + '.' + parts[1]
+        try:
+            return float(s)
+        except Exception:
+            return None
+
     @classmethod
     def _detect_column_bounds(cls, ocr_boxes: List[Dict[str, Any]], img_w: float) -> Dict[str, Optional[Tuple[float, float]]]:
         """Detect table columns from header positions, with fixed bounds as fallback."""
@@ -183,7 +198,7 @@ class SpatialTableExtractor:
         if total_p is not None and not (2 <= total_p <= cls.MAX_PARCELS_PER_DOCUMENT):
             logger.warning("Bỏ qua tổng số thửa OCR không hợp lý: %s", total_p)
             total_p = None
-        total_a = float(m_dt.group(1).replace(",", ".")) if m_dt else None
+        total_a = cls._safe_area_float(m_dt.group(1)) if m_dt else None
 
         # 3. Kiểm tra chỉ dấu sổ đơn có định dạng danh sách chữ cái: a), b), d), đ), e), g)
         is_single_outline = bool(
@@ -300,8 +315,9 @@ class SpatialTableExtractor:
             if (area_min_x <= x_mid <= area_max_x) or (x < area_max_x and x + w > area_min_x):
                 m_num = re.search(r"(\d+[\.,]\d+|\b\d{2,5}\b)", t)
                 if m_num and not re.search(r"\d{1,2}/\d{1,2}/\d{4}", t):
-                    val_dt = float(m_num.group(1).replace(",", "."))
-                    area_anchors.append({"y": y + h / 2.0, "val": val_dt, "box": b})
+                    val_dt = cls._safe_area_float(m_num.group(1))
+                    if val_dt is not None:
+                        area_anchors.append({"y": y + h / 2.0, "val": val_dt, "box": b})
 
         area_anchors.sort(key=lambda a: a["y"])
         # Lọc bỏ các anchor quá gần nhau trên cùng 1 dòng
@@ -382,10 +398,9 @@ class SpatialTableExtractor:
                 if (cols["dien_tich_rieng"][0] - 20 <= x_mid <= cols["dien_tich_chung"][1] + 30) or (x < cols["dien_tich_chung"][1] and x + w > cols["dien_tich_rieng"][0]):
                     m_num = re.search(r"(\d+[\.,]\d+|\b\d{2,5}\b)", t)
                     if m_num and not re.search(r"\d{1,2}/\d{1,2}/\d{4}", t):
-                        try:
-                            r_dien_tich = float(m_num.group(1).replace(",", "."))
-                        except Exception:
-                            pass
+                        parsed_dt = cls._safe_area_float(m_num.group(1))
+                        if parsed_dt is not None:
+                            r_dien_tich = parsed_dt
                     if "không" in t.lower() or "khong" in t.lower():
                         r_dien_tich_chung = "không"
 
@@ -450,7 +465,9 @@ class SpatialTableExtractor:
                         rec_t, rec_c = recognize_crop_fn(cell_crop)
                         m_rec = re.search(r"(\d+[\.,]\d+|\b\d{2,5}\b)", rec_t)
                         if m_rec and not re.search(r"\d{1,2}/\d{1,2}/\d{4}", rec_t):
-                            r_dien_tich = float(m_rec.group(1).replace(",", "."))
+                            parsed_dt = cls._safe_area_float(m_rec.group(1))
+                            if parsed_dt is not None:
+                                r_dien_tich = parsed_dt
                 except Exception as exc:
                     logger.debug(f"Lỗi crop ô diện tích bù: {exc}")
 

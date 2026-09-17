@@ -8,6 +8,7 @@ import os
 import json
 import logging
 import threading
+import time
 from typing import List, Dict, Any, Optional, Tuple
 from contextlib import contextmanager
 
@@ -23,6 +24,8 @@ PG_PORT = int(os.getenv("PG_PORT", "5433"))
 PG_USER = os.getenv("PG_USER", "postgres")
 PG_PASSWORD = os.getenv("PG_PASSWORD", "")
 PG_DATABASE = os.getenv("PG_DATABASE", "ocr_so_do")
+POSTGRES_ENABLED = os.getenv("OCR_POSTGRES_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
+POSTGRES_RETRY_SECONDS = max(5, int(os.getenv("OCR_POSTGRES_RETRY_SECONDS", "60")))
 
 
 class PostgresStore:
@@ -39,16 +42,26 @@ class PostgresStore:
         database: str = PG_DATABASE,
         minconn: int = 1,
         maxconn: int = 10,
+        enabled: bool = POSTGRES_ENABLED,
     ):
         self.host = host
         self.port = port
         self.user = user
         self.password = password
         self.database = database
+        self.enabled = enabled
         self._pool: Optional[pool.ThreadedConnectionPool] = None
-        self._lock = threading.Lock()
-        self._init_pool(minconn, maxconn)
-        self._init_schema()
+        self._lock = threading.RLock()
+        self._minconn = minconn
+        self._maxconn = maxconn
+        self._next_retry_at = 0.0
+        self.unavailable_reason: Optional[str] = None
+        if self.enabled:
+            self._init_pool(minconn, maxconn)
+            self._init_schema()
+        else:
+            self.unavailable_reason = "PostgreSQL đã được tắt bằng OCR_POSTGRES_ENABLED."
+            logger.info("PostgreSQL bị tắt theo cấu hình; ứng dụng tiếp tục dùng kho SQLite cục bộ.")
 
     def _init_pool(self, minconn: int, maxconn: int) -> None:
         """Khởi tạo connection pool với cơ chế thử kết nối an toàn."""
@@ -69,8 +82,36 @@ class PostgresStore:
             )
             logger.info(f"Đã kết nối PostgreSQL pool: {self.host}:{self.port}/{self.database}")
         except Exception as e:
-            logger.error(f"Không thể khởi tạo PostgreSQL pool: {e}")
+            self.unavailable_reason = str(e)
             self._pool = None
+            self._next_retry_at = time.monotonic() + POSTGRES_RETRY_SECONDS
+            logger.warning(
+                "PostgreSQL chưa sẵn sàng tại %s:%s; ứng dụng tiếp tục dùng SQLite. "
+                "Sẽ thử kết nối lại sau %s giây. Chi tiết: %s",
+                self.host,
+                self.port,
+                POSTGRES_RETRY_SECONDS,
+                e,
+            )
+
+    def reconnect_if_due(self) -> bool:
+        """Thử kết nối lại sau một khoảng chờ, không làm nghẽn luồng OCR khi DB tạm dừng."""
+        if not self.enabled or time.monotonic() < self._next_retry_at:
+            return False
+
+        with self._lock:
+            if self._pool:
+                try:
+                    self._pool.closeall()
+                except Exception:
+                    pass
+                self._pool = None
+            self._init_pool(self._minconn, self._maxconn)
+            if self._pool:
+                self.unavailable_reason = None
+                self._init_schema()
+                return True
+        return False
 
     @contextmanager
     def get_connection(self):
@@ -573,6 +614,80 @@ class PostgresStore:
             logger.error(f"Lỗi get_record PostgreSQL: {e}")
             return None
 
+    def get_raw_records_dump(
+        self,
+        folder_result: Optional[str] = None,
+        source_path: Optional[str] = None,
+        batch_id: Optional[str] = None,
+        search: Optional[str] = None,
+        ids: Optional[List[str]] = None,
+        limit: int = 10000
+    ) -> List[Dict[str, Any]]:
+        """Lấy toàn bộ các bản ghi OCR đầy đủ (kèm raw_markdown, structured_data) phục vụ backup/export."""
+        if not self._pool:
+            return []
+        try:
+            where_clauses = []
+            params: List[Any] = []
+
+            if ids:
+                where_clauses.append("r.id = ANY(%s)")
+                params.append(list(ids))
+
+            if folder_result and folder_result.strip() and folder_result != "all":
+                where_clauses.append("r.folder_result = %s")
+                params.append(folder_result.strip())
+
+            if source_path and source_path.strip() and source_path != "all":
+                where_clauses.append("(r.source_folder = %s OR r.source_path LIKE %s)")
+                params.append(source_path.strip())
+                params.append(f"%{source_path.strip()}%")
+
+            if batch_id and batch_id.strip() and batch_id != "all":
+                where_clauses.append("r.batch_id = %s")
+                params.append(batch_id.strip())
+
+            if search and search.strip():
+                pat = f"%{search.strip()}%"
+                where_clauses.append("""
+                    (r.file_name ILIKE %s OR r.ten_chu ILIKE %s OR r.so_phat_hanh ILIKE %s
+                     OR r.so_thua ILIKE %s OR r.to_ban_do ILIKE %s OR r.id ILIKE %s
+                     OR r.source_path ILIKE %s)
+                """)
+                params.extend([pat, pat, pat, pat, pat, pat, pat])
+
+            where_sql = " AND ".join(where_clauses)
+            if where_sql:
+                where_sql = "WHERE " + where_sql
+
+            query = f"""
+                SELECT r.id, r.batch_id, r.file_name, r.source_path, r.source_folder,
+                       r.folder_result, r.template, r.total_pages, r.so_phat_hanh,
+                       r.so_vao_so, r.ma_vach, r.ten_chu, r.cmnd, r.so_thua,
+                       r.to_ban_do, r.dien_tich, r.dia_chi, r.raw_markdown,
+                       r.structured_data, r.chuyen_doi_rows, r.status,
+                       r.elapsed_seconds, r.created_at
+                FROM ocr_records r
+                {where_sql}
+                ORDER BY r.created_at DESC
+                LIMIT %s;
+            """
+            params.append(limit)
+
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(query, params)
+                    rows = cur.fetchall()
+                    result = []
+                    for row in rows:
+                        item = dict(row)
+                        item["created_at"] = row["created_at"].strftime("%Y-%m-%d %H:%M:%S") if row.get("created_at") else ""
+                        result.append(item)
+                    return result
+        except Exception as e:
+            logger.error(f"Lỗi get_raw_records_dump PostgreSQL: {e}")
+            return []
+
     def get_129_rows(
         self,
         folder_result: Optional[str] = None,
@@ -816,8 +931,10 @@ _pg_store: Optional[PostgresStore] = None
 
 
 def get_postgres_store() -> PostgresStore:
-    """Trả về thể hiện singleton của PostgresStore."""
+    """Trả về singleton PostgreSQL; tự phục hồi khi dịch vụ DB khởi động lại."""
     global _pg_store
     if _pg_store is None:
         _pg_store = PostgresStore()
+    elif not _pg_store.is_connected():
+        _pg_store.reconnect_if_due()
     return _pg_store

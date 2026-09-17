@@ -29,7 +29,7 @@ VALID_LAND_CODES = {
     "ODT", "ONT", "TMD", "SKC", "SKS", "SKX", "SKN", "DGT", "DTL", "DNL", "DTS", 
     "DVH", "DYT", "DGD", "DKT", "DNT", "DRA", "DCV", "CQP", "CAN", "TON", "TIN", "PNN",
     # Đất nông nghiệp
-    "LUC", "LUK", "LUN", "LUA", "BHK", "NHK", "HNK", "CHN", "CLN", "RSX", "RPH", "RDD", "NTS", "LMH", "NKH",
+    "LUC", "LUK", "LUN", "BHK", "NHK", "HNK", "CHN", "CLN", "RSX", "RPH", "RDD", "NTS", "LMH", "NKH",
     # Đất chưa sử dụng
     "BCS", "DCS"
 }
@@ -90,14 +90,23 @@ def truncate_address_after_province(value: str) -> str:
         cleaned,
         flags=re.IGNORECASE,
     )
-    match = re.search(
-        r"\b(?:tỉnh|tinh|tin[hg]|thành\s*phố|thanh\s*pho|tp\.?)\s+[^,;\n\r]+(?:[,;].*)?$",
+    province_matches = list(re.finditer(
+        r"\b(?:tỉnh|tinh|tin[hg]|ủnh|únh)\s+[^,;\n\r]+",
         cleaned,
         flags=re.IGNORECASE,
-    )
-    if match:
-        province_part = re.split(r"[,;]", match.group(0), maxsplit=1)[0]
-        cleaned = cleaned[:match.start()] + province_part
+    ))
+    if province_matches:
+        match = province_matches[-1]
+        cleaned = cleaned[:match.end()]
+    else:
+        city_matches = list(re.finditer(
+            r"\b(?:thành\s*phố|thanh\s*pho|tp\.?)\s+[^,;\n\r]+",
+            cleaned,
+            flags=re.IGNORECASE,
+        ))
+        if city_matches:
+            match = city_matches[-1]
+            cleaned = cleaned[:match.end()]
     return cleaned.strip(" -:;,." )
 
 
@@ -164,13 +173,9 @@ class GCNValidators:
             repl = {'O': '0', 'o': '0', 'S': '5', 's': '5', 'I': '1', 'l': '1', 'i': '1', 'L': '1', 'B': '8', 'q': '9', 'D': '0', 'G': '6', 'U': '0', 'u': '0', 'C': '0', 'c': '0', '%': '9'}
             norm_body = "".join(repl.get(c, c) for c in body)
             norm_body = re.sub(r"[.\-_]", "", norm_body)
-            m_dig = re.fullmatch(r"(\d{1,8})", norm_body)
+            m_dig = re.fullmatch(r"(\d{3,8})", norm_body)
             if m_dig:
-                digits = m_dig.group(1)
-                # Chuẩn hóa đúng và đủ 5 chữ số theo quy định
-                if len(digits) < 5 and prefix in ("CH", "CS", "VP"):
-                    digits = digits.zfill(5)
-                s_clean = f"{prefix}{digits}"
+                s_clean = f"{prefix}{m_dig.group(1)}"
             else:
                 return False, s_clean, f"Số vào sổ sai định dạng: '{s_clean}'"
 
@@ -293,8 +298,8 @@ class GCNValidators:
         # Kiểm tra tính hợp lệ trên lịch thực
         try:
             dt = datetime(y, m, d)
-            if not (1985 <= y <= 2030):
-                return False, s, f"Năm cấp ngoài khoảng hợp lý (1985-2030): {y}"
+            if not (1985 <= y <= 2026):
+                return False, s, f"Năm cấp ngoài khoảng hợp lý (1985-2026): {y}"
             normalized = f"{d:02d}/{m:02d}/{y:04d}"
             return True, normalized, None
         except ValueError as err:
@@ -707,7 +712,7 @@ class GCNValidators:
             (r"đất\s+bằng\s+trồng\s+cây(?:\s+hàng\s+năm\s+khác)?|đất\s+trồng\s+cây\s+hàng\s+năm\s+khác", "Đất bằng trồng cây hàng năm khác", "HNK"),
             (r"đất\s+chuyên\s+trồng\s+lúa\s+nước|đất\s+chuyên\s+trồng.*lúa\s+nước", "Đất chuyên trồng lúa nước", "LUC"),
             (r"đất\s+trồng\s+lúa.*nước\s+còn\s+lại|đất\s+trồng\s+lúa\s+nước\s+còn\s+lại", "Đất trồng lúa nước còn lại", "LUK"),
-            (r"đất\s+trồng\s+lúa", "Đất trồng lúa", "LUA"),
+            (r"đất\s+trồng\s+lúa", "Đất trồng lúa", "LUC"),
             (r"đất\s+nương\s+rẫy\s+trồng\s+cây\s+hàng\s+năm\s+khác", "Đất nương rẫy trồng cây hàng năm khác", "HNK"),
             (r"đất\s+trồng\s+cây\s+hàng\s+năm(?!\s+khác)", "Đất trồng cây hàng năm", "CHN"),
             (r"đất\s+nuôi\s+trồng\s+thủy\s+sản(?:\s+nước\s+ngọt)?", "Đất nuôi trồng thủy sản", "NTS"),

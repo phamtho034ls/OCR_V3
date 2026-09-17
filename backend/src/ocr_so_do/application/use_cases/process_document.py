@@ -14,7 +14,6 @@ from ..projections.cadastral_129_mapper import Cadastral129Mapper as ExcelChuyen
 from extraction.gcn_merger import GCNMerger
 from extraction.two_page_gcn_profile import TwoPageGCNProfile
 from ...domain.rules.raw_markdown.generator import RawMarkdownGenerator
-from ...infrastructure.persistence.sqlite_raw_store import get_sqlite_raw_store
 from ...infrastructure.persistence.postgres_store import get_postgres_store
 from ...infrastructure.memory import cleanup_memory
 
@@ -43,6 +42,15 @@ class ProcessDocumentUseCase:
         doc_p = Path(document_path)
         if not doc_p.exists():
             raise FileNotFoundError(f"Không tìm thấy file: {document_path}")
+
+        # Phương án B: Kiểm tra tiên quyết PostgreSQL bắt buộc phải sẵn sàng
+        pg_store = get_postgres_store()
+        if not pg_store.is_connected():
+            reason = pg_store.unavailable_reason or "Không thể kết nối đến máy chủ PostgreSQL"
+            raise RuntimeError(
+                f"Hệ thống bắt buộc phải có PostgreSQL đang chạy để lưu trữ dữ liệu. "
+                f"Hiện không thể kết nối ({reason}). Vui lòng khởi động PostgreSQL trước khi thực hiện OCR!"
+            )
 
         display_name = file_name or doc_p.name
         stem_name = Path(display_name).stem
@@ -217,7 +225,7 @@ class ProcessDocumentUseCase:
             src_f = str(doc_p.parent.resolve())
             f_res = folder_result or batch_id or doc_p.parent.name or "single_scans"
 
-            pg_store.save_record(
+            saved = pg_store.save_record(
                 doc_id=document_id,
                 file_name=display_name,
                 raw_markdown=doc_raw_md,
@@ -241,21 +249,13 @@ class ProcessDocumentUseCase:
                 status="success",
                 elapsed_seconds=elapsed,
             )
+            if not saved:
+                reason = pg_store.unavailable_reason or "Lỗi lưu bản ghi vào PostgreSQL"
+                logger.error(f"[{document_id}] Không thể lưu vào PostgreSQL (bắt buộc): {reason}")
+                raise RuntimeError(f"PostgreSQL bắt buộc nhưng không thể lưu hồ sơ {document_id}: {reason}")
         except Exception as e_pg:
-            logger.warning(f"[{document_id}] Không thể lưu vào PostgreSQL: {e_pg}")
-
-        # Đồng thời lưu vào SQLite làm cache dự phòng nếu cần
-        try:
-            raw_store = get_sqlite_raw_store()
-            raw_store.save_record(
-                doc_id=document_id,
-                file_name=display_name,
-                template=merged.get("mau", main_p.get("mau", "unknown")),
-                total_pages=len(page_results),
-                raw_markdown=doc_raw_md
-            )
-        except Exception as e_sql:
-            logger.debug(f"[{document_id}] SQLite backup notice: {e_sql}")
+            logger.error(f"[{document_id}] Không thể lưu vào PostgreSQL (bắt buộc): {e_pg}")
+            raise RuntimeError(f"PostgreSQL bắt buộc nhưng không thể lưu hồ sơ: {e_pg}") from e_pg
 
         cleanup_memory(force_os_trim=False)
 

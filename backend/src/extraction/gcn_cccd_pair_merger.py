@@ -169,15 +169,23 @@ class GCNCCCDPairMerger:
         # 1. OCR Sổ Đỏ
         gcn_data: Dict[str, Any] = {}
         if gcn_path and os.path.exists(gcn_path):
-            gcn_data = self._process_gcn(gcn_path, pair_id)
+            try:
+                gcn_data = self._process_gcn(gcn_path, pair_id)
+            except Exception as e_gcn:
+                logger.error(f"[{pair_id}] Lỗi khi xử lý Sổ Đỏ {gcn_path}: {e_gcn}")
+                gcn_data = {}
         else:
             logger.warning(f"[{pair_id}] Không tìm thấy file Sổ đỏ GCN.")
 
         # 2. OCR CCCD / Giấy tờ tùy thân
         gt_data: Dict[str, Any] = {}
         if gt_path and os.path.exists(gt_path):
-            gt_data = self._process_gt(gt_path)
-            logger.info(f"[{pair_id}] Đã trích xuất CCCD: {gt_data.get('ho_ten')} - {gt_data.get('so_cccd')}")
+            try:
+                gt_data = self._process_gt(gt_path)
+                logger.info(f"[{pair_id}] Đã trích xuất CCCD: {gt_data.get('ho_ten')} - {gt_data.get('so_cccd')}")
+            except Exception as e_gt:
+                logger.error(f"[{pair_id}] Lỗi khi xử lý CCCD {gt_path}: {e_gt}")
+                gt_data = {}
         else:
             logger.info(f"[{pair_id}] Không có file Giấy tờ tùy thân (CCCD).")
 

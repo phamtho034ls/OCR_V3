@@ -4,17 +4,17 @@ services:
     image: postgres:16-alpine
     container_name: ocr_sodo_postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ocr_password
-      POSTGRES_DB: ocr_so_do
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?Set PG_PASSWORD in .env before starting Docker}
+      POSTGRES_DB: ${PG_DATABASE:-ocr_so_do}
     # Cổng kết nối riêng biệt cho Docker: 5434 (Host) -> 5432 (Container)
     # Không xung đột với PostgreSQL 18 trên máy chủ đang chạy cổng 5433
     ports:
-      - "5434:5432"
+      - "${OCR_BIND_HOST:-127.0.0.1}:5434:5432"
     volumes:
       - ocr_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ocr_so_do"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -29,14 +29,14 @@ services:
     # Cổng kết nối riêng biệt cho Docker Backend: 8008 (Host) -> 8000 (Container)
     # Không xung đột với Backend chạy cục bộ đang dùng cổng 8000
     ports:
-      - "8008:8000"
+      - "${OCR_BIND_HOST:-127.0.0.1}:8008:8000"
     environment:
       - PYTHONUNBUFFERED=1
       - PG_HOST=postgres
       - PG_PORT=5432
-      - PG_USER=postgres
-      - PG_PASSWORD=ocr_password
-      - PG_DATABASE=ocr_so_do
+      - PG_USER=${PG_USER:-postgres}
+      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in .env before starting Docker}
+      - PG_DATABASE=${PG_DATABASE:-ocr_so_do}
       - HF_HOME=/app/.cache/huggingface
       - TORCH_HOME=/app/.cache/torch
       - PADDLE_HOME=/app/.cache/paddle
@@ -61,7 +61,7 @@ services:
     # Cổng kết nối riêng biệt cho Docker Frontend: 8088 (Host) -> 80 (Container)
     # Không xung đột với cổng 80 hay cổng 8080 / 5173
     ports:
-      - "8088:80"
+      - "${OCR_BIND_HOST:-127.0.0.1}:8088:80"
     depends_on:
       - backend
     restart: unless-stopped

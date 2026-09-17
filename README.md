@@ -12,9 +12,9 @@
    - Kết hợp mô hình nhận diện tiếng Việt độ chính xác cao: **PaddleOCR PP-OCRv4** (phát hiện vùng chữ) + **VietOCR Transformer** (nhận diện quang học chính xác).
    - Tự động định vị và crop **Sơ đồ thửa đất** và đọc **Mã vạch Barcode (Trang 4)**.
 
-2. **Lưu Trữ Bền Vững Dữ Liệu Thô Dạng Markdown (`SQLite Raw Store`)**:
-   - Lưu trữ toàn bộ kết quả bóc tách thô và các dòng text OCR theo thứ tự không gian (`Spatial Reading Order`) vào cơ sở dữ liệu SQLite cục bộ (`output/raw_ocr.db`) dạng Zero-Config.
-   - Bảng tra cứu, tìm kiếm, lọc theo tên tệp và mẫu sổ trực quan trên Web.
+2. **Lưu Trữ Bền Vững Vào PostgreSQL**:
+   - Lưu trữ toàn bộ kết quả bóc tách, dữ liệu cấu trúc JSON và các dòng 129 cột vào cơ sở dữ liệu PostgreSQL.
+   - Bảng tra cứu, tìm kiếm, lọc đa tiêu chí theo tên tệp, mẫu sổ, thư mục, đường dẫn nguồn trực quan trên Web.
 
 3. **Xem Trước & Xuất Excel Bảng Tính Dữ Liệu Thô (3 Sheets)**:
    - Cho phép **xem trước dữ liệu bảng tính (Spreadsheet Preview Modal)** trực tiếp trên Web trước khi tải xuống:
@@ -32,7 +32,7 @@
 
 5. **Kiến Trúc Chuẩn Clean Architecture (DDD)**:
    - Tách biệt hoàn toàn Backend (FastAPI, Python) và Frontend (React 18, Vite, TypeScript, Tailwind CSS).
-   - Hệ thống kiểm thử tự động toàn diện (168 test cases, 100% PASS).
+   - Bộ kiểm thử tự động cho parser, ánh xạ địa chính, pipeline và API.
 
 ---
 
@@ -42,9 +42,8 @@
 ocr-so-do/
 ├── backend/
 │   ├── api/
-│   │   ├── main.py                     # Ứng dụng FastAPI, middleware, CORS, định tuyến
-│   │   ├── dependencies.py             # Dependency injection cho API
-│   │   └── static/                     # Giao diện HTML tĩnh phụ trợ (index.html, app.js)
+│   │   ├── main.py                     # Bridge module → re-exports FastAPI app
+│   │   └── __init__.py
 │   ├── configs/                        # Tập tin cấu hình hệ thống
 │   │   ├── template_labels.json        # Nhãn trường theo mẫu sổ A/B
 │   │   ├── color_profiles.json         # Profile màu xử lý kênh ảnh
@@ -52,26 +51,25 @@ ocr-so-do/
 │   │   └── excel_chuyen_doi_columns.json # Định nghĩa 129 cột địa chính
 │   ├── weights/                        # Trọng số mô hình AI (VietOCR Transformer)
 │   ├── src/ocr_so_do/                  # Core Clean Architecture (DDD)
-│   │   ├── domain/                     # Thực thể, models (Job, Cadastral129Row), validators
+│   │   ├── domain/                     # Thực thể, models (Cadastral129Row), validators
 │   │   ├── application/                # Use cases (Single Process, Batch Scan), Projections (Cadastral129Mapper)
-│   │   ├── infrastructure/             # OCR Engine, Preprocessing, SQLite Store, Excel Exporters
-│   │   └── interfaces/                 # API Routers (/ocr, /batch, /raw-ocr, /chuyen-doi)
+│   │   ├── infrastructure/             # OCR Engine, Preprocessing, PostgreSQL Store, Excel Exporters
+│   │   └── interfaces/                 # API Routers (/documents, /batch, /batch-pairs, /pg, /exports)
 │   └── tests/                          # Kiểm thử đơn vị domain models
 ├── frontend/                           # Giao diện Web SPA (React 18 + Vite + TypeScript)
 │   ├── src/
 │   │   ├── app/                        # Layout, điều hướng App.tsx, main.tsx
 │   │   ├── pages/                      # Các màn hình chức năng chính
 │   │   │   ├── batch-scan/             # Quét thư mục hàng loạt
-│   │   │   ├── data-conversion/        # Bảng chuyển đổi 129 cột (Nạp từ Markdown DB)
-│   │   │   ├── raw-markdown/           # Bảng quản lý & xem trước Excel Markdown DB
+│   │   │   ├── data-conversion/        # Bảng chuyển đổi 129 cột
+│   │   │   ├── raw-markdown/           # Kho hồ sơ (PostgreSQL)
 │   │   │   └── document-upload/        # Nhận dạng tài liệu đơn lẻ
 │   │   └── shared/                     # Components, types, HTTP client
 │   ├── package.json
 │   └── vite.config.ts                  # Cấu hình proxy sang backend (:8000)
 ├── output/                             # Thư mục lưu kết quả xuất ra
-│   ├── raw_ocr.db                      # Cơ sở dữ liệu SQLite lưu Markdown thô
 │   └── diagrams/                       # Ảnh crop sơ đồ thửa đất
-├── tests/                              # Bộ kiểm thử tích hợp (158 test cases)
+├── tests/                              # Bộ kiểm thử tích hợp
 ├── requirements.txt                    # Danh sách thư viện Python
 ├── run.py                              # CLI runner điều khiển hệ thống
 └── README.md
@@ -126,6 +124,10 @@ pip install paddlepaddle
 pip install -r requirements.txt
 ```
 
+### Cấu hình môi trường
+
+Sao chép `.env.example` thành `.env`, sau đó đặt `PG_PASSWORD` đủ mạnh nếu chạy PostgreSQL/Docker. Không đưa `.env` vào Git. Nếu PostgreSQL cục bộ chưa chạy, ứng dụng tự lưu dữ liệu OCR bằng SQLite; đặt `OCR_POSTGRES_ENABLED=false` để chủ động tắt kết nối PostgreSQL. Các biến giới hạn upload, CORS và worker batch đều được mô tả trong file mẫu.
+
 ---
 
 ### 2. Cài Đặt Môi Trường Frontend (Node.js)
@@ -138,6 +140,16 @@ cd frontend
 # Cài đặt các package npm
 npm install
 ```
+
+### Chạy bằng Docker (cục bộ)
+
+Sau khi đặt `PG_PASSWORD` trong `.env`:
+
+```bash
+docker compose up --build
+```
+
+Các cổng Docker mặc định chỉ bind vào `127.0.0.1`; dùng reverse proxy có TLS và xác thực khi triển khai cho nhiều người dùng.
 
 ---
 
@@ -227,55 +239,65 @@ Khi truy cập vào **[http://127.0.0.1:3000](http://127.0.0.1:3000)**, hệ th�
 
 ## 🔌 Danh Sách API Endpoints Chính
 
-### Nhóm Chuyển Đổi Dữ Liệu 129 Cột
+### Nhóm Tiếp Nhận & OCR Hồ Sơ (`/api/v1/documents`)
 | Phương thức | Đường dẫn | Chức năng |
 | :---: | :--- | :--- |
-| `GET` | `/chuyen-doi/columns` | Lấy danh sách định nghĩa 129 cột và các phân nhóm |
-| `GET` | `/chuyen-doi/load-from-markdown-db` | **Nạp toàn bộ dữ liệu Markdown từ DB và chuyển đổi sang 129 cột** |
-| `GET` | `/chuyen-doi/vinhyen-50` | Lấy dữ liệu mẫu đã bóc tách (hỗ trợ fallback DB) |
-| `POST` | `/chuyen-doi/export` | Xuất danh sách các hàng 129 cột ra tệp Excel (.xlsx) |
+| `POST` | `/api/v1/documents` | Upload một file tài liệu (PDF, PNG, JPG), chạy OCR và lưu PostgreSQL |
 
-### Nhóm Dữ Liệu Thô Markdown (Raw OCR)
+### Nhóm Quét Thư Mục Hàng Loạt (`/api/v1/batch`)
 | Phương thức | Đường dẫn | Chức năng |
 | :---: | :--- | :--- |
-| `GET` | `/api/v1/raw-ocr` | Danh sách bản ghi tóm tắt trong SQLite (hỗ trợ phân trang, tìm kiếm) |
-| `GET` | `/api/v1/raw-ocr/to-129-rows` | Chuyển đổi toàn bộ dữ liệu thô sang 129 cột (chuẩn Clean Architecture) |
-| `GET` | `/api/v1/raw-ocr/export-table-excel` | Tải về tệp Excel danh sách bảng dữ liệu thô |
-| `GET` | `/api/v1/raw-ocr/{doc_id}` | Lấy chi tiết toàn văn Markdown của một hồ sơ |
-| `GET` | `/api/v1/raw-ocr/{doc_id}/preview-excel` | **Lấy dữ liệu JSON để xem trước bảng tính Excel trên UI** |
-| `GET` | `/api/v1/raw-ocr/{doc_id}/export-excel` | Tải về tệp Excel thô (.xlsx) gồm 2 Sheet |
-| `GET` | `/api/v1/raw-ocr/{doc_id}/export-129-excel` | Tải về tệp Excel 129 cột (.xlsx) của hồ sơ |
-| `GET` | `/api/v1/raw-ocr/{doc_id}/download` | Tải về tệp Markdown (.md) |
-| `DELETE` | `/api/v1/raw-ocr/{doc_id}` | Xóa một bản ghi dữ liệu thô |
+| `POST` | `/api/v1/batch/scan-directory` | Khởi chạy tác vụ quét thư mục trên máy chủ |
+| `GET` | `/api/v1/batch/{batch_id}` | Theo dõi tiến độ quét thư mục theo thời gian thực |
+| `POST` | `/api/v1/batch/{batch_id}/cancel` | Gửi yêu cầu dừng tác vụ quét |
+| `GET` | `/api/v1/batch/{batch_id}/download-excel` | Tải file Excel 129 cột checkpoint |
+| `GET` | `/api/v1/batch/{batch_id}/rows-129` | Lấy dữ liệu 129 cột của đúng đợt quét |
+| `POST` | `/api/v1/batch/{batch_id}/convert-markdown-to-129-excel` | Xuất Excel 129 cột theo yêu cầu |
 
-### Nhóm OCR & Xử Lý
+### Nhóm Kho Lưu Trữ PostgreSQL (`/api/v1/pg`)
 | Phương thức | Đường dẫn | Chức năng |
 | :---: | :--- | :--- |
-| `POST` | `/ocr` | OCR một tệp ảnh / PDF đơn lẻ |
-| `POST` | `/api/v1/batch/scan-directory` | Bắt đầu tác vụ quét toàn bộ một thư mục |
-| `GET` | `/api/v1/batch/{batch_id}/status` | Theo dõi tiến độ quét thư mục theo thời gian thực |
-| `GET` | `/health` | Kiểm tra trạng thái máy chủ và mô hình AI |
+| `GET` | `/api/v1/pg/health` | Kiểm tra kết nối cơ sở dữ liệu PostgreSQL |
+| `GET` | `/api/v1/pg/stats` | Thống kê số lượng mẻ quét, tổng hồ sơ, thành công / lỗi |
+| `GET` | `/api/v1/pg/filters` | Danh sách các thư mục kết quả và đường dẫn nguồn để lọc |
+| `GET` | `/api/v1/pg/records` | Tra cứu danh sách hồ sơ với bộ lọc đa tiêu chí |
+| `GET` | `/api/v1/pg/records/{doc_id}` | Lấy chi tiết hồ sơ (Markdown, JSONB cấu trúc, 129 cột) |
+| `GET` | `/api/v1/pg/records/{doc_id}/preview-excel` | Dữ liệu xem trước 3 bảng trong Modal Excel |
+| `GET` | `/api/v1/pg/records/{doc_id}/download-md` | Tải về tệp Markdown (.md) thô |
+| `GET` | `/api/v1/pg/129-rows` | Trích xuất các dòng 129 cột theo thư mục/mẻ quét |
+| `POST` | `/api/v1/pg/export-129-excel` | Xuất trực tiếp file Excel 129 cột từ dữ liệu PostgreSQL |
+| `GET` | `/api/v1/pg/export-raw-db` | **Tải toàn bộ CSDL dữ liệu thô dạng JSON (sao lưu/đối soát)** |
+| `GET` | `/api/v1/pg/export-raw-markdown` | **Tải trọn gói các tệp văn bản Markdown thô dạng .zip** |
+| `DELETE` | `/api/v1/pg/records` | Xóa có chọn lọc danh sách hồ sơ theo ID |
+| `DELETE` | `/api/v1/pg/by-folder` | Xóa toàn bộ hồ sơ thuộc thư mục kết quả |
+| `DELETE` | `/api/v1/pg/by-source` | Xóa toàn bộ hồ sơ theo đường dẫn trên máy |
+
+### Nhóm Xuất & Cấu Hình 129 Cột (`/api/v1/exports`)
+| Phương thức | Đường dẫn | Chức năng |
+| :---: | :--- | :--- |
+| `GET` | `/api/v1/exports/columns-129` | Lấy cấu hình 129 cột và danh mục 12 nhóm nghiệp vụ |
+| `POST` | `/api/v1/exports/excel-129` | Xuất danh sách các hàng 129 cột ra tệp Excel (.xlsx) |
+
+### Nhóm Hệ Thống
+| Phương thức | Đường dẫn | Chức năng |
+| :---: | :--- | :--- |
+| `GET` | `/health` | Kiểm tra trạng thái hoạt động của backend API |
 
 ---
 
 ## 🧪 Kiểm Thử Hệ Thống (Automated Testing)
 
-Dự án trang bị hệ thống kiểm thử tự động đạt độ phủ cao, bao quát toàn bộ pipeline tiền xử lý, nhận dạng, bóc tách, lưu trữ SQLite và xuất Excel.
-
-Chạy toàn bộ 168 bài kiểm thử:
+Dự án có kiểm thử cho tiền xử lý, parser, ánh xạ dữ liệu, lưu trữ và API. Chạy hai nhóm riêng biệt để tránh xung đột tên package `tests`:
 ```bash
-# 1. Chạy qua script runner:
-python run.py test
-
-# 2. Hoặc chạy trực tiếp qua pytest:
+# Tại thư mục gốc dự án
 pytest tests/ -q
-pytest backend/tests/ -q
+
+# Tại thư mục backend
+cd backend
+pytest tests/ -q
 ```
 
-**Kết quả kiểm thử chuẩn:**
-- `tests/`: 158 passed (100%)
-- `backend/tests/`: 10 passed (100%)
-- **Tổng cộng: 168/168 test cases ĐẠT 100%.**
+Hãy dùng kết quả của CI/lần chạy hiện tại làm chuẩn; không cố định số lượng test trong tài liệu.
 
 Kiểm thử biên dịch Frontend:
 ```bash

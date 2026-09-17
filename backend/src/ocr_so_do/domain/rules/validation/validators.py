@@ -29,7 +29,7 @@ VALID_LAND_CODES = {
     "ODT", "ONT", "TMD", "SKC", "SKS", "SKX", "SKN", "DGT", "DTL", "DNL", "DTS", 
     "DVH", "DYT", "DGD", "DKT", "DNT", "DRA", "DCV", "CQP", "CAN", "TON", "TIN", "PNN",
     # Đất nông nghiệp
-    "LUC", "LUK", "LUN", "LUA", "BHK", "NHK", "HNK", "CHN", "CLN", "RSX", "RPH", "RDD", "NTS", "LMH", "NKH",
+    "LUC", "LUK", "LUN", "BHK", "NHK", "HNK", "CHN", "CLN", "RSX", "RPH", "RDD", "NTS", "LMH", "NKH",
     # Đất chưa sử dụng
     "BCS", "DCS"
 }
@@ -93,16 +93,28 @@ def truncate_address_after_province(value: str) -> str:
         flags=re.IGNORECASE,
     )
 
-    # Với mọi tỉnh/thành có nhãn hành chính, dấu phẩy/chấm phẩy sau tên tỉnh
-    # là ranh giới kết thúc địa chỉ; không giữ nội dung sau đó.
-    match = re.search(
-        r"\b(?:tỉnh|tinh|tin[hg]|thành\s*phố|thanh\s*pho|tp\.?)\s+[^,;\n\r]+(?:[,;].*)?$",
+    # Ưu tiên nhãn ``tỉnh`` rõ ràng. Một địa chỉ có thể chứa ``TP Vĩnh Yên``
+    # (cấp huyện) trước ``tỉnh Vĩnh Phúc``; coi TP là cấp tỉnh ở đây sẽ làm mất
+    # cả tỉnh thật lẫn thông tin huyện.
+    province_matches = list(re.finditer(
+        r"\b(?:tỉnh|tinh|tin[hg]|ủnh|únh)\s+[^,;\n\r]+",
         cleaned,
         flags=re.IGNORECASE,
-    )
-    if match:
-        province_part = re.split(r"[,;]", match.group(0), maxsplit=1)[0]
-        cleaned = cleaned[:match.start()] + province_part
+    ))
+    if province_matches:
+        match = province_matches[-1]
+        cleaned = cleaned[:match.end()]
+    else:
+        # Chỉ khi không có nhãn tỉnh mới dùng thành phố/TP như một tỉnh trực thuộc
+        # trung ương, rồi cắt phần OCR dính sau nó.
+        city_matches = list(re.finditer(
+            r"\b(?:thành\s*phố|thanh\s*pho|tp\.?)\s+[^,;\n\r]+",
+            cleaned,
+            flags=re.IGNORECASE,
+        ))
+        if city_matches:
+            match = city_matches[-1]
+            cleaned = cleaned[:match.end()]
 
     return cleaned.strip(" -:;,." )
 
@@ -163,7 +175,7 @@ class GCNValidators:
             return False, None, f"Số vào sổ chứa từ khóa không hợp lệ: '{s_clean}'"
 
         # Chuẩn hóa nhầm lẫn quang học OCR cho mã sổ dạng CH/CS (O->0, S->5, l->1, D->0, G->6, %->9)
-        m_ch = re.search(r'(?:GCN|GƠN|sổ)?\s*(C[HNS])\s*([0-9A-Za-z\.\-_%]+)', s_clean, re.IGNORECASE)
+        m_ch = re.search(r'(?:GCN|GƠN|sổ)?\s*(C[HNS]|VP)\s*([0-9A-Za-z\.\-_%]+)', s_clean, re.IGNORECASE)
         if m_ch:
             prefix = m_ch.group(1).upper()
             body = m_ch.group(2)
@@ -296,8 +308,8 @@ class GCNValidators:
         # Kiểm tra tính hợp lệ trên lịch thực
         try:
             dt = datetime(y, m, d)
-            if not (1985 <= y <= 2030):
-                return False, s, f"Năm cấp ngoài khoảng hợp lý (1985-2030): {y}"
+            if not (1985 <= y <= 2026):
+                return False, s, f"Năm cấp ngoài khoảng hợp lý (1985-2026): {y}"
             normalized = f"{d:02d}/{m:02d}/{y:04d}"
             return True, normalized, None
         except ValueError as err:
@@ -651,7 +663,7 @@ class GCNValidators:
             (r"đất\s+bằng\s+trồng\s+cây(?:\s+hàng\s+năm\s+khác)?|đất\s+trồng\s+cây\s+hàng\s+năm\s+khác", "Đất bằng trồng cây hàng năm khác", "HNK"),
             (r"đất\s+chuyên\s+trồng\s+lúa\s+nước|đất\s+chuyên\s+trồng.*lúa\s+nước", "Đất chuyên trồng lúa nước", "LUC"),
             (r"đất\s+trồng\s+lúa.*nước\s+còn\s+lại|đất\s+trồng\s+lúa\s+nước\s+còn\s+lại", "Đất trồng lúa nước còn lại", "LUK"),
-            (r"đất\s+trồng\s+lúa", "Đất trồng lúa", "LUA"),
+            (r"đất\s+trồng\s+lúa", "Đất trồng lúa", "LUC"),
             (r"đất\s+nương\s+rẫy\s+trồng\s+cây\s+hàng\s+năm\s+khác", "Đất nương rẫy trồng cây hàng năm khác", "HNK"),
             (r"đất\s+trồng\s+cây\s+hàng\s+năm(?!\s+khác)", "Đất trồng cây hàng năm", "CHN"),
             (r"đất\s+nuôi\s+trồng\s+thủy\s+sản(?:\s+nước\s+ngọt)?", "Đất nuôi trồng thủy sản", "NTS"),

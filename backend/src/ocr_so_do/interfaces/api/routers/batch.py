@@ -234,11 +234,40 @@ def _export_batch_checkpoint_excel(output_dir: Path, batch_id: str) -> Optional[
     return out_excel
 
 
+def _load_batch_129_rows(batch_id: str) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Load rows belonging to one batch only.
+
+    Result artifacts on disk are the authoritative source of truth.
+    """
+    output_dir = Path(DEFAULT_OUTPUT_DIR)
+    batch_results_dir = output_dir / "batches" / batch_id / "results"
+    all_rows: List[Dict[str, Any]] = []
+    quality_reports: List[Dict[str, Any]] = []
+    current_stt = 1
+
+    if batch_results_dir.exists():
+        for result_file in sorted(batch_results_dir.glob("result_*.json")):
+            try:
+                with result_file.open("r", encoding="utf-8") as result_stream:
+                    document_result = json.load(result_stream)
+                file_name = document_result.get("file_name", result_file.stem)
+                rows, quality = _prepare_export_rows(document_result, file_name, current_stt)
+                all_rows.extend(rows)
+                quality_reports.append({"file_name": file_name, **quality})
+                current_stt += len(rows)
+            except Exception as error:
+                logger.warning("[Batch %s] Không thể đọc %s: %s", batch_id, result_file.name, error)
+
+    return all_rows, quality_reports
+
+
 class ScanDirectoryRequest(BaseModel):
     directory_path: str = Field(..., description="Đường dẫn thư mục chứa PDF/Ảnh trên máy chủ")
     sample_count: int = Field(0, description="Số file mẫu cần quét (0 = tất cả file)")
     split_a3: bool = Field(True, description="Tự động cắt đôi trang A3 scan đôi")
     smart_gcn_filter: bool = Field(True, description="Chỉ xử lý trang phôi Sổ Đỏ")
+    start_index: int = Field(0, description="Vị trí file bắt đầu quét (0-indexed) để tiếp tục quét dở dang")
+    resume_batch_id: Optional[str] = Field(None, description="Batch ID trước đó để tiếp tục cập nhật và giữ lại kết quả")
 
 
 def _run_batch_worker_chunk(
@@ -355,7 +384,7 @@ def _save_batch_checkpoint(
     job["last_checkpoint_idx"] = processed_count
     job["last_checkpoint_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
     job["last_checkpoint_message"] = (
-        f"Đã lưu checkpoint {processed_count}/{total_files}; worker OCR cũ đã kết thúc và RAM native đã được hệ điều hành thu hồi."
+        f"Đã cập nhật kết quả {processed_count}/{total_files} hồ sơ."
     )
     # Cập nhật tiến độ đợt quét vào PostgreSQL
     try:
@@ -376,11 +405,23 @@ def _save_batch_checkpoint(
     cleanup_memory(force_os_trim=True)
 
 
-def _run_batch_scan_job(batch_id: str, target_files: List[Path], split_a3: bool, smart_gcn_filter: bool):
+def _run_batch_scan_job(
+    batch_id: str,
+    target_files: List[Path],
+    split_a3: bool,
+    smart_gcn_filter: bool,
+    start_index: int = 0
+):
     """Điều phối các worker OCR ngắn hạn để native memory không tích lũy qua toàn bộ batch."""
     output_dir = Path(DEFAULT_OUTPUT_DIR)
     started_at = time.time()
     results: List[Dict[str, Any]] = []
+
+    if start_index > 0 and batch_id in batch_jobs:
+        results = list(batch_jobs[batch_id].get("results", []))
+        prev_elapsed = float(batch_jobs[batch_id].get("elapsed_seconds", 0.0))
+        started_at = time.time() - prev_elapsed
+
     acquired = False
 
     try:
@@ -393,7 +434,8 @@ def _run_batch_scan_job(batch_id: str, target_files: List[Path], split_a3: bool,
                 batch_jobs[batch_id]["current_file"] = "Đang chờ worker OCR hiện tại hoàn tất..."
 
         ctx = mp.get_context("spawn")
-        indexed_files = [(index, str(path)) for index, path in enumerate(target_files, 1)]
+        files_to_scan = target_files[start_index:]
+        indexed_files = [(start_index + index, str(path)) for index, path in enumerate(files_to_scan, 1)]
 
         for chunk_start in range(0, len(indexed_files), BATCH_WORKER_MAX_FILES):
             if batch_jobs[batch_id].get("cancel_requested"):
@@ -405,7 +447,7 @@ def _run_batch_scan_job(batch_id: str, target_files: List[Path], split_a3: bool,
             worker = ctx.Process(
                 target=_run_batch_worker_chunk,
                 args=(batch_id, chunk, split_a3, smart_gcn_filter, str(output_dir), result_queue),
-                name=f"ocr-batch-{batch_id}-{chunk_start // BATCH_WORKER_MAX_FILES + 1}",
+                name=f"ocr-batch-{batch_id}-{(start_index + chunk_start) // BATCH_WORKER_MAX_FILES + 1}",
             )
             worker.start()
             batch_jobs[batch_id]["worker_pid"] = worker.pid
@@ -512,10 +554,11 @@ def _run_batch_scan_job(batch_id: str, target_files: List[Path], split_a3: bool,
         cleanup_memory(force_os_trim=True)
 
 
-@router.post("/scan-directory", summary="Khởi chạy quét thư mục trên máy chủ")
+@router.post("/scan-directory", summary="Khởi chạy hoặc tiếp tục quét thư mục trên máy chủ")
 async def scan_directory(req: ScanDirectoryRequest, background_tasks: BackgroundTasks):
     """
     Quét thư mục máy chủ và thực thi OCR từng file trong background.
+    Hỗ trợ tiếp tục quét từ start_index với resume_batch_id mà không xóa kết quả cũ.
     """
     dir_p = Path(req.directory_path)
     if not dir_p.exists() or not dir_p.is_dir():
@@ -532,54 +575,87 @@ async def scan_directory(req: ScanDirectoryRequest, background_tasks: Background
         raise HTTPException(status_code=404, detail=f"Không tìm thấy file PDF hoặc ảnh nào trong thư mục {req.directory_path}")
 
     target_files = all_files[:req.sample_count] if req.sample_count > 0 else all_files
+    start_idx = max(0, req.start_index)
+    if start_idx >= len(target_files):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Vị trí bắt đầu ({start_idx}) đã vượt quá hoặc bằng tổng số file ({len(target_files)})."
+        )
 
-    batch_id = f"dir_{uuid.uuid4().hex[:8]}"
+    is_resuming = bool(req.resume_batch_id and req.resume_batch_id in batch_jobs and start_idx > 0)
+    batch_id = req.resume_batch_id if is_resuming else f"dir_{uuid.uuid4().hex[:8]}"
     _trim_batch_jobs()
 
-    # Khởi tạo bản ghi đợt quét trong PostgreSQL
-    try:
-        pg_store = get_postgres_store()
-        pg_store.save_batch(
+    # Khởi tạo bản ghi đợt quét trong PostgreSQL (Bắt buộc)
+    pg_store = get_postgres_store()
+    if not pg_store.is_connected():
+        reason = pg_store.unavailable_reason or "Không thể kết nối đến PostgreSQL"
+        raise HTTPException(
+            status_code=503,
+            detail=f"Quét thư mục yêu cầu cơ sở dữ liệu PostgreSQL đang chạy. Hiện không thể kết nối ({reason}). Vui lòng khởi động PostgreSQL!"
+        )
+
+    if is_resuming:
+        batch_jobs[batch_id]["cancel_requested"] = False
+        batch_jobs[batch_id]["status"] = "processing"
+        batch_jobs[batch_id]["current_file"] = f"Đang tiếp tục từ file {start_idx + 1}..."
+        try:
+            pg_store.update_batch_progress(
+                batch_id=batch_id,
+                status="running"
+            )
+        except Exception as e_pg_resume:
+            logger.warning(f"[Batch {batch_id}] Lỗi cập nhật PostgreSQL resume: {e_pg_resume}")
+    else:
+        if not pg_store.save_batch(
             batch_id=batch_id,
             folder_name=dir_p.name,
             source_path=str(dir_p.resolve()),
             output_dir=str(DEFAULT_OUTPUT_DIR / "batches" / batch_id),
             total_files=len(target_files),
             status="running"
-        )
-    except Exception as e_pg:
-        logger.warning(f"Lỗi khởi tạo batch trong PostgreSQL: {e_pg}")
+        ):
+            raise HTTPException(
+                status_code=500,
+                detail="Không thể tạo bản ghi đợt quét trong PostgreSQL."
+            )
 
-    batch_jobs[batch_id] = {
-        "batch_id": batch_id,
-        "status": "processing",
-        "directory_path": str(dir_p),
-        "total_files": len(target_files),
-        "processed_count": 0,
-        "current_file": "Đang khởi tạo...",
-        "elapsed_seconds": 0.0,
-        "results": [],
-        "chuyen_doi_rows": [],
-        "worker_rss_mb": 0.0,
-        "worker_private_mb": 0.0,
-        "worker_uss_mb": 0.0,
-        "peak_worker_private_mb": 0.0,
-        "cancel_requested": False
-    }
+        batch_jobs[batch_id] = {
+            "batch_id": batch_id,
+            "status": "processing",
+            "directory_path": str(dir_p),
+            "total_files": len(target_files),
+            "processed_count": 0,
+            "current_file": "Đang khởi tạo...",
+            "elapsed_seconds": 0.0,
+            "results": [],
+            "chuyen_doi_rows": [],
+            "worker_rss_mb": 0.0,
+            "worker_private_mb": 0.0,
+            "worker_uss_mb": 0.0,
+            "peak_worker_private_mb": 0.0,
+            "cancel_requested": False
+        }
 
     background_tasks.add_task(
         _run_batch_scan_job,
         batch_id,
         target_files,
         req.split_a3,
-        req.smart_gcn_filter
+        req.smart_gcn_filter,
+        start_idx
     )
 
+    msg = (
+        f"Tiếp tục quét từ file {start_idx + 1}/{len(target_files)} trong thư mục."
+        if is_resuming
+        else f"Bắt đầu quét {len(target_files)} hồ sơ trong thư mục."
+    )
     return JSONResponse(content={
         "batch_id": batch_id,
         "status": "processing",
         "total_files": len(target_files),
-        "message": f"Bắt đầu quét {len(target_files)} hồ sơ trong thư mục."
+        "message": msg
     })
 
 
@@ -647,6 +723,26 @@ async def download_batch_excel(batch_id: str):
     )
 
 
+@router.get("/{batch_id}/rows-129", summary="Lấy dữ liệu 129 cột thuộc đúng một đợt quét")
+async def get_batch_129_rows(batch_id: str):
+    """Return structured rows for the selected batch without querying global history."""
+    rows, quality_reports = _load_batch_129_rows(batch_id)
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Chưa có dữ liệu 129 cột cho đợt quét này. "
+                "Hãy chờ ít nhất một hồ sơ hoàn tất hoặc quét lại batch cũ."
+            ),
+        )
+    return JSONResponse(content={
+        "batch_id": batch_id,
+        "total": len(rows),
+        "rows": rows,
+        "quality_reports": quality_reports,
+    })
+
+
 @router.post("/{batch_id}/cancel", summary="Hủy tác vụ quét thư mục")
 async def cancel_batch_scan(batch_id: str):
     """Yêu cầu dừng tiến trình quét hàng loạt."""
@@ -660,52 +756,17 @@ async def cancel_batch_scan(batch_id: str):
     })
 
 
-@router.get("/{batch_id}/export-129-excel", summary="Chuyển đổi on-demand từ Markdown đã lưu sang file Excel 129 cột")
 @router.post("/{batch_id}/convert-markdown-to-129-excel", summary="Chuyển đổi on-demand từ Markdown đã lưu sang file Excel 129 cột")
 async def convert_batch_markdown_to_129_excel(batch_id: str):
     """
-    Theo yêu cầu: Trong quá trình quét không lưu Excel và không giữ dữ liệu 129 cột trong RAM.
-    Khi người dùng bấm xuất, endpoint này đọc Markdown đã lưu từ SQLite / file đĩa và chuyển đổi sang Excel 129 cột.
+    Khi người dùng bấm xuất, endpoint này đọc kết quả JSON trên đĩa và chuyển đổi sang Excel 129 cột.
     """
     # Chuyển đổi Excel chỉ cần dữ liệu trên đĩa, không được lazy-load model OCR.
     output_dir = Path(DEFAULT_OUTPUT_DIR)
-    batch_results_dir = output_dir / "batches" / batch_id / "results"
-
-    from ....infrastructure.persistence.sqlite_raw_store import get_sqlite_raw_store
     from ....infrastructure.exporters.excel_129_exporter import Excel129Exporter
     from fastapi.responses import FileResponse
 
-    store = get_sqlite_raw_store()
-    all_129_rows = []
-    curr_stt = 1
-
-    # 1. Đọc từ các file kết quả đã lưu trên đĩa của batch
-    if batch_results_dir.exists():
-        result_files = sorted(list(batch_results_dir.glob("result_*.json")))
-        for rf in result_files:
-            try:
-                with open(rf, "r", encoding="utf-8") as f:
-                    doc_res = json.load(f)
-                file_name = doc_res.get("file_name", rf.stem)
-                rows, quality = _prepare_export_rows(doc_res, file_name, curr_stt)
-                all_129_rows.extend(rows)
-                curr_stt += len(rows)
-            except Exception as e_rf:
-                logger.warning(f"Lỗi đọc {rf.name}: {e_rf}")
-
-    # 2. Nếu không tìm thấy trong batch directory, đọc từ SQLite raw_ocr_records
-    if not all_129_rows:
-        records = store.list_records(limit=2000, offset=0)
-        for r in records:
-            rec = store.get_record(r["id"])
-            if not rec:
-                continue
-            file_name = rec.get("file_name", "") or r.get("file_name", "")
-            rows, quality = _prepare_export_rows(
-                {"raw_ocr_markdown": rec.get("raw_markdown", "")}, file_name, curr_stt
-            )
-            all_129_rows.extend(rows)
-            curr_stt += len(rows)
+    all_129_rows, _quality_reports = _load_batch_129_rows(batch_id)
 
     if not all_129_rows:
         raise HTTPException(

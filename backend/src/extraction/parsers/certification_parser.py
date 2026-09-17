@@ -232,36 +232,61 @@ class CertificationParser:
                     d = int(d_str)
                     mth = int(m_str)
                     y = int(y_str)
-                    if 1 <= d <= 31 and 1 <= mth <= 12 and 1950 <= y <= 2035:
+                    # Giới hạn năm cấp GCN phải <= năm 2026 (không thể ở tương lai)
+                    if 1 <= d <= 31 and 1 <= mth <= 12 and 1950 <= y <= 2026:
                         return f"{d:02d}/{mth:02d}/{y}"
 
-            m_slash = re.search(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b", s)
+            m_slash = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b", s)
             if m_slash and any(k in s.lower() for k in ["ngày", "ngay", "cấp", "cap", "/"]):
-                return m_slash.group(1).replace("-", "/")
+                d, mth, y = int(m_slash.group(1)), int(m_slash.group(2)), int(m_slash.group(3))
+                if 1 <= d <= 31 and 1 <= mth <= 12 and 1950 <= y <= 2026:
+                    return f"{d:02d}/{mth:02d}/{y}"
             return None
 
-        for line in all_lines:
-            if re.search(r"(?:CMND|CCCD)", line, re.IGNORECASE):
-                continue
-            if re.search(r"(?:thời[ ]*hạn|thoi[ ]*han|mục[ ]*đích|muc[ ]*dich|nguồn[ ]*gốc|nguon[ ]*goc|diện[ ]*tích|dien[ ]*tich|\bđến\b|\bden\b)", line, re.IGNORECASE):
-                continue
-            parsed_d = _parse_vn_date(line)
-            if parsed_d:
-                result["ngay_cap"] = parsed_d
-                m_place = re.search(r"^(.*?)(?:,\s*(?:ngày|ngay)|\s+(?:ngày|ngay))", line, re.IGNORECASE)
-                if m_place:
-                    cand_place = m_place.group(1).strip(" -:;,")
-                    if len(cand_place) > 3 and not any(k in cand_place.lower() for k in ["cộng hòa", "độc lập", "gcn"]):
-                        if not result["noi_cap"]:
-                            result["noi_cap"] = GCNValidators.normalize_authority_name("Ủy ban nhân dân " + cand_place.lower())
-                break
+        # Ưu tiên 1: Tìm ngày cấp ngay cạnh/trên khối ký của cơ quan thẩm quyền (TM. UBND / Chủ tịch)
+        for idx, line in enumerate(all_lines):
+            if any(k in line.upper() for k in ["ỦY BAN", "UY BAN", "UBND", "CHỦ TỊCH", "CHU TICH", "GIÁM ĐỐC", "GIAM DOC", "VĂN PHÒNG", "CHI NHÁNH"]):
+                for near_idx in range(max(0, idx - 4), min(len(all_lines), idx + 3)):
+                    near_line = all_lines[near_idx]
+                    if any(k in near_line.lower() for k in ["thời hạn", "mục đích", "đến ngày", "hạn sử dụng"]):
+                        continue
+                    parsed_d = _parse_vn_date(near_line)
+                    if parsed_d:
+                        result["ngay_cap"] = parsed_d
+                        m_place = re.search(r"^(.*?)(?:,\s*(?:ngày|ngay)|\s+(?:ngày|ngay))", near_line, re.IGNORECASE)
+                        if m_place:
+                            cand_place = m_place.group(1).strip(" -:;,")
+                            if len(cand_place) > 3 and not any(k in cand_place.lower() for k in ["cộng hòa", "độc lập", "gcn"]):
+                                if not result["noi_cap"]:
+                                    result["noi_cap"] = GCNValidators.normalize_authority_name("Ủy ban nhân dân " + cand_place.lower())
+                        break
+                if result["ngay_cap"]:
+                    break
 
-        # Fallback quét ngày ghép nhiều dòng nếu chưa tìm thấy
+        # Ưu tiên 2: Quét toàn bộ dòng nếu chưa tìm thấy ở khối ký
+        if not result["ngay_cap"]:
+            for line in all_lines:
+                if re.search(r"(?:CMND|CCCD)", line, re.IGNORECASE):
+                    continue
+                if re.search(r"(?:thời[ ]*hạn|thoi[ ]*han|mục[ ]*đích|muc[ ]*dich|nguồn[ ]*gốc|nguon[ ]*goc|diện[ ]*tích|dien[ ]*tich|\bđến\b|\bden\b)", line, re.IGNORECASE):
+                    continue
+                parsed_d = _parse_vn_date(line)
+                if parsed_d:
+                    result["ngay_cap"] = parsed_d
+                    m_place = re.search(r"^(.*?)(?:,\s*(?:ngày|ngay)|\s+(?:ngày|ngay))", line, re.IGNORECASE)
+                    if m_place:
+                        cand_place = m_place.group(1).strip(" -:;,")
+                        if len(cand_place) > 3 and not any(k in cand_place.lower() for k in ["cộng hòa", "độc lập", "gcn"]):
+                            if not result["noi_cap"]:
+                                result["noi_cap"] = GCNValidators.normalize_authority_name("Ủy ban nhân dân " + cand_place.lower())
+                    break
+
+        # Fallback 3: Ghép 2 dòng liên tiếp
         if not result["ngay_cap"]:
             for idx in range(len(all_lines) - 1):
                 l1 = all_lines[idx].strip()
                 l2 = all_lines[idx + 1].strip()
-                if any(k in (l1 + l2).lower() for k in ["thời hạn", "mục đích", "đến ngày"]):
+                if any(k in (l1 + l2).lower() for k in ["thời hạn", "mục đích", "đến ngày", "hạn sử dụng"]):
                     continue
                 cand_merge = l1 + " " + l2
                 parsed_d = _parse_vn_date(cand_merge)
