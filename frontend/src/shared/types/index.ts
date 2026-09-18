@@ -255,4 +255,55 @@ export interface PgStats {
   error?: string;
 }
 
+export type OcrReviewStatus = 'ready' | 'needs_review' | 'missing' | 'no_evidence' | 'confirmed' | 'corrected';
+
+export interface OcrFieldReview {
+  review_status: 'confirmed' | 'corrected' | 'needs_review';
+  source_value?: string;
+  corrected_value?: string;
+  note?: string;
+  reviewer?: string;
+  reviewed_at?: string;
+}
+
+export interface OcrReviewField {
+  key: string;
+  label: string;
+  group: string;
+  value: string;
+  source_text?: string;
+  confidence?: number | null;
+  status: OcrReviewStatus;
+  page_index?: number | null;
+  bbox?: number[][] | null;
+  crop_url?: string;
+  crop_text?: string;
+  crop_confidence?: number | null;
+  selection_reason?: string | null;
+  review?: OcrFieldReview | null;
+}
+
+export interface OcrReviewPage {
+  page_index: number;
+  label: string;
+  image_url?: string;
+  has_image: boolean;
+}
+
+export interface OcrDocumentReview {
+  document: {
+    id: string;
+    file_name: string;
+    template?: string;
+    total_pages: number;
+    status?: string;
+  };
+  pages: OcrReviewPage[];
+  fields: OcrReviewField[];
+  summary: {
+    total_fields: number;
+    needs_review: number;
+    reviewed_fields: number;
+  };
+}
 

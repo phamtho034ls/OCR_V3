@@ -11,18 +11,31 @@ Hỗ trợ:
 import os
 import json
 from datetime import datetime
-from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query, Response, Body
+from typing import Literal, Optional, List
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Body
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ....infrastructure.persistence.postgres_store import get_postgres_store
+from ....application.projections.review_projection import build_document_review
+from ..security import Principal, get_current_principal
 
 router = APIRouter(prefix="/pg", tags=["PostgreSQL Storage"])
 
 
 class DeleteRecordsRequest(BaseModel):
     ids: List[str] = Field(..., description="Danh sách document ID cần xóa")
+
+
+class SaveFieldReviewRequest(BaseModel):
+    field_key: str = Field(..., min_length=1, max_length=100, description="Mã trường nghiệp vụ")
+    review_status: Literal["confirmed", "corrected", "needs_review"] = Field(
+        ..., description="Kết quả tra soát"
+    )
+    corrected_value: Optional[str] = Field(
+        None, max_length=4000, description="Giá trị đã sửa khi review_status=corrected"
+    )
+    note: Optional[str] = Field(None, max_length=4000, description="Ghi chú tra soát")
 
 
 @router.get("/health", summary="Kiểm tra kết nối PostgreSQL")
@@ -98,6 +111,54 @@ async def get_pg_record_detail(doc_id: str):
     if not record:
         raise HTTPException(status_code=404, detail=f"Không tìm thấy hồ sơ: {doc_id}")
     return JSONResponse(content=record)
+
+
+@router.get("/records/{doc_id}/review", summary="Lấy dữ liệu gọn để tra soát trường OCR trên ảnh")
+async def get_pg_record_review(doc_id: str):
+    """Trả về trường nghiệp vụ thiết yếu kèm ảnh trang, crop và polygon OCR."""
+    store = get_postgres_store()
+    record = store.get_record(doc_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy hồ sơ: {doc_id}")
+    return JSONResponse(content=build_document_review(
+        record=record,
+        field_reviews=store.get_latest_field_reviews(doc_id),
+    ))
+
+
+@router.post("/records/{doc_id}/review", summary="Lưu quyết định tra soát một trường OCR")
+async def save_pg_record_review(
+    doc_id: str,
+    payload: SaveFieldReviewRequest,
+    principal: Principal = Depends(get_current_principal),
+):
+    """Ghi audit trail, không sửa đè dữ liệu OCR/raw hoặc bảng 129 cột."""
+    store = get_postgres_store()
+    record = store.get_record(doc_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy hồ sơ: {doc_id}")
+
+    review_view = build_document_review(record=record)
+    field = next((item for item in review_view["fields"] if item["key"] == payload.field_key), None)
+    if not field:
+        raise HTTPException(status_code=422, detail=f"Trường tra soát không hợp lệ: {payload.field_key}")
+    if payload.review_status == "corrected" and not (payload.corrected_value or "").strip():
+        raise HTTPException(status_code=422, detail="Cần nhập giá trị đã sửa trước khi lưu")
+
+    saved = store.save_field_review(
+        document_id=doc_id,
+        field_key=payload.field_key,
+        review_status=payload.review_status,
+        source_value=field.get("value") or "",
+        corrected_value=(payload.corrected_value or "").strip() or None,
+        note=(payload.note or "").strip() or None,
+        # Audit identity phải đến từ JWT Keycloak, tuyệt đối không dùng giá trị
+        # do trình duyệt nhập để tránh giả mạo người tra soát.
+        reviewer=principal.display_name or principal.username,
+    )
+    if saved is None:
+        raise HTTPException(status_code=503, detail="Không thể lưu quyết định tra soát vào PostgreSQL")
+    return JSONResponse(content={"field_key": payload.field_key, "review": saved})
 
 
 @router.get("/records/{doc_id}/download-md", summary="Tải về file văn bản Markdown thô của hồ sơ")

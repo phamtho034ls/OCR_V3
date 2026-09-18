@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from ....bootstrap import DEFAULT_OUTPUT_DIR, get_container
 from ....infrastructure.memory import cleanup_memory
 from ....infrastructure.persistence.postgres_store import get_postgres_store
+from ..security import permitted_source_directory
 
 logger = logging.getLogger(__name__)
 
@@ -560,9 +561,7 @@ async def scan_directory(req: ScanDirectoryRequest, background_tasks: Background
     Quét thư mục máy chủ và thực thi OCR từng file trong background.
     Hỗ trợ tiếp tục quét từ start_index với resume_batch_id mà không xóa kết quả cũ.
     """
-    dir_p = Path(req.directory_path)
-    if not dir_p.exists() or not dir_p.is_dir():
-        raise HTTPException(status_code=400, detail=f"Thư mục không tồn tại: {req.directory_path}")
+    dir_p = permitted_source_directory(req.directory_path)
 
     # Thu thập toàn bộ file PDF và ảnh (dùng set để tránh lặp file trên Windows case-insensitive)
     found_files = set()

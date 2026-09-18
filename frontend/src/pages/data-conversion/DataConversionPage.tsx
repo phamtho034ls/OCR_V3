@@ -2,15 +2,19 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { Download, Search, Maximize2, Minimize2, FileSpreadsheet, Folder, RefreshCw } from 'lucide-react';
 import { ChuyenDoiColumn, PgFolderOption } from '../../shared/types';
+import { useAuth } from '../../shared/auth/AuthProvider';
+import { extractErrorMessage } from '../../shared/lib/errorHelper';
 
 interface DataConversionPageProps {
   initialRows?: Record<string, any>[];
 }
 
 export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialRows }) => {
+  const { can } = useAuth();
   const [columns, setColumns] = useState<ChuyenDoiColumn[]>([]);
   const [rows, setRows] = useState<Record<string, any>[]>(initialRows || []);
   const [loading, setLoading] = useState<boolean>(false);
+  const [exporting, setExporting] = useState<boolean>(false);
   const [search, setSearch] = useState<string>('');
   const [fullscreen, setFullscreen] = useState<boolean>(false);
   const [activeSection, setActiveSection] = useState<string>('all');
@@ -75,10 +79,15 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
 
   // Xuất file Excel 129 cột
   const handleExportExcel = async () => {
+    if (!can('export.129')) {
+      alert('Tài khoản của bạn cần có vai trò Khai thác dữ liệu (ocr-exporter) để xuất file Excel.');
+      return;
+    }
     if (rows.length === 0) {
       alert('Chưa có dữ liệu để xuất Excel!');
       return;
     }
+    setExporting(true);
     try {
       const filename = selectedFolder !== 'all' 
         ? `KetQua_129Cot_${selectedFolder}.xlsx` 
@@ -96,8 +105,11 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
       document.body.appendChild(link);
       link.click();
       link.remove();
-    } catch (err) {
-      alert('Lỗi xuất file Excel: ' + err);
+    } catch (err: any) {
+      const msg = await extractErrorMessage(err, 'Lỗi xuất file Excel');
+      alert(msg);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -145,11 +157,12 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleExportExcel}
-            disabled={rows.length === 0}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl shadow-sm transition flex items-center gap-1.5"
+            disabled={rows.length === 0 || exporting || !can('export.129')}
+            title={!can('export.129') ? "Cần quyền 'Khai thác dữ liệu' (ocr-exporter) để xuất Excel" : "Xuất File Excel (129 Cột)"}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
           >
             <Download size={15} />
-            <span>Xuất File Excel (129 Cột)</span>
+            <span>{exporting ? 'Đang xuất Excel...' : 'Xuất File Excel (129 Cột)'}</span>
           </button>
           <button
             onClick={() => setFullscreen(!fullscreen)}

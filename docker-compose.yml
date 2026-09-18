@@ -20,6 +20,49 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ── 1b. IDENTITY DATABASE (KEYCLOAK) ───────────────────────────────────────
+  keycloak-db:
+    image: postgres:16-alpine
+    container_name: ocr_sodo_keycloak_postgres
+    environment:
+      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Set KEYCLOAK_DB_PASSWORD in .env}
+      POSTGRES_DB: ${KEYCLOAK_DB_DATABASE:-keycloak}
+    volumes:
+      - ocr_keycloak_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── 1c. INTERNAL IDENTITY PROVIDER ─────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.4
+    container_name: ocr_sodo_keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_DATABASE:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Set KEYCLOAK_DB_PASSWORD in .env}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME:?Set KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME in .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD:?Set KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD in .env}
+      KC_HOSTNAME: ${OCR_KEYCLOAK_PUBLIC_URL:-http://127.0.0.1:8081}
+      OCR_INITIAL_ADMIN_USERNAME: ${OCR_INITIAL_ADMIN_USERNAME:?Set OCR_INITIAL_ADMIN_USERNAME in .env}
+      OCR_INITIAL_ADMIN_PASSWORD: ${OCR_INITIAL_ADMIN_PASSWORD:?Set OCR_INITIAL_ADMIN_PASSWORD in .env}
+      OCR_KEYCLOAK_ADMIN_CLIENT_SECRET: ${OCR_KEYCLOAK_ADMIN_CLIENT_SECRET:?Set OCR_KEYCLOAK_ADMIN_CLIENT_SECRET in .env}
+    ports:
+      - "${OCR_BIND_HOST:-127.0.0.1}:8081:8080"
+    volumes:
+      - ./deployments/keycloak/ocr-so-do-realm.json:/opt/keycloak/data/import/ocr-so-do-realm.json:ro
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ── 2. BACKEND API & OCR PIPELINE ──────────────────────────────────────────
   backend:
     build:
@@ -40,6 +83,15 @@ services:
       - HF_HOME=/app/.cache/huggingface
       - TORCH_HOME=/app/.cache/torch
       - PADDLE_HOME=/app/.cache/paddle
+      - OCR_AUTH_ENABLED=${OCR_AUTH_ENABLED:-true}
+      - OCR_ALLOWED_ORIGINS=${OCR_ALLOWED_ORIGINS:-http://127.0.0.1:8088,http://localhost:8088}
+      - OCR_KEYCLOAK_URL=http://keycloak:8080
+      - OCR_KEYCLOAK_PUBLIC_URL=${OCR_KEYCLOAK_PUBLIC_URL:-http://127.0.0.1:8081}
+      - OCR_KEYCLOAK_REALM=${OCR_KEYCLOAK_REALM:-ocr-so-do}
+      - OCR_KEYCLOAK_CLIENT_ID=${OCR_KEYCLOAK_CLIENT_ID:-ocr-so-do-web}
+      - OCR_KEYCLOAK_ADMIN_CLIENT_ID=${OCR_KEYCLOAK_ADMIN_CLIENT_ID:-ocr-so-do-admin-api}
+      - OCR_KEYCLOAK_ADMIN_CLIENT_SECRET=${OCR_KEYCLOAK_ADMIN_CLIENT_SECRET:?Set OCR_KEYCLOAK_ADMIN_CLIENT_SECRET in .env}
+      - OCR_ALLOWED_SOURCE_ROOTS=${OCR_ALLOWED_SOURCE_ROOTS:-}
     # CHÚ Ý: Không mount thư mục mã nguồn máy chủ (src) vào container để việc
     # sửa code trên máy không ảnh hưởng đến Docker đang chạy.
     # Chỉ khi nào chạy "docker compose build" thì code mới được cập nhật vào image.
@@ -50,6 +102,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      keycloak:
+        condition: service_started
     restart: unless-stopped
 
   # ── 3. FRONTEND REACT + NGINX PROXY ────────────────────────────────────────
@@ -76,3 +130,5 @@ volumes:
     name: ocr_sodo_cache
   ocr_paddle_cache:
     name: ocr_sodo_paddle_cache
+  ocr_keycloak_pgdata:
+    name: ocr_sodo_keycloak_pgdata

@@ -26,11 +26,17 @@ import {
   ShieldCheck,
   AlertTriangle,
   Table as TableIcon,
-  LayoutGrid
+  LayoutGrid,
+  Eye
 } from 'lucide-react';
 import { DocumentResult, PageResult, CropItem, ParcelItem } from '../../shared/types';
+import { QuickReviewPanel } from '../../shared/components/QuickReviewPanel';
+import { ProtectedImage } from '../../shared/components/ProtectedImage';
+import { useAuth } from '../../shared/auth/AuthProvider';
+import { extractErrorMessage } from '../../shared/lib/errorHelper';
 
 export const DocumentUploadPage: React.FC = () => {
+  const { can } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<DocumentResult | null>(null);
@@ -44,12 +50,14 @@ export const DocumentUploadPage: React.FC = () => {
   const [cropDiffOnly, setCropDiffOnly] = useState<boolean>(false);
   const [exportingExcel, setExportingExcel] = useState<boolean>(false);
   const [parcelViewMode, setParcelViewMode] = useState<'table' | 'cards'>('table');
+  const [reviewOpen, setReviewOpen] = useState<boolean>(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
       setResult(null);
       setError(null);
+      setReviewOpen(false);
       setActivePageIndex(0);
       setRotation(0);
       setZoom(1);
@@ -97,6 +105,10 @@ export const DocumentUploadPage: React.FC = () => {
 
   // Export Excel
   const handleExportExcel = async () => {
+    if (!can('export.129')) {
+      alert("Tài khoản của bạn cần có vai trò 'Khai thác dữ liệu' (ocr-exporter) để xuất file Excel.");
+      return;
+    }
     if (!result) return;
     setExportingExcel(true);
     try {
@@ -128,7 +140,8 @@ export const DocumentUploadPage: React.FC = () => {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      alert('Lỗi xuất file Excel: ' + (err.response?.data?.detail || err.message));
+      const msg = await extractErrorMessage(err, 'Lỗi xuất file Excel');
+      alert(msg);
     } finally {
       setExportingExcel(false);
     }
@@ -367,7 +380,7 @@ export const DocumentUploadPage: React.FC = () => {
             {/* Canvas / Image Box */}
             <div className="relative w-full h-[540px] bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center border border-slate-800 shadow-inner">
               {previewImgUrl ? (
-                <img
+                <ProtectedImage
                   src={previewImgUrl}
                   alt={`Trang ${activePageIndex + 1}`}
                   style={{
@@ -428,17 +441,10 @@ export const DocumentUploadPage: React.FC = () => {
                   <span className="flex items-center gap-1.5">
                     <MapPin size={14} className="text-emerald-600" /> Sơ đồ thửa đất đã tách
                   </span>
-                  <a
-                    href={diagramUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-emerald-600 hover:underline flex items-center gap-1 text-[11px]"
-                  >
-                    Xem ảnh gốc <ExternalLink size={11} />
-                  </a>
+                  <span className="text-[11px] text-slate-500">Ảnh được bảo vệ theo quyền truy cập</span>
                 </div>
                 <div className="bg-white rounded-lg p-1 border border-slate-200 flex items-center justify-center h-40 overflow-hidden">
-                  <img
+                  <ProtectedImage
                     src={diagramUrl}
                     alt="Sơ đồ thửa đất"
                     className="max-h-full max-w-full object-contain"
@@ -481,7 +487,7 @@ export const DocumentUploadPage: React.FC = () => {
                       <div key={i} className="bg-white p-2 rounded-lg border border-slate-200 text-[11px] space-y-1 shadow-2xs">
                         {c.url && (
                           <div className="bg-slate-100 rounded flex items-center justify-center h-12 overflow-hidden border border-slate-200">
-                            <img src={c.url} alt={`crop-${i}`} className="max-h-full max-w-full object-contain" />
+                            <ProtectedImage src={c.url} alt={`crop-${i}`} className="max-h-full max-w-full object-contain" />
                           </div>
                         )}
                         <div className="space-y-0.5">
@@ -518,6 +524,13 @@ export const DocumentUploadPage: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => setReviewOpen(true)}
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
+                  title="Mở ảnh trang, crop và box OCR của các trường quan trọng"
+                >
+                  <Eye size={13} /> Tra soát nhanh
+                </button>
+                <button
                   onClick={handleExportJSON}
                   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-xl transition flex items-center gap-1.5"
                 >
@@ -525,8 +538,9 @@ export const DocumentUploadPage: React.FC = () => {
                 </button>
                 <button
                   onClick={handleExportExcel}
-                  disabled={exportingExcel}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+                  disabled={exportingExcel || !can('export.129')}
+                  title={!can('export.129') ? "Cần quyền 'Khai thác dữ liệu' (ocr-exporter) để xuất Excel" : "Xuất bảng chuyển đổi 129 cột"}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer disabled:cursor-not-allowed"
                 >
                   {exportingExcel ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
                   <span>Xuất Excel (129 Cột)</span>
@@ -1242,6 +1256,9 @@ export const DocumentUploadPage: React.FC = () => {
           </div>
 
         </div>
+      )}
+      {reviewOpen && result?.document_id && (
+        <QuickReviewPanel documentId={result.document_id} onClose={() => setReviewOpen(false)} />
       )}
     </div>
   );

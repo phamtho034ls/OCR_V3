@@ -34,7 +34,51 @@
    - Tách biệt hoàn toàn Backend (FastAPI, Python) và Frontend (React 18, Vite, TypeScript, Tailwind CSS).
    - Bộ kiểm thử tự động cho parser, ánh xạ địa chính, pipeline và API.
 
+6. **Xác Thực & Phân Quyền Tập Trung (Keycloak OIDC)**:
+   - Xác thực OpenID Connect (OIDC) qua Keycloak 26, hỗ trợ PKCE S256.
+   - 5 vai trò nghiệp vụ rõ ràng: **Quản trị viên** · **Nhập liệu** · **Tra soát** · **Khai thác** · **Chỉ xem**.
+   - Giao diện Quản lý tài khoản & Phân quyền dành cho Admin: tạo tài khoản, gán vai trò, khóa/mở khóa, đặt lại mật khẩu.
+   - Trang đăng nhập thương hiệu riêng (Keycloak custom theme `ocr-sodo`) với giao diện tiếng Việt hoàn toàn.
+   - Người dùng có thể tự đổi mật khẩu từ modal tài khoản trên thanh điều hướng.
+
 ---
+
+## 🎨 Nhật Ký Cải Tiến Giao Diện (UI/UX Changelog)
+
+### v2.1 — Tháng 9/2026
+
+#### Header ứng dụng (`App.tsx`)
+- **Avatar chữ viết tắt**: Thay thế emoji `ℹ️` bằng avatar indigo hiển thị chữ viết tắt tên người dùng (VD: `NA` → Nguyễn An).
+- **Tab điều hướng**: Tab đang chọn dùng border màu indigo thay vì đen — dễ nhận biết hơn trên nền trắng.
+- **Chip trạng thái kết nối**: Rút gọn nhãn: `Dữ liệu sẵn sàng` → `Trực tuyến`, `PostgreSQL chưa kết nối` → `Mất kết nối`.
+- **Header gọn hơn**: Chiều cao giảm từ 64px xuống 56px; tiêu đề phụ rút gọn còn `OCR Sổ Đỏ / Sổ Hồng`.
+- **Loading splash**: Văn bản "Đang khởi tạo phiên làm việc..." rút gọn còn "Đang xác thực...".
+
+#### Trang đăng nhập (`LoginPage.tsx`)
+- Tiêu đề "Đăng nhập hệ thống" → **"Đăng nhập"** (gọn hơn).
+- Phụ đề kỹ thuật dài → **"Dùng tài khoản cán bộ được cấp để tiếp tục."**
+- Cắt ngắn mô tả 3 tính năng (Xử lý hàng loạt / Chuẩn hóa 129 cột / Bảo mật) bỏ từ dư thừa.
+- Footer disclaimer rút gọn.
+
+#### Modal tài khoản (`UserProfileModal.tsx`)
+- Tiêu đề "Hồ sơ người dùng" → **"Tài khoản của tôi"**.
+- Loại bỏ khóa kỹ thuật dạng `font-mono` (ví dụ `ocr-admin`) hiển thị bên cạnh nhãn vai trò — người dùng chỉ thấy tên tiếng Việt.
+- Thiết kế card vai trò gọn hơn.
+
+#### Trang quản lý tài khoản (`UserManagementPage.tsx`)
+- Tiêu đề "Quản lý nhân viên & Phân quyền" → **"Quản lý tài khoản & Phân quyền"**.
+- Phụ đề trang và phần form rút gọn bỏ câu thừa.
+- Banner "Chế độ phát triển cục bộ" rút ngắn còn "Chế độ dev".
+- Trạng thái loading: "Đang nạp dữ liệu tài khoản..." → **"Đang tải..."**
+
+#### Giao diện Keycloak (Custom Theme `ocr-sodo`)
+- Thiết kế lại hoàn toàn trang đăng nhập và đổi mật khẩu: card 480px, glassmorphism, gradient button navy.
+- Sửa lỗi CSS 404 (`styles.css`), lỗi grid PatternFly v5 đẩy logo sang cột phụ.
+- Loại bỏ double-border trên input do pseudo-element PatternFly `::before`/`::after`.
+- Toàn bộ nhãn, thông báo lỗi bằng tiếng Việt; ẩn dropdown chọn ngôn ngữ.
+
+---
+
 
 ## 📁 Cấu Trúc Dự Án
 
@@ -52,24 +96,43 @@ ocr-so-do/
 │   ├── weights/                        # Trọng số mô hình AI (VietOCR Transformer)
 │   ├── src/ocr_so_do/                  # Core Clean Architecture (DDD)
 │   │   ├── domain/                     # Thực thể, models (Cadastral129Row), validators
-│   │   ├── application/                # Use cases (Single Process, Batch Scan), Projections (Cadastral129Mapper)
+│   │   ├── application/                # Use cases (Single Process, Batch Scan), Projections
 │   │   ├── infrastructure/             # OCR Engine, Preprocessing, PostgreSQL Store, Excel Exporters
-│   │   └── interfaces/                 # API Routers (/documents, /batch, /batch-pairs, /pg, /exports)
-│   └── tests/                          # Kiểm thử đơn vị domain models
+│   │   └── interfaces/
+│   │       ├── api/
+│   │       │   ├── routers/
+│   │       │   │   ├── admin.py        # [NEW] API quản lý tài khoản (tạo, sửa, xóa, phân quyền)
+│   │       │   │   └── auth.py         # [NEW] API đổi mật khẩu người dùng hiện tại
+│   │       │   ├── keycloak_admin.py   # [NEW] Keycloak Admin REST client
+│   │       │   └── security.py         # [NEW] OIDC token verification, RBAC middleware
+│   └── tests/                          # Kiểm thử đơn vị domain models + security
 ├── frontend/                           # Giao diện Web SPA (React 18 + Vite + TypeScript)
 │   ├── src/
 │   │   ├── app/                        # Layout, điều hướng App.tsx, main.tsx
-│   │   ├── pages/                      # Các màn hình chức năng chính
+│   │   ├── pages/
+│   │   │   ├── admin/
+│   │   │   │   └── UserManagementPage.tsx  # [NEW] Quản lý tài khoản & phân quyền
+│   │   │   ├── login/
+│   │   │   │   └── LoginPage.tsx           # [NEW] Trang đăng nhập split-screen
 │   │   │   ├── batch-scan/             # Quét thư mục hàng loạt
 │   │   │   ├── data-conversion/        # Bảng chuyển đổi 129 cột
 │   │   │   ├── raw-markdown/           # Kho hồ sơ (PostgreSQL)
 │   │   │   └── document-upload/        # Nhận dạng tài liệu đơn lẻ
-│   │   └── shared/                     # Components, types, HTTP client
+│   │   └── shared/
+│   │       ├── auth/
+│   │       │   └── AuthProvider.tsx        # [NEW] Keycloak singleton, Axios interceptor
+│   │       ├── components/
+│   │       │   ├── UserProfileModal.tsx    # [NEW] Modal tài khoản + đổi mật khẩu
+│   │       │   └── ChangePasswordModal.tsx # [NEW] Modal đổi mật khẩu với strength meter
+│   │       └── lib/                        # Helpers (errorHelper, ...)
 │   ├── package.json
 │   └── vite.config.ts                  # Cấu hình proxy sang backend (:8000)
+├── deployments/
+│   └── keycloak/
+│       ├── themes/ocr-sodo/login/      # [NEW] Keycloak custom theme tiếng Việt
+│       └── ocr-so-do-realm.json        # [NEW] Cấu hình realm Keycloak
+├── docker-compose.keycloak.local.yml   # [NEW] Stack Keycloak + PostgreSQL local dev
 ├── output/                             # Thư mục lưu kết quả xuất ra
-│   └── diagrams/                       # Ảnh crop sơ đồ thửa đất
-├── tests/                              # Bộ kiểm thử tích hợp
 ├── requirements.txt                    # Danh sách thư viện Python
 ├── run.py                              # CLI runner điều khiển hệ thống
 └── README.md
@@ -127,6 +190,23 @@ pip install -r requirements.txt
 ### Cấu hình môi trường
 
 Sao chép `.env.example` thành `.env`, sau đó đặt `PG_PASSWORD` đủ mạnh nếu chạy PostgreSQL/Docker. Không đưa `.env` vào Git. Nếu PostgreSQL cục bộ chưa chạy, ứng dụng tự lưu dữ liệu OCR bằng SQLite; đặt `OCR_POSTGRES_ENABLED=false` để chủ động tắt kết nối PostgreSQL. Các biến giới hạn upload, CORS và worker batch đều được mô tả trong file mẫu.
+
+### Đăng nhập Keycloak khi chạy local
+
+Để chạy xác thực thật trên máy local mà **không build container OCR**, giữ `OCR_AUTH_ENABLED=true` trong `.env` và khởi động riêng Keycloak + cơ sở dữ liệu nhận dạng:
+
+```powershell
+docker compose -f docker-compose.keycloak.local.yml up -d
+docker compose -f docker-compose.keycloak.local.yml logs -f keycloak
+```
+
+Đợi log có dòng Keycloak đã khởi động, sau đó mở `http://127.0.0.1:3000`. Đăng nhập bằng `OCR_INITIAL_ADMIN_USERNAME` và `OCR_INITIAL_ADMIN_PASSWORD` trong `.env`; lần đầu Keycloak sẽ yêu cầu đổi mật khẩu tạm thời. Cổng local là `127.0.0.1:8081`, realm là `ocr-so-do`, client là `ocr-so-do-web`.
+
+Lệnh này chỉ tải/chạy image Keycloak và PostgreSQL cho SSO; backend và frontend vẫn chạy trực tiếp bằng Python/Node như hướng dẫn dưới đây. Dừng lớp SSO bằng:
+
+```powershell
+docker compose -f docker-compose.keycloak.local.yml down
+```
 
 ---
 
@@ -278,12 +358,30 @@ Khi truy cập vào **[http://127.0.0.1:3000](http://127.0.0.1:3000)**, hệ th�
 | `GET` | `/api/v1/exports/columns-129` | Lấy cấu hình 129 cột và danh mục 12 nhóm nghiệp vụ |
 | `POST` | `/api/v1/exports/excel-129` | Xuất danh sách các hàng 129 cột ra tệp Excel (.xlsx) |
 
+### Nhóm Quản Lý Tài Khoản (`/api/v1/admin`) — Yêu cầu quyền `ocr-admin`
+| Phương thức | Đường dẫn | Chức năng |
+| :---: | :--- | :--- |
+| `GET` | `/api/v1/admin/roles` | Danh sách vai trò hệ thống |
+| `GET` | `/api/v1/admin/users` | Danh sách tài khoản trong realm |
+| `POST` | `/api/v1/admin/users` | Tạo tài khoản mới và gán vai trò |
+| `PUT` | `/api/v1/admin/users/{user_id}` | Cập nhật thông tin tài khoản |
+| `PUT` | `/api/v1/admin/users/{user_id}/roles` | Thay thế toàn bộ vai trò của tài khoản |
+| `PUT` | `/api/v1/admin/users/{user_id}/enabled` | Khóa / mở khóa tài khoản |
+| `PUT` | `/api/v1/admin/users/{user_id}/reset-password` | Admin đặt lại mật khẩu tạm thời |
+| `DELETE` | `/api/v1/admin/users/{user_id}` | Xóa tài khoản khỏi hệ thống |
+
+### Nhóm Xác Thực Người Dùng (`/api/v1/auth`)
+| Phương thức | Đường dẫn | Chức năng |
+| :---: | :--- | :--- |
+| `POST` | `/api/v1/auth/change-password` | Người dùng tự đổi mật khẩu của mình |
+
 ### Nhóm Hệ Thống
 | Phương thức | Đường dẫn | Chức năng |
 | :---: | :--- | :--- |
 | `GET` | `/health` | Kiểm tra trạng thái hoạt động của backend API |
 
 ---
+
 
 ## 🧪 Kiểm Thử Hệ Thống (Automated Testing)
 

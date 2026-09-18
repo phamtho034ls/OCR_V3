@@ -1,0 +1,92 @@
+{
+  "realm": "ocr-so-do",
+  "displayName": "OCR Sổ Đỏ / Sổ Hồng",
+  "displayNameHtml": "<b>OCR SỔ ĐỎ & SỔ HỒNG</b>",
+  "loginTheme": "ocr-sodo",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["vi", "en"],
+  "defaultLocale": "vi",
+  "enabled": true,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "roles": {
+    "realm": [
+      {"name": "ocr-admin", "description": "Quản trị người dùng, quyền và dữ liệu OCR"},
+      {"name": "ocr-operator", "description": "Nhập liệu và vận hành batch OCR"},
+      {"name": "ocr-reviewer", "description": "Tra soát kết quả OCR"},
+      {"name": "ocr-exporter", "description": "Khai thác và xuất bảng 129 cột"},
+      {"name": "ocr-viewer", "description": "Chỉ tra cứu hồ sơ được cấp quyền"}
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "ocr-so-do-web",
+      "name": "OCR Sổ Đỏ Web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:3000/*", "http://localhost:3000/*",
+        "http://127.0.0.1:5173/*", "http://localhost:5173/*",
+        "http://127.0.0.1:8088/*", "http://localhost:8088/*"
+      ],
+      "webOrigins": [
+        "http://127.0.0.1:3000", "http://localhost:3000",
+        "http://127.0.0.1:5173", "http://localhost:5173",
+        "http://127.0.0.1:8088", "http://localhost:8088"
+      ],
+      "protocolMappers": [
+        {
+          "name": "ocr-web-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "ocr-so-do-web",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "ocr-so-do-admin-api",
+      "name": "OCR Sổ Đỏ Admin API",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${OCR_KEYCLOAK_ADMIN_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false
+    }
+  ],
+  "users": [
+    {
+      "username": "${OCR_INITIAL_ADMIN_USERNAME}",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["ocr-admin"],
+      "credentials": [
+        {"type": "password", "value": "${OCR_INITIAL_ADMIN_PASSWORD}", "temporary": true}
+      ]
+    },
+    {
+      "username": "service-account-ocr-so-do-admin-api",
+      "enabled": true,
+      "serviceAccountClientId": "ocr-so-do-admin-api",
+      "clientRoles": {
+        "realm-management": ["manage-users", "query-users", "view-users", "view-realm"]
+      }
+    }
+  ]
+}

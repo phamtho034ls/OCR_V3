@@ -28,6 +28,9 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { BatchItemSummary, BatchProgressResponse } from '../../shared/types';
+import { QuickReviewPanel } from '../../shared/components/QuickReviewPanel';
+import { useAuth } from '../../shared/auth/AuthProvider';
+import { extractErrorMessage } from '../../shared/lib/errorHelper';
 
 interface BatchScanPageProps {
   onView129Table: (rows: Record<string, any>[]) => void;
@@ -36,6 +39,7 @@ interface BatchScanPageProps {
 }
 
 export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, onOpenPgStorage, onRunningChange }) => {
+  const { can } = useAuth();
   const [scanMode, setScanMode] = useState<'client_folder' | 'server_path' | 'pair_scan'>('client_folder');
 
   // Pair Scan State (GCN & GT -> 129 Cột)
@@ -102,6 +106,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
   const [lastCheckpointMsg, setLastCheckpointMsg] = useState<string | null>(null);
   const [viewingMarkdownItem, setViewingMarkdownItem] = useState<{ fileName: string; content: string } | null>(null);
   const [copiedMd, setCopiedMd] = useState<boolean>(false);
+  const [reviewDocumentId, setReviewDocumentId] = useState<string | null>(null);
 
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const multiFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -479,18 +484,46 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
     };
   }, [isPairScanning, activePairBatchId]);
 
-  const handleExportPairExcel129 = () => {
+  const handleExportPairExcel129 = async () => {
+    if (!can('export.129')) {
+      alert("Tài khoản của bạn cần có vai trò 'Khai thác dữ liệu' (ocr-exporter) để xuất file Excel 129 cột.");
+      return;
+    }
     if (!activePairBatchId) return;
+    try {
+      const response = await axios.get(`/api/v1/batch-pairs/${activePairBatchId}/export-129`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `KetQua_ChuyenDoi_129Cot_${activePairBatchId}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      const msg = await extractErrorMessage(err, 'Không thể tải file Excel kết quả ghép cặp');
+      alert(msg);
+    }
+  };
+
+  const downloadProtectedArtifact = async (url: string, filename = 'evidence.png') => {
+    const response = await axios.get(url, { responseType: 'blob' });
+    const objectUrl = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement('a');
-    link.href = `/api/v1/batch-pairs/${activePairBatchId}/export-129`;
-    link.download = `KetQua_ChuyenDoi_129Cot_${activePairBatchId}.xlsx`;
+    link.href = objectUrl;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
+    window.URL.revokeObjectURL(objectUrl);
   };
 
   // Export Excel 129 Columns (On-Demand từ Markdown đã lưu)
   const handleExportExcel = async () => {
+    if (!can('export.129')) {
+      alert("Tài khoản của bạn cần có vai trò 'Khai thác dữ liệu' (ocr-exporter) để xuất file Excel 129 cột.");
+      return;
+    }
     if (results.length === 0 && chuyenDoiRows.length === 0) {
       alert('Chưa có dữ liệu hồ sơ để xuất Excel!');
       return;
@@ -523,7 +556,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
       link.click();
       link.remove();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Không thể xuất file Excel!');
+      const msg = await extractErrorMessage(err, 'Không thể xuất file Excel!');
+      alert(msg);
     } finally {
       setExportingExcel(false);
     }
@@ -531,6 +565,10 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
 
   // Tải trực tiếp file Excel Checkpoint đã xuất tự động sau mỗi 20 file
   const handleDownloadCheckpointExcel = async () => {
+    if (!can('export.129')) {
+      alert("Tài khoản của bạn cần có vai trò 'Khai thác dữ liệu' (ocr-exporter) để tải file Excel checkpoint.");
+      return;
+    }
     if (!activeBatchId) return;
     try {
       const resp = await axios.get(`/api/v1/batch/${activeBatchId}/download-excel`, {
@@ -544,7 +582,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
       link.click();
       link.remove();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Chưa có file Excel checkpoint. Vui lòng chờ đến khi quét tối thiểu 20 file.');
+      const msg = await extractErrorMessage(err, 'Chưa có file Excel checkpoint. Vui lòng chờ đến khi quét tối thiểu 10 file.');
+      alert(msg);
     }
   };
 
@@ -1177,10 +1216,10 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                     </td>
                     <td className="py-2.5 px-3 text-center">
                       {item.cccd_audit ? (
-                        <a
-                          href={item.cccd_audit.crop_url || undefined}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          disabled={!item.cccd_audit.crop_url}
+                          onClick={() => item.cccd_audit.crop_url && void downloadProtectedArtifact(item.cccd_audit.crop_url, `${item.pair_id}_cccd-crop.png`)}
                           title={item.cccd_audit.reason || 'Đối soát lại từ ảnh crop CCCD'}
                           className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
                             item.cccd_audit.status === 'supported'
@@ -1195,7 +1234,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                             : item.cccd_audit.status === 'review_required'
                             ? 'Cần duyệt'
                             : 'Chưa có crop'}
-                        </a>
+                        </button>
                       ) : '-'}
                     </td>
                     <td className="py-2.5 px-3 text-right text-slate-500 font-mono text-[11px]">{item.elapsed_seconds}s</td>
@@ -1372,7 +1411,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                   <th className="py-2.5 px-3 w-24 text-right">Diện tích (m²)</th>
                   <th className="py-2.5 px-3 w-20 text-right">Thời gian</th>
                   <th className="py-2.5 px-3 w-28 text-center">Trạng thái</th>
-                  <th className="py-2.5 px-3 w-24 text-center">Dữ liệu thô</th>
+                  <th className="py-2.5 px-3 w-40 text-center">Tra soát & dữ liệu thô</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -1381,8 +1420,16 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                     <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
                       {item.stt}
                     </td>
-                    <td className="py-2.5 px-3 font-semibold text-slate-900 truncate max-w-[200px]" title={item.file_name}>
-                      {item.file_name}
+                    <td className="py-2.5 px-3" title={item.file_name}>
+                      <button
+                        type="button"
+                        disabled={!item.document_id}
+                        onClick={() => item.document_id && setReviewDocumentId(item.document_id)}
+                        className="block max-w-[200px] truncate text-left font-semibold text-slate-900 transition hover:text-emerald-700 hover:underline disabled:cursor-not-allowed disabled:hover:text-slate-900 disabled:hover:no-underline"
+                        title={item.document_id ? 'Mở tra soát nhanh hồ sơ' : 'Hồ sơ chưa có dữ liệu tra soát'}
+                      >
+                        {item.file_name}
+                      </button>
                     </td>
                     <td className="py-2.5 px-3 text-center">
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
@@ -1390,7 +1437,15 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                       </span>
                     </td>
                     <td className="py-2.5 px-3 font-bold text-emerald-800">
-                      {item.so_phat_hanh || '-'}
+                      <button
+                        type="button"
+                        disabled={!item.document_id}
+                        onClick={() => item.document_id && setReviewDocumentId(item.document_id)}
+                        className="transition hover:underline disabled:cursor-not-allowed disabled:hover:no-underline"
+                        title={item.document_id ? 'Mở tra soát nhanh hồ sơ' : 'Hồ sơ chưa có dữ liệu tra soát'}
+                      >
+                        {item.so_phat_hanh || '-'}
+                      </button>
                     </td>
                     <td className="py-2.5 px-3 font-semibold text-slate-800 truncate max-w-[180px]" title={item.ten_chu}>
                       {item.ten_chu || '-'}
@@ -1419,20 +1474,32 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                       )}
                     </td>
                     <td className="py-2.5 px-3 text-center">
-                      <button
-                        onClick={() => {
-                          const md = item.raw_ocr_markdown || item.data?.raw_ocr_markdown || '';
-                          setViewingMarkdownItem({
-                            fileName: item.file_name,
-                            content: md || '# Không tìm thấy dữ liệu thô Markdown cho hồ sơ này.'
-                          });
-                        }}
-                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 transition"
-                        title="Xem văn bản OCR thô dạng Markdown"
-                      >
-                        <FileCode size={12} />
-                        <span>Markdown</span>
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          disabled={!item.document_id}
+                          onClick={() => item.document_id && setReviewDocumentId(item.document_id)}
+                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 transition disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Xem ảnh trang, crop và box OCR"
+                        >
+                          <Eye size={12} />
+                          <span>Tra soát</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            const md = item.raw_ocr_markdown || item.data?.raw_ocr_markdown || '';
+                            setViewingMarkdownItem({
+                              fileName: item.file_name,
+                              content: md || '# Không tìm thấy dữ liệu thô Markdown cho hồ sơ này.'
+                            });
+                          }}
+                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 transition"
+                          title="Xem văn bản OCR thô dạng Markdown"
+                        >
+                          <FileCode size={12} />
+                          <span>Markdown</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1512,6 +1579,9 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
             </div>
           </div>
         </div>
+      )}
+      {reviewDocumentId && (
+        <QuickReviewPanel documentId={reviewDocumentId} onClose={() => setReviewDocumentId(null)} />
       )}
     </div>
   );

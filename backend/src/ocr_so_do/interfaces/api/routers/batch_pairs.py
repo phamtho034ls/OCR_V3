@@ -11,6 +11,7 @@ import threading
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
+from ..security import permitted_source_directory
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 
@@ -294,9 +295,7 @@ async def preview_directory_pairs(req: PairPreviewRequest):
     Quét nhanh thư mục, phát hiện các file có chung mã định danh theo quy tắc [Mã]-GCN và [Mã]-GT.
     Không chạy OCR, trả về kết quả ngay lập tức để người dùng đối chiếu.
     """
-    dir_p = Path(req.directory_path)
-    if not dir_p.exists() or not dir_p.is_dir():
-        raise HTTPException(status_code=400, detail=f"Thư mục không tồn tại: {req.directory_path}")
+    dir_p = permitted_source_directory(req.directory_path)
 
     from extraction.gcn_cccd_pair_merger import GCNCCCDPairMerger
     merger = GCNCCCDPairMerger(use_gpu=False)
@@ -338,9 +337,7 @@ async def start_pair_batch(req: PairBatchStartRequest, background_tasks: Backgro
     """
     Bắt đầu tiến trình nền bóc tách thông tin từ các cặp GCN và GT, tự động điền vào bảng 129 cột.
     """
-    dir_p = Path(req.directory_path)
-    if not dir_p.exists() or not dir_p.is_dir():
-        raise HTTPException(status_code=400, detail=f"Thư mục không tồn tại: {req.directory_path}")
+    dir_p = permitted_source_directory(req.directory_path)
 
     batch_id = f"pairs_{uuid.uuid4().hex[:8]}"
 

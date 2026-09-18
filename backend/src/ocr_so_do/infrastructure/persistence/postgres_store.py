@@ -209,6 +209,23 @@ class PostgresStore:
                             );
                         """)
 
+                        # 4. Nhật ký quyết định tra soát.  OCR gốc vẫn nằm ở
+                        # structured_data; bảng này chỉ ghi nhận đánh giá/sửa
+                        # của người dùng để có thể kiểm toán lại.
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS ocr_field_reviews (
+                                id BIGSERIAL PRIMARY KEY,
+                                document_id VARCHAR(150) NOT NULL REFERENCES ocr_records(id) ON DELETE CASCADE,
+                                field_key VARCHAR(100) NOT NULL,
+                                review_status VARCHAR(32) NOT NULL,
+                                source_value TEXT,
+                                corrected_value TEXT,
+                                note TEXT,
+                                reviewer VARCHAR(255),
+                                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                            );
+                        """)
+
                         # Index tối ưu hóa truy vấn và lọc
                         cur.execute("""
                             CREATE INDEX IF NOT EXISTS idx_ocr_batches_created ON ocr_batches(created_at DESC);
@@ -219,6 +236,7 @@ class PostgresStore:
                             CREATE INDEX IF NOT EXISTS idx_ocr_records_file_name ON ocr_records(file_name);
                             CREATE INDEX IF NOT EXISTS idx_cccd_crop_audits_batch ON cccd_crop_audits(batch_id);
                             CREATE INDEX IF NOT EXISTS idx_cccd_crop_audits_status ON cccd_crop_audits(audit_status);
+                            CREATE INDEX IF NOT EXISTS idx_ocr_field_reviews_document ON ocr_field_reviews(document_id, field_key, created_at DESC);
                         """)
                         conn.commit()
                 logger.info("Khởi tạo Schema PostgreSQL ocr_so_do thành công.")
@@ -437,6 +455,80 @@ class PostgresStore:
                         conn.commit()
         except Exception as e:
             logger.warning(f"Không thể kiểm tra/tạo trước batch {batch_id}: {e}")
+
+    def get_latest_field_reviews(self, document_id: str) -> Dict[str, Dict[str, Any]]:
+        """Lấy quyết định mới nhất theo từng field của một hồ sơ."""
+        if not self._pool:
+            return {}
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT DISTINCT ON (field_key)
+                               field_key, review_status, source_value, corrected_value,
+                               note, reviewer, created_at
+                        FROM ocr_field_reviews
+                        WHERE document_id = %s
+                        ORDER BY field_key, created_at DESC, id DESC;
+                    """, (document_id,))
+                    result: Dict[str, Dict[str, Any]] = {}
+                    for row in cur.fetchall():
+                        item = dict(row)
+                        created_at = item.get("created_at")
+                        item["reviewed_at"] = created_at.strftime("%Y-%m-%d %H:%M:%S") if created_at else ""
+                        item.pop("created_at", None)
+                        result[str(item.pop("field_key"))] = item
+                    return result
+        except Exception as e:
+            logger.error(f"Lỗi lấy nhật ký tra soát PostgreSQL: {e}")
+            return {}
+
+    def save_field_review(
+        self,
+        document_id: str,
+        field_key: str,
+        review_status: str,
+        source_value: Optional[str] = None,
+        corrected_value: Optional[str] = None,
+        note: Optional[str] = None,
+        reviewer: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Ghi thêm một quyết định tra soát, không thay thế dữ liệu OCR gốc."""
+        if not self._pool:
+            return None
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        INSERT INTO ocr_field_reviews (
+                            document_id, field_key, review_status, source_value,
+                            corrected_value, note, reviewer, created_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                        RETURNING field_key, review_status, source_value, corrected_value,
+                                  note, reviewer, created_at;
+                    """, (
+                        document_id,
+                        field_key,
+                        review_status,
+                        source_value,
+                        corrected_value,
+                        note,
+                        reviewer,
+                    ))
+                    row = cur.fetchone()
+                    conn.commit()
+                    if not row:
+                        return None
+                    item = dict(row)
+                    created_at = item.get("created_at")
+                    item["reviewed_at"] = created_at.strftime("%Y-%m-%d %H:%M:%S") if created_at else ""
+                    item.pop("created_at", None)
+                    item.pop("field_key", None)
+                    return item
+        except Exception as e:
+            logger.error(f"Lỗi lưu nhật ký tra soát PostgreSQL: {e}")
+            return None
 
     def save_cccd_crop_audit(
         self,

@@ -1,0 +1,50 @@
+name: ocr-sodo-auth-local
+
+# Chỉ chạy lớp xác thực cho quá trình phát triển local.
+# Không build hay khởi chạy backend/frontend OCR trong file compose này.
+services:
+  keycloak-db:
+    image: postgres:16-alpine
+    container_name: ocr_sodo_keycloak_postgres
+    environment:
+      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Set KEYCLOAK_DB_PASSWORD in .env}
+      POSTGRES_DB: ${KEYCLOAK_DB_DATABASE:-keycloak}
+    volumes:
+      - ocr_keycloak_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.4
+    container_name: ocr_sodo_keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_DATABASE:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Set KEYCLOAK_DB_PASSWORD in .env}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME:?Set KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME in .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD:?Set KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD in .env}
+      KC_HOSTNAME: ${OCR_KEYCLOAK_PUBLIC_URL:-http://127.0.0.1:8081}
+      OCR_INITIAL_ADMIN_USERNAME: ${OCR_INITIAL_ADMIN_USERNAME:?Set OCR_INITIAL_ADMIN_USERNAME in .env}
+      OCR_INITIAL_ADMIN_PASSWORD: ${OCR_INITIAL_ADMIN_PASSWORD:?Set OCR_INITIAL_ADMIN_PASSWORD in .env}
+      OCR_KEYCLOAK_ADMIN_CLIENT_SECRET: ${OCR_KEYCLOAK_ADMIN_CLIENT_SECRET:?Set OCR_KEYCLOAK_ADMIN_CLIENT_SECRET in .env}
+    ports:
+      - "${OCR_BIND_HOST:-127.0.0.1}:8081:8080"
+    volumes:
+      - ./deployments/keycloak/ocr-so-do-realm.json:/opt/keycloak/data/import/ocr-so-do-realm.json:ro
+      - ./deployments/keycloak/themes:/opt/keycloak/themes:ro
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  ocr_keycloak_pgdata:
+    name: ocr_sodo_keycloak_pgdata

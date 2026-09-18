@@ -21,9 +21,14 @@ import {
   Eye,
   SlidersHorizontal,
   FileText,
-  ChevronDown
+  ChevronDown,
+  CheckCircle2,
+  RotateCcw
 } from 'lucide-react';
 import { PgRecordSummary, PgFolderOption, PgSourceOption, PgStats } from '../../shared/types';
+import { QuickReviewPanel } from '../../shared/components/QuickReviewPanel';
+import { useAuth } from '../../shared/auth/AuthProvider';
+import { extractErrorMessage } from '../../shared/lib/errorHelper';
 
 interface RawMarkdownPageProps {
   onView129Table?: (rows: Record<string, any>[]) => void;
@@ -56,6 +61,7 @@ interface ExcelPreviewPayload {
 }
 
 export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table, isActive }) => {
+  const { can } = useAuth();
   // Dữ liệu hồ sơ
   const [records, setRecords] = useState<PgRecordSummary[]>([]);
   const [totalRecords, setTotalRecords] = useState<number>(0);
@@ -77,6 +83,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   const [exportingExcel, setExportingExcel] = useState<boolean>(false);
   const [downloadingRawDb, setDownloadingRawDb] = useState<boolean>(false);
   const [downloadingRawMarkdown, setDownloadingRawMarkdown] = useState<boolean>(false);
+  const [downloadingRawExcel, setDownloadingRawExcel] = useState<boolean>(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState<boolean>(false);
 
   // Modal xác nhận xóa
@@ -93,6 +100,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+  const [reviewDocId, setReviewDocId] = useState<string | null>(null);
 
   // Modal xem trước bảng tính Excel
   const [excelPreviewDocId, setExcelPreviewDocId] = useState<string | null>(null);
@@ -193,8 +201,21 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   };
 
   // Tải file .md
-  const handleDownloadMd = (docId: string) => {
-    window.open(`/api/v1/pg/records/${encodeURIComponent(docId)}/download-md`, '_blank');
+  const handleDownloadMd = async (docId: string) => {
+    try {
+      const response = await axios.get(`/api/v1/pg/records/${encodeURIComponent(docId)}/download-md`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/markdown;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${docId}_raw_ocr.md`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      const msg = await extractErrorMessage(err, 'Không thể tải Markdown của hồ sơ.');
+      alert(msg);
+    }
   };
 
   // Xem trên Bảng 129 Cột
@@ -241,7 +262,8 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       link.click();
       link.remove();
     } catch (err: any) {
-      alert('Không thể xuất file Excel 129 cột: ' + (err.response?.data?.detail || err.message));
+      const msg = await extractErrorMessage(err, 'Không thể xuất file Excel 129 cột');
+      alert(msg);
     } finally {
       setExportingExcel(false);
     }
@@ -269,7 +291,8 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       link.click();
       link.remove();
     } catch (err: any) {
-      alert('Không thể tải CSDL dữ liệu thô: ' + (err.response?.data?.detail || err.message));
+      const msg = await extractErrorMessage(err, 'Không thể tải CSDL dữ liệu thô');
+      alert(msg);
     } finally {
       setDownloadingRawDb(false);
     }
@@ -297,15 +320,50 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       link.click();
       link.remove();
     } catch (err: any) {
-      alert('Không thể tải gói Markdown thô: ' + (err.response?.data?.detail || err.message));
+      const msg = await extractErrorMessage(err, 'Không thể tải gói Markdown thô');
+      alert(msg);
     } finally {
       setDownloadingRawMarkdown(false);
+    }
+  };
+
+  // Tải file Excel Bảng tổng hợp dữ liệu thô (.xlsx)
+  const handleExportRawExcel = async () => {
+    setDownloadingRawExcel(true);
+    try {
+      const params: any = {};
+      if (selectedFolder !== 'all') params.folder_result = selectedFolder;
+      if (selectedSource !== 'all') params.source_path = selectedSource;
+      if (search.trim()) params.search = search.trim();
+
+      const res = await axios.get('/api/v1/pg/export-raw-excel', {
+        params,
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const fn = selectedFolder !== 'all' ? selectedFolder : 'KhoDuLieu_PG';
+      link.setAttribute('download', `BangTongHop_DuLieuTho_${fn}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err: any) {
+      const msg = await extractErrorMessage(err, 'Không thể tải bảng tổng hợp dữ liệu thô');
+      alert(msg);
+    } finally {
+      setDownloadingRawExcel(false);
     }
   };
 
   // Thực thi xóa sau khi người dùng xác nhận
   const executeDelete = async () => {
     if (!deleteConfirm) return;
+    if (!can('record.delete')) {
+      alert('Tài khoản của bạn không có quyền xóa hồ sơ (record.delete).');
+      setDeleteConfirm(null);
+      return;
+    }
     setDeleting(true);
     try {
       if (deleteConfirm.type === 'single' && deleteConfirm.targetIds?.[0]) {
@@ -327,7 +385,8 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       await Promise.all([fetchRecords(), fetchFilterOptionsAndStats()]);
       setDeleteConfirm(null);
     } catch (err: any) {
-      alert('Lỗi khi thực hiện xóa dữ liệu: ' + (err.response?.data?.detail || err.message));
+      const msg = await extractErrorMessage(err, 'Lỗi khi thực hiện xóa dữ liệu');
+      alert(msg);
     } finally {
       setDeleting(false);
     }
@@ -361,53 +420,89 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   return (
     <div className="space-y-6">
       {/* ── HEADER & THỐNG KÊ ── */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-sm relative overflow-hidden">
+        {/* Subtle decorative glow */}
+        <div className="absolute -top-24 -right-24 w-80 h-80 bg-gradient-to-br from-indigo-100/40 via-purple-50/20 to-transparent rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
+          {/* Title & Subtitle */}
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-800 flex items-center justify-center text-white shadow-md">
-              <Database size={26} />
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-600 to-indigo-800 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 ring-4 ring-indigo-50 shrink-0">
+              <Database size={24} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold tracking-tight text-slate-950 leading-tight">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h2 className="text-xl font-bold tracking-tight text-slate-900 leading-tight">
                   Kho hồ sơ
                 </h2>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
                   Sẵn sàng
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed max-w-xl">
                 Tự động lưu trữ bền vững sau mỗi lần quét. Tra cứu, lọc theo thư mục kết quả, link máy và quản lý dữ liệu bóc tách.
               </p>
             </div>
           </div>
 
-          {/* KPI Mini-Cards */}
+          {/* KPI Stat Cards */}
           <div className="flex flex-wrap items-center gap-2.5 text-xs">
-            <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
-              <span className="text-slate-400 block text-[10px] font-semibold">Tổng thư mục</span>
-              <span className="text-sm font-bold text-slate-800">{stats?.total_folders ?? folderOptions.length}</span>
+            {/* Thư mục */}
+            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-slate-50 hover:bg-slate-100/70 border border-slate-200/70 rounded-xl transition-all shadow-2xs">
+              <div className="w-8 h-8 rounded-lg bg-white border border-slate-200/70 flex items-center justify-center text-slate-600 shadow-2xs shrink-0">
+                <Folder size={15} />
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider leading-tight">Thư mục</span>
+                <span className="text-sm font-bold text-slate-800 leading-tight">{stats?.total_folders ?? folderOptions.length}</span>
+              </div>
             </div>
-            <div className="px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl">
-              <span className="text-indigo-600 block text-[10px] font-semibold">Tổng số hồ sơ</span>
-              <span className="text-sm font-bold text-indigo-900">{stats?.total_records ?? totalRecords}</span>
+
+            {/* Tổng hồ sơ */}
+            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-indigo-50/70 hover:bg-indigo-50 border border-indigo-100/80 rounded-xl transition-all shadow-2xs">
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                <Layers size={15} />
+              </div>
+              <div>
+                <span className="text-indigo-600/90 block text-[10px] font-semibold uppercase tracking-wider leading-tight">Tổng số hồ sơ</span>
+                <span className="text-sm font-bold text-indigo-950 leading-tight">{stats?.total_records ?? totalRecords}</span>
+              </div>
             </div>
-            <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
-              <span className="text-emerald-700 block text-[10px] font-semibold">Trích xuất hợp lệ</span>
-              <span className="text-sm font-bold text-emerald-900">{stats?.success_records ?? 0}</span>
+
+            {/* Trích xuất hợp lệ */}
+            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-emerald-50/70 hover:bg-emerald-50 border border-emerald-100/80 rounded-xl transition-all shadow-2xs">
+              <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                <CheckCircle2 size={15} />
+              </div>
+              <div>
+                <span className="text-emerald-700/90 block text-[10px] font-semibold uppercase tracking-wider leading-tight">Trích xuất hợp lệ</span>
+                <span className="text-sm font-bold text-emerald-950 leading-tight">{stats?.success_records ?? 0}</span>
+              </div>
             </div>
+
+            {/* Lỗi nhận dạng (nếu có) */}
             {stats && stats.error_records! > 0 && (
-              <div className="px-3 py-2 bg-rose-50 border border-rose-200 rounded-xl">
-                <span className="text-rose-700 block text-[10px] font-semibold">Lỗi nhận dạng</span>
-                <span className="text-sm font-bold text-rose-900">{stats.error_records}</span>
+              <div className="flex items-center gap-2.5 px-3.5 py-2 bg-rose-50/70 hover:bg-rose-50 border border-rose-100/80 rounded-xl transition-all shadow-2xs">
+                <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                  <AlertTriangle size={15} />
+                </div>
+                <div>
+                  <span className="text-rose-700/90 block text-[10px] font-semibold uppercase tracking-wider leading-tight">Lỗi nhận dạng</span>
+                  <span className="text-sm font-bold text-rose-950 leading-tight">{stats.error_records}</span>
+                </div>
               </div>
             )}
+
+            {/* Nút Làm mới */}
             <button
               onClick={() => { fetchRecords(); fetchFilterOptionsAndStats(); }}
               disabled={loading}
-              className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition shadow-sm"
-              title="Làm mới dữ liệu"
+              className="p-2.5 bg-slate-50 hover:bg-slate-100 active:scale-95 text-slate-600 hover:text-indigo-600 border border-slate-200/80 rounded-xl transition-all shadow-2xs cursor-pointer ml-0.5"
+              title="Làm mới dữ liệu kho"
             >
               <RefreshCw size={15} className={loading ? 'animate-spin text-indigo-600' : ''} />
             </button>
@@ -415,113 +510,184 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
         </div>
 
         {/* ── BỘ LỌC THÔNG MINH (SMART FILTERS) ── */}
-        <div className="mt-5 pt-5 border-t border-slate-100 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-          
-          {/* Lọc theo Thư Mục Kết Quả (Folder) */}
-          <div className="md:col-span-5">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1">
-              <Folder size={13} className="text-indigo-600" />
-              <span>Thư mục kết quả đã lưu:</span>
-            </label>
-            <select
-              value={selectedFolder}
-              onChange={e => { setSelectedFolder(e.target.value); setPage(1); }}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-indigo-500 focus:bg-white"
-            >
-              <option value="all">🌟 Tất cả thư mục kết quả ({totalRecords} hồ sơ)</option>
-              {folderOptions.map(f => (
-                <option key={f.name} value={f.name}>
-                  📁 {f.name} ({f.count} hồ sơ) - {f.date}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="mt-5 pt-5 border-t border-slate-100/80 relative z-10">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
+            {/* Lọc theo Thư Mục Kết Quả (Folder) */}
+            <div className="md:col-span-5">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Folder size={14} className="text-indigo-600" />
+                  <span>Thư mục kết quả đã lưu</span>
+                </span>
+                {selectedFolder !== 'all' && (
+                  <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-md">
+                    Đã lọc
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedFolder}
+                  onChange={e => { setSelectedFolder(e.target.value); setPage(1); }}
+                  className="w-full appearance-none bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl pl-3.5 pr-9 py-2.5 text-xs font-semibold text-slate-800 transition-all cursor-pointer shadow-2xs"
+                >
+                  <option value="all">🌟 Tất cả thư mục kết quả ({totalRecords} hồ sơ)</option>
+                  {folderOptions.map(f => (
+                    <option key={f.name} value={f.name}>
+                      📁 {f.name} ({f.count} hồ sơ) {f.date ? `• ${f.date}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
 
-          {/* Lọc theo Đường Dẫn Máy (Source Path) */}
-          <div className="md:col-span-4">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1 flex items-center gap-1">
-              <HardDrive size={13} className="text-indigo-600" />
-              <span>Đường dẫn trên máy:</span>
-            </label>
-            <select
-              value={selectedSource}
-              onChange={e => { setSelectedSource(e.target.value); setPage(1); }}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-indigo-500 focus:bg-white truncate"
-            >
-              <option value="all">Tất cả link trên máy</option>
-              {sourceOptions.map(s => (
-                <option key={s.path} value={s.path} title={s.path}>
-                  💻 {s.path} ({s.count} file)
-                </option>
-              ))}
-            </select>
-          </div>
+            {/* Lọc theo Đường Dẫn Máy (Source Path) */}
+            <div className="md:col-span-4">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <HardDrive size={14} className="text-violet-600" />
+                  <span>Đường dẫn trên máy</span>
+                </span>
+                {selectedSource !== 'all' && (
+                  <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 border border-violet-100 px-1.5 py-0.5 rounded-md">
+                    Đã lọc
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedSource}
+                  onChange={e => { setSelectedSource(e.target.value); setPage(1); }}
+                  className="w-full appearance-none bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl pl-3.5 pr-9 py-2.5 text-xs font-semibold text-slate-800 transition-all cursor-pointer truncate shadow-2xs"
+                  title={selectedSource !== 'all' ? selectedSource : 'Tất cả đường dẫn trên máy'}
+                >
+                  <option value="all">💻 Tất cả link trên máy</option>
+                  {sourceOptions.map(s => (
+                    <option key={s.path} value={s.path} title={s.path}>
+                      💻 {s.path} ({s.count} file)
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
 
-          {/* Ô Tìm Kiếm Từ Khóa */}
-          <div className="md:col-span-3">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">Tìm từ khóa:</label>
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }}
-                placeholder="Tên file, tên chủ, số phát hành..."
-                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-indigo-500 focus:bg-white"
-              />
+            {/* Ô Tìm Kiếm Từ Khóa */}
+            <div className="md:col-span-3">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                <Search size={14} className="text-slate-500" />
+                <span>Tìm từ khóa</span>
+              </label>
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setPage(1); }}
+                  placeholder="Tên file, tên chủ, số phát hành..."
+                  className="w-full pl-9 pr-8 py-2.5 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 transition-all shadow-2xs"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearch(''); setPage(1); }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/60 transition cursor-pointer"
+                    title="Xóa từ khóa tìm kiếm"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Active Filter Chips & Reset */}
-        {(selectedFolder !== 'all' || selectedSource !== 'all' || search) && (
-          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-slate-400 text-[11px] font-semibold">Đang lọc:</span>
-            {selectedFolder !== 'all' && (
-              <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold flex items-center gap-1">
-                Folder: {selectedFolder}
-                <button onClick={() => setSelectedFolder('all')} className="hover:text-rose-600">×</button>
-              </span>
-            )}
-            {selectedSource !== 'all' && (
-              <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold flex items-center gap-1 max-w-xs truncate" title={selectedSource}>
-                Link: {selectedSource}
-                <button onClick={() => setSelectedSource('all')} className="hover:text-rose-600">×</button>
-              </span>
-            )}
-            {search && (
-              <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold flex items-center gap-1">
-                Từ khóa: "{search}"
-                <button onClick={() => setSearch('')} className="hover:text-rose-600">×</button>
-              </span>
-            )}
-            <button
-              onClick={() => {
-                setSelectedFolder('all');
-                setSelectedSource('all');
-                setSearch('');
-                setPage(1);
-              }}
-              className="text-xs text-rose-600 hover:text-rose-700 font-semibold underline ml-1"
-            >
-              Xóa tất cả bộ lọc
-            </button>
-          </div>
-        )}
+          {/* Active Filter Chips & Reset */}
+          {(selectedFolder !== 'all' || selectedSource !== 'all' || search) && (
+            <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
+              <div className="inline-flex items-center gap-1.5 text-slate-500 font-semibold text-[11px] bg-slate-100/90 px-2.5 py-1 rounded-lg">
+                <Filter size={12} className="text-slate-600" />
+                <span>Đang lọc:</span>
+              </div>
+
+              {selectedFolder !== 'all' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-medium text-xs shadow-2xs">
+                  <Folder size={12} className="text-indigo-500 shrink-0" />
+                  <span className="truncate max-w-[200px]" title={selectedFolder}>
+                    Folder: <strong className="font-semibold">{selectedFolder}</strong>
+                  </span>
+                  <button
+                    onClick={() => { setSelectedFolder('all'); setPage(1); }}
+                    className="p-0.5 hover:bg-indigo-200/60 rounded text-indigo-500 hover:text-indigo-800 transition cursor-pointer"
+                    title="Bỏ lọc thư mục này"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+
+              {selectedSource !== 'all' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-200/80 font-medium text-xs shadow-2xs max-w-sm">
+                  <HardDrive size={12} className="text-violet-500 shrink-0" />
+                  <span className="truncate" title={selectedSource}>
+                    Link: <strong className="font-semibold">{selectedSource}</strong>
+                  </span>
+                  <button
+                    onClick={() => { setSelectedSource('all'); setPage(1); }}
+                    className="p-0.5 hover:bg-violet-200/60 rounded text-violet-500 hover:text-violet-800 transition shrink-0 cursor-pointer"
+                    title="Bỏ lọc link máy này"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+
+              {search && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 border border-sky-200/80 font-medium text-xs shadow-2xs">
+                  <Search size={12} className="text-sky-500 shrink-0" />
+                  <span>
+                    Từ khóa: <strong className="font-semibold">"{search}"</strong>
+                  </span>
+                  <button
+                    onClick={() => { setSearch(''); setPage(1); }}
+                    className="p-0.5 hover:bg-sky-200/60 rounded text-sky-500 hover:text-sky-800 transition cursor-pointer"
+                    title="Bỏ từ khóa tìm kiếm"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+
+              <button
+                onClick={() => {
+                  setSelectedFolder('all');
+                  setSelectedSource('all');
+                  setSearch('');
+                  setPage(1);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-600 hover:text-rose-700 border border-rose-200/80 font-semibold text-xs transition-all cursor-pointer ml-auto sm:ml-2 shadow-2xs"
+                title="Xóa toàn bộ bộ lọc đang chọn"
+              >
+                <RotateCcw size={12} />
+                <span>Xóa tất cả bộ lọc</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── ACTION BAR: QUẢN LÝ & XUẤT DỮ LIỆU ── */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-wrap items-center justify-between gap-3">
         {/* Nhóm Thông Tin & Xóa Theo Bộ Lọc */}
-        <div className="flex flex-wrap items-center gap-2">
-          {selectedFolder !== 'all' && (
+        <div className="flex flex-wrap items-center gap-2.5">
+          {can('record.delete') && selectedFolder !== 'all' && (
             <button
               onClick={() => setDeleteConfirm({
                 open: true,
                 type: 'folder',
                 targetName: selectedFolder
               })}
-              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
+              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
               title={`Xóa toàn bộ hồ sơ thuộc thư mục kết quả "${selectedFolder}"`}
             >
               <Trash2 size={14} />
@@ -529,14 +695,14 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
             </button>
           )}
 
-          {selectedSource !== 'all' && (
+          {can('record.delete') && selectedSource !== 'all' && (
             <button
               onClick={() => setDeleteConfirm({
                 open: true,
                 type: 'source',
                 targetName: selectedSource
               })}
-              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 max-w-xs truncate"
+              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 max-w-xs truncate shadow-2xs cursor-pointer"
               title={`Xóa toàn bộ hồ sơ có đường dẫn trên máy thuộc "${selectedSource}"`}
             >
               <Trash2 size={14} />
@@ -544,24 +710,25 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
             </button>
           )}
 
-          <div className="text-xs text-slate-500 font-medium">
-            Hiển thị: <b>{records.length}</b> / {totalRecords} hồ sơ
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200/70 rounded-xl text-xs text-slate-600 font-medium shadow-2xs">
+            <Database size={13} className="text-slate-400" />
+            <span>Hiển thị: <strong className="text-slate-900 font-bold">{records.length}</strong> / {totalRecords} hồ sơ</span>
           </div>
         </div>
 
         {/* Nhóm Hành Động Tải Dữ Liệu Thô, Xuất 129 Cột & Xem Bảng */}
-        <div className="flex items-center gap-2">
-          {/* Menu Tải Dữ Liệu Thô (Chỉ JSON & Markdown thô) */}
-          <div className="relative">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Menu Tải Dữ Liệu Thô (JSON, Markdown, Excel thô) */}
+          {can('export.raw') && <div className="relative">
             <button
               onClick={() => setShowDownloadMenu(!showDownloadMenu)}
-              disabled={records.length === 0 || downloadingRawDb || downloadingRawMarkdown}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-              title="Tải dữ liệu thô (JSON / Markdown) về máy"
+              disabled={records.length === 0 || downloadingRawDb || downloadingRawMarkdown || downloadingRawExcel}
+              className="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-semibold rounded-xl transition flex items-center gap-2 shadow-sm cursor-pointer disabled:cursor-not-allowed"
+              title="Tải dữ liệu thô (JSON / Markdown / Excel thô) về máy"
             >
               <Database size={14} />
               <span>
-                {downloadingRawDb ? 'Đang tải JSON...' : downloadingRawMarkdown ? 'Đang tải Markdown...' : 'Tải Dữ Liệu Thô'}
+                {downloadingRawDb ? 'Đang tải JSON...' : downloadingRawMarkdown ? 'Đang tải Markdown...' : downloadingRawExcel ? 'Đang tải Excel...' : 'Tải Dữ Liệu Thô'}
               </span>
               <ChevronDown size={13} className={`transition-transform duration-200 ${showDownloadMenu ? 'rotate-180' : ''}`} />
             </button>
@@ -572,10 +739,10 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                   className="fixed inset-0 z-20"
                   onClick={() => setShowDownloadMenu(false)}
                 />
-                <div className="absolute right-0 mt-1.5 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in duration-100">
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200/90 py-2 z-30 animate-in fade-in duration-100">
                   <button
                     onClick={() => { setShowDownloadMenu(false); handleDownloadRawDb(); }}
-                    className="w-full px-3.5 py-2.5 text-left text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-start gap-2.5 transition"
+                    className="w-full px-4 py-2.5 text-left text-xs text-slate-700 hover:bg-indigo-50/80 hover:text-indigo-700 flex items-start gap-3 transition cursor-pointer"
                   >
                     <FileCode size={16} className="text-indigo-600 mt-0.5 shrink-0" />
                     <div>
@@ -587,7 +754,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                   </button>
                   <button
                     onClick={() => { setShowDownloadMenu(false); handleDownloadRawMarkdown(); }}
-                    className="w-full px-3.5 py-2.5 text-left text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-start gap-2.5 transition border-t border-slate-100"
+                    className="w-full px-4 py-2.5 text-left text-xs text-slate-700 hover:bg-emerald-50/80 hover:text-emerald-700 flex items-start gap-3 transition border-t border-slate-100 cursor-pointer"
                   >
                     <FileText size={16} className="text-emerald-600 mt-0.5 shrink-0" />
                     <div>
@@ -597,25 +764,37 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                       </div>
                     </div>
                   </button>
+                  <button
+                    onClick={() => { setShowDownloadMenu(false); handleExportRawExcel(); }}
+                    className="w-full px-4 py-2.5 text-left text-xs text-slate-700 hover:bg-teal-50/80 hover:text-teal-700 flex items-start gap-3 transition border-t border-slate-100 cursor-pointer"
+                  >
+                    <FileSpreadsheet size={16} className="text-teal-600 mt-0.5 shrink-0" />
+                    <div>
+                      <div className="font-bold text-slate-800">Tải Bảng Tổng Hợp Thô (.xlsx)</div>
+                      <div className="text-[11px] text-slate-500 font-normal mt-0.5">
+                        Bảng tính Excel tổng hợp dữ liệu và toàn văn bóc tách
+                      </div>
+                    </div>
+                  </button>
                 </div>
               </>
             )}
-          </div>
+          </div>}
 
-          <button
+          {can('export.129') && <button
             onClick={handleExport129Excel}
             disabled={exportingExcel || records.length === 0}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-semibold rounded-xl transition flex items-center gap-2 shadow-sm shadow-emerald-600/20 cursor-pointer disabled:cursor-not-allowed"
             title="Xuất file Excel 129 cột cho tập hồ sơ đang lọc"
           >
             <FileSpreadsheet size={15} />
             <span>{exportingExcel ? 'Đang xuất Excel...' : 'Xuất Excel 129 Cột'}</span>
-          </button>
+          </button>}
 
           <button
             onClick={handleViewIn129Table}
             disabled={records.length === 0}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-semibold rounded-xl transition flex items-center gap-2 shadow-sm shadow-indigo-600/20 cursor-pointer disabled:cursor-not-allowed"
             title="Nạp toàn bộ dữ liệu đang lọc vào giao diện Bảng 129 Cột"
           >
             <span>Xem Trên Bảng 129 Cột</span>
@@ -667,9 +846,14 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                         {sttNumber}
                       </td>
                       <td className="py-3 px-3">
-                        <div className="font-bold text-slate-900 truncate max-w-[220px]" title={r.file_name}>
+                        <button
+                          type="button"
+                          onClick={() => setReviewDocId(r.id)}
+                          className="block max-w-[220px] truncate text-left font-bold text-slate-900 transition hover:text-emerald-700 hover:underline"
+                          title="Mở tra soát nhanh hồ sơ"
+                        >
                           {r.file_name}
-                        </div>
+                        </button>
                         {r.source_path && (
                           <div className="text-[10px] text-slate-400 font-mono truncate max-w-[220px]" title={r.source_path}>
                             {r.source_path}
@@ -687,7 +871,14 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                         </span>
                       </td>
                       <td className="py-3 px-3 font-bold text-emerald-800">
-                        {r.so_phat_hanh || '-'}
+                        <button
+                          type="button"
+                          onClick={() => setReviewDocId(r.id)}
+                          className="transition hover:underline"
+                          title="Mở tra soát nhanh hồ sơ"
+                        >
+                          {r.so_phat_hanh || '-'}
+                        </button>
                       </td>
                       <td className="py-3 px-3 font-semibold text-slate-800 truncate max-w-[160px]" title={r.ten_chu}>
                         {r.ten_chu || '-'}
@@ -711,6 +902,15 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                       </td>
                       <td className="py-3 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
+                          {(can('record.review') || can('record.read')) && (
+                            <button
+                              onClick={() => setReviewDocId(r.id)}
+                              className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition"
+                              title="Tra soát nhanh: ảnh trang, crop và box OCR"
+                            >
+                              <SlidersHorizontal size={13} />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleViewDetail(r.id)}
                             className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition"
@@ -732,18 +932,20 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                           >
                             <Download size={13} />
                           </button>
-                          <button
-                            onClick={() => setDeleteConfirm({
-                              open: true,
-                              type: 'single',
-                              targetName: r.file_name,
-                              targetIds: [r.id]
-                            })}
-                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition"
-                            title="Xóa bản ghi này khỏi PostgreSQL"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          {can('record.delete') && (
+                            <button
+                              onClick={() => setDeleteConfirm({
+                                open: true,
+                                type: 'single',
+                                targetName: r.file_name,
+                                targetIds: [r.id]
+                              })}
+                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition"
+                              title="Xóa bản ghi này khỏi PostgreSQL"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1071,6 +1273,9 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
             </div>
           </div>
         </div>
+      )}
+      {reviewDocId && (
+        <QuickReviewPanel documentId={reviewDocId} onClose={() => setReviewDocId(null)} />
       )}
     </div>
   );
