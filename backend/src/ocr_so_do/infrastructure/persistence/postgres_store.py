@@ -1,8 +1,14 @@
 """
 infrastructure/persistence/postgres_store.py
 Quản lý kết nối và lưu trữ bền vững vào cơ sở dữ liệu PostgreSQL (PG).
-Tự động tạo bảng ocr_batches và ocr_records, hỗ trợ lọc theo thư mục kết quả,
-số lượng file, đường dẫn trên máy, và xóa có chọn lọc.
+
+Schema:
+  - ocr_projects      : Dự án OCR (tạo bởi admin/truong_phong)
+  - project_members   : Thành viên của từng dự án
+  - ocr_batches       : Đợt quét hàng loạt (gắn project_id + created_by)
+  - ocr_records       : Hồ sơ OCR từng file (gắn project_id + created_by)
+  - cccd_crop_audits  : Ảnh crop CCCD cho luồng ghép cặp
+  - ocr_field_reviews : Nhật ký tra soát của người dùng
 """
 import os
 import json
@@ -40,8 +46,8 @@ class PostgresStore:
         user: str = PG_USER,
         password: str = PG_PASSWORD,
         database: str = PG_DATABASE,
-        minconn: int = 1,
-        maxconn: int = 10,
+        minconn: int = 2,
+        maxconn: int = 25,
         enabled: bool = POSTGRES_ENABLED,
     ):
         self.host = host
@@ -138,61 +144,93 @@ class PostgresStore:
             return False
 
     def _init_schema(self) -> None:
-        """Tự động tạo bảng ocr_batches và ocr_records nếu chưa có."""
+        """Tự động tạo/cập nhật toàn bộ schema PostgreSQL."""
         if not self._pool:
             return
         with self._lock:
             try:
                 with self.get_connection() as conn:
                     with conn.cursor() as cur:
-                        # 1. Bảng quản lý đợt quét / thư mục kết quả
+                        # ── 0. Bảng Dự án ──────────────────────────────────────────────────
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS ocr_projects (
+                                project_id   VARCHAR(100) PRIMARY KEY,
+                                project_name VARCHAR(255) NOT NULL,
+                                description  TEXT,
+                                created_by   VARCHAR(255) NOT NULL,
+                                status       VARCHAR(30) DEFAULT 'active',
+                                created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                                updated_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                            );
+                        """)
+
+                        # ── 0b. Thành viên dự án ────────────────────────────────────────────
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS project_members (
+                                id               BIGSERIAL PRIMARY KEY,
+                                project_id       VARCHAR(100) NOT NULL
+                                                 REFERENCES ocr_projects(project_id) ON DELETE CASCADE,
+                                user_id          VARCHAR(255) NOT NULL,
+                                username         VARCHAR(255) NOT NULL,
+                                display_name     VARCHAR(255),
+                                role_in_project  VARCHAR(30) DEFAULT 'member',
+                                added_by         VARCHAR(255) NOT NULL,
+                                added_at         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                                UNIQUE (project_id, user_id)
+                            );
+                        """)
+
+                        # ── 1. Bảng quản lý đợt quét / thư mục kết quả ─────────────────────
                         cur.execute("""
                             CREATE TABLE IF NOT EXISTS ocr_batches (
-                                batch_id VARCHAR(100) PRIMARY KEY,
-                                folder_name VARCHAR(255) NOT NULL,
-                                source_path TEXT,
-                                output_dir TEXT,
-                                total_files INT DEFAULT 0,
+                                batch_id      VARCHAR(100) PRIMARY KEY,
+                                folder_name   VARCHAR(255) NOT NULL,
+                                source_path   TEXT,
+                                output_dir    TEXT,
+                                total_files   INT DEFAULT 0,
                                 processed_count INT DEFAULT 0,
                                 success_count INT DEFAULT 0,
-                                error_count INT DEFAULT 0,
-                                status VARCHAR(50) DEFAULT 'running',
-                                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                                error_count   INT DEFAULT 0,
+                                status        VARCHAR(50) DEFAULT 'running',
+                                project_id    VARCHAR(100) REFERENCES ocr_projects(project_id),
+                                created_by    VARCHAR(255),
+                                created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                                updated_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
                             );
                         """)
 
-                        # 2. Bảng lưu trữ chi tiết từng hồ sơ
+                        # ── 2. Bảng lưu trữ chi tiết từng hồ sơ ───────────────────────────
                         cur.execute("""
                             CREATE TABLE IF NOT EXISTS ocr_records (
-                                id VARCHAR(150) PRIMARY KEY,
-                                batch_id VARCHAR(100) REFERENCES ocr_batches(batch_id) ON DELETE CASCADE,
-                                file_name VARCHAR(255) NOT NULL,
-                                source_path TEXT,
-                                source_folder TEXT,
-                                folder_result VARCHAR(255),
-                                template VARCHAR(50),
-                                total_pages INT DEFAULT 1,
-                                so_phat_hanh VARCHAR(100),
-                                so_vao_so VARCHAR(100),
-                                ma_vach VARCHAR(100),
-                                ten_chu TEXT,
-                                cmnd VARCHAR(50),
-                                so_thua VARCHAR(50),
-                                to_ban_do VARCHAR(50),
-                                dien_tich VARCHAR(50),
-                                dia_chi TEXT,
-                                raw_markdown TEXT NOT NULL,
+                                id              VARCHAR(150) PRIMARY KEY,
+                                batch_id        VARCHAR(100) REFERENCES ocr_batches(batch_id) ON DELETE CASCADE,
+                                file_name       VARCHAR(255) NOT NULL,
+                                source_path     TEXT,
+                                source_folder   TEXT,
+                                folder_result   VARCHAR(255),
+                                template        VARCHAR(50),
+                                total_pages     INT DEFAULT 1,
+                                so_phat_hanh    VARCHAR(100),
+                                so_vao_so       VARCHAR(100),
+                                ma_vach         VARCHAR(100),
+                                ten_chu         TEXT,
+                                cmnd            VARCHAR(50),
+                                so_thua         VARCHAR(50),
+                                to_ban_do       VARCHAR(50),
+                                dien_tich       VARCHAR(50),
+                                dia_chi         TEXT,
+                                raw_markdown    TEXT NOT NULL,
                                 structured_data JSONB,
                                 chuyen_doi_rows JSONB,
-                                status VARCHAR(30) DEFAULT 'success',
+                                status          VARCHAR(30) DEFAULT 'success',
                                 elapsed_seconds REAL DEFAULT 0.0,
-                                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                                project_id      VARCHAR(100) REFERENCES ocr_projects(project_id),
+                                created_by      VARCHAR(255),
+                                created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
                             );
                         """)
 
-                        # 3. Audit độc lập cho ảnh crop CCCD của luồng ghép cặp.
-                        # Không dùng bảng này cho luồng OCR đơn lẻ để tránh thay đổi dữ liệu cũ.
+                        # ── 3. CCCD crop audit ─────────────────────────────────────────────
                         cur.execute("""
                             CREATE TABLE IF NOT EXISTS cccd_crop_audits (
                                 id BIGSERIAL PRIMARY KEY,
@@ -226,14 +264,21 @@ class PostgresStore:
                             );
                         """)
 
-                        # Index tối ưu hóa truy vấn và lọc
+                        # ── Index ─────────────────────────────────────────────────────────
                         cur.execute("""
+                            CREATE INDEX IF NOT EXISTS idx_projects_created_by ON ocr_projects(created_by);
+                            CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id);
+                            CREATE INDEX IF NOT EXISTS idx_project_members_project ON project_members(project_id);
                             CREATE INDEX IF NOT EXISTS idx_ocr_batches_created ON ocr_batches(created_at DESC);
+                            CREATE INDEX IF NOT EXISTS idx_ocr_batches_project ON ocr_batches(project_id);
+                            CREATE INDEX IF NOT EXISTS idx_ocr_batches_created_by ON ocr_batches(created_by);
                             CREATE INDEX IF NOT EXISTS idx_ocr_records_batch ON ocr_records(batch_id);
                             CREATE INDEX IF NOT EXISTS idx_ocr_records_folder_result ON ocr_records(folder_result);
                             CREATE INDEX IF NOT EXISTS idx_ocr_records_source_folder ON ocr_records(source_folder);
                             CREATE INDEX IF NOT EXISTS idx_ocr_records_created ON ocr_records(created_at DESC);
                             CREATE INDEX IF NOT EXISTS idx_ocr_records_file_name ON ocr_records(file_name);
+                            CREATE INDEX IF NOT EXISTS idx_ocr_records_project ON ocr_records(project_id);
+                            CREATE INDEX IF NOT EXISTS idx_ocr_records_created_by ON ocr_records(created_by);
                             CREATE INDEX IF NOT EXISTS idx_cccd_crop_audits_batch ON cccd_crop_audits(batch_id);
                             CREATE INDEX IF NOT EXISTS idx_cccd_crop_audits_status ON cccd_crop_audits(audit_status);
                             CREATE INDEX IF NOT EXISTS idx_ocr_field_reviews_document ON ocr_field_reviews(document_id, field_key, created_at DESC);
@@ -243,7 +288,256 @@ class PostgresStore:
             except Exception as e:
                 logger.error(f"Lỗi khởi tạo schema PostgreSQL: {e}")
 
-    # ─── QUẢN LÝ BATCH / FOLDER ───────────────────────────────────────────────
+    # ─── QUẢN LÝ DỰ ÁN (PROJECTS) ──────────────────────────────────────────────
+
+    def save_project(
+        self,
+        project_id: str,
+        project_name: str,
+        created_by: str,
+        description: Optional[str] = None,
+        status: str = "active",
+    ) -> bool:
+        """Tạo dự án mới."""
+        if not self._pool:
+            return False
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO ocr_projects
+                            (project_id, project_name, description, created_by, status)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (project_id) DO NOTHING;
+                    """, (project_id, project_name, description, created_by, status))
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi tạo project: {e}")
+            return False
+
+    def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Lấy thông tin dự án theo ID."""
+        if not self._pool:
+            return None
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        "SELECT * FROM ocr_projects WHERE project_id = %s",
+                        (project_id,)
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return None
+                    result = dict(row)
+                    for key in ("created_at", "updated_at"):
+                        if result.get(key):
+                            result[key] = result[key].isoformat()
+                    return result
+        except Exception as e:
+            logger.error(f"Lỗi lấy project {project_id}: {e}")
+            return None
+
+    def list_all_projects(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """Lấy tất cả dự án (admin only)."""
+        if not self._pool:
+            return []
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        "SELECT * FROM ocr_projects ORDER BY created_at DESC LIMIT %s",
+                        (limit,)
+                    )
+                    rows = cur.fetchall()
+                    results = []
+                    for row in rows:
+                        r = dict(row)
+                        for key in ("created_at", "updated_at"):
+                            if r.get(key):
+                                r[key] = r[key].isoformat()
+                        results.append(r)
+                    return results
+        except Exception as e:
+            logger.error(f"Lỗi list_all_projects: {e}")
+            return []
+
+    def list_projects_for_user(self, user_id: str, limit: int = 200) -> List[Dict[str, Any]]:
+        """Lấy dự án mà user_id là thành viên (truong_phong + member)."""
+        if not self._pool:
+            return []
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT p.*
+                        FROM ocr_projects p
+                        INNER JOIN project_members pm
+                            ON pm.project_id = p.project_id
+                            AND pm.user_id = %s
+                        ORDER BY p.created_at DESC
+                        LIMIT %s
+                    """, (user_id, limit))
+                    rows = cur.fetchall()
+                    results = []
+                    for row in rows:
+                        r = dict(row)
+                        for key in ("created_at", "updated_at"):
+                            if r.get(key):
+                                r[key] = r[key].isoformat()
+                        results.append(r)
+                    return results
+        except Exception as e:
+            logger.error(f"Lỗi list_projects_for_user: {e}")
+            return []
+
+    def delete_project(self, project_id: str) -> bool:
+        """Xóa dự án (CASCADE xóa members, batches, records liên quan)."""
+        if not self._pool:
+            return False
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM ocr_projects WHERE project_id = %s",
+                        (project_id,)
+                    )
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi delete_project {project_id}: {e}")
+            return False
+
+    # ─── QUẢN LÝ THÀNH VIÊN DỰ ÁN ──────────────────────────────────────────────
+
+    def add_project_member(
+        self,
+        project_id: str,
+        user_id: str,
+        username: str,
+        display_name: str,
+        role_in_project: str,
+        added_by: str,
+    ) -> bool:
+        """Thêm thành viên vào dự án. Trả về False nếu đã tồn tại."""
+        if not self._pool:
+            return False
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO project_members
+                            (project_id, user_id, username, display_name, role_in_project, added_by)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (project_id, user_id) DO UPDATE SET
+                            username         = EXCLUDED.username,
+                            display_name     = EXCLUDED.display_name,
+                            role_in_project  = EXCLUDED.role_in_project,
+                            added_by         = EXCLUDED.added_by;
+                    """, (project_id, user_id, username, display_name, role_in_project, added_by))
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi add_project_member: {e}")
+            return False
+
+    def remove_project_member(self, project_id: str, user_id: str) -> bool:
+        """Xóa thành viên khỏi dự án."""
+        if not self._pool:
+            return False
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM project_members WHERE project_id = %s AND user_id = %s",
+                        (project_id, user_id)
+                    )
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi remove_project_member: {e}")
+            return False
+
+    def is_project_member(self, project_id: str, user_id: str) -> bool:
+        """Kiểm tra user có thuộc dự án không."""
+        if not self._pool:
+            return False
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT 1 FROM project_members
+                        WHERE project_id = %s AND user_id = %s
+                        LIMIT 1
+                    """, (project_id, user_id))
+                    return cur.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Lỗi is_project_member: {e}")
+            return False
+
+    def list_project_members(self, project_id: str) -> List[Dict[str, Any]]:
+        """Lấy danh sách thành viên của dự án."""
+        if not self._pool:
+            return []
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT user_id, username, display_name, role_in_project, added_by, added_at
+                        FROM project_members
+                        WHERE project_id = %s
+                        ORDER BY added_at ASC
+                    """, (project_id,))
+                    rows = cur.fetchall()
+                    results = []
+                    for row in rows:
+                        r = dict(row)
+                        if r.get("added_at"):
+                            r["added_at"] = r["added_at"].isoformat()
+                        results.append(r)
+                    return results
+        except Exception as e:
+            logger.error(f"Lỗi list_project_members: {e}")
+            return []
+
+    def get_accessible_project_ids(self, user_id: str, primary_role: str) -> Optional[List[str]]:
+        """
+        Trả về danh sách project_id user được phép truy cập.
+        None = admin (không filter, thấy tất cả).
+        List rỗng = không có dự án nào.
+        """
+        if primary_role == "ocr-admin":
+            return None
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT project_id FROM project_members WHERE user_id = %s",
+                        (user_id,)
+                    )
+                    return [row[0] for row in cur.fetchall()]
+        except Exception as e:
+            logger.error(f"Lỗi get_accessible_project_ids: {e}")
+            return []
+
+    def get_record_filter(self, user_id: str, primary_role: str) -> Dict[str, Any]:
+        """
+        Tạo dict filter để truyền vào list_records() / list_batches():
+        - admin         → {} (không filter)
+        - truong_phong  → {project_ids: [...]} (mọi record trong dự án mình)
+        - member        → {project_ids: [...], created_by: user_id}
+        """
+        if primary_role == "ocr-admin":
+            return {}
+        accessible = self.get_accessible_project_ids(user_id, primary_role)
+        if primary_role == "ocr-truongphong":
+            return {"filter_project_ids": accessible}
+        # member: chỉ xem dữ liệu của chính mình trong dự án được giao
+        return {"filter_project_ids": accessible, "filter_created_by": user_id}
+
+    # ─── QUẢN LÝ BATCH / FOLDER ──────────────────────────────────────────────
+
 
     def save_batch(
         self,
@@ -253,6 +547,8 @@ class PostgresStore:
         output_dir: str,
         total_files: int = 0,
         status: str = "running",
+        project_id: Optional[str] = None,
+        created_by: Optional[str] = None,
     ) -> bool:
         """Tạo mới hoặc cập nhật một đợt quét / thư mục kết quả."""
         if not self._pool:
@@ -263,22 +559,27 @@ class PostgresStore:
                     cur.execute("""
                         INSERT INTO ocr_batches (
                             batch_id, folder_name, source_path, output_dir,
-                            total_files, status, created_at, updated_at
+                            total_files, status, project_id, created_by,
+                            created_at, updated_at
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         ON CONFLICT (batch_id) DO UPDATE SET
                             folder_name = EXCLUDED.folder_name,
                             source_path = EXCLUDED.source_path,
                             output_dir = EXCLUDED.output_dir,
                             total_files = EXCLUDED.total_files,
                             status = EXCLUDED.status,
+                            project_id = COALESCE(EXCLUDED.project_id, ocr_batches.project_id),
+                            created_by = COALESCE(EXCLUDED.created_by, ocr_batches.created_by),
                             updated_at = CURRENT_TIMESTAMP;
-                    """, (batch_id, folder_name, source_path, output_dir, total_files, status))
+                    """, (batch_id, folder_name, source_path, output_dir, total_files, status,
+                          project_id, created_by))
                     conn.commit()
             return True
         except Exception as e:
             logger.error(f"Lỗi lưu batch vào PostgreSQL: {e}")
             return False
+
 
     def update_batch_progress(
         self,
@@ -372,6 +673,8 @@ class PostgresStore:
         chuyen_doi_rows: Optional[List[Dict[str, Any]]] = None,
         status: str = "success",
         elapsed_seconds: float = 0.0,
+        project_id: Optional[str] = None,
+        created_by: Optional[str] = None,
     ) -> bool:
         """Lưu hoặc cập nhật một hồ sơ OCR vào PostgreSQL."""
         if not self._pool:
@@ -393,14 +696,14 @@ class PostgresStore:
                             template, total_pages, so_phat_hanh, so_vao_so, ma_vach,
                             ten_chu, cmnd, so_thua, to_ban_do, dien_tich, dia_chi,
                             raw_markdown, structured_data, chuyen_doi_rows, status,
-                            elapsed_seconds, created_at
+                            elapsed_seconds, project_id, created_by, created_at
                         )
                         VALUES (
                             %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s,
-                            %s, CURRENT_TIMESTAMP
+                            %s, %s, %s, CURRENT_TIMESTAMP
                         )
                         ON CONFLICT (id) DO UPDATE SET
                             batch_id = EXCLUDED.batch_id,
@@ -424,6 +727,8 @@ class PostgresStore:
                             chuyen_doi_rows = EXCLUDED.chuyen_doi_rows,
                             status = EXCLUDED.status,
                             elapsed_seconds = EXCLUDED.elapsed_seconds,
+                            project_id = COALESCE(EXCLUDED.project_id, ocr_records.project_id),
+                            created_by = COALESCE(EXCLUDED.created_by, ocr_records.created_by),
                             created_at = CURRENT_TIMESTAMP;
                     """, (
                         doc_id, batch_id, file_name, source_path, source_folder, folder_result,
@@ -432,11 +737,12 @@ class PostgresStore:
                         raw_markdown,
                         Json(structured_data) if structured_data else None,
                         Json(chuyen_doi_rows) if chuyen_doi_rows else None,
-                        status, elapsed_seconds
+                        status, elapsed_seconds, project_id, created_by
                     ))
                     conn.commit()
             return True
         except Exception as e:
+
             logger.error(f"Lỗi lưu ocr_record vào PostgreSQL: {e}")
             return False
 
@@ -588,21 +894,33 @@ class PostgresStore:
         min_files: Optional[int] = None,
         max_files: Optional[int] = None,
         search: Optional[str] = None,
+        filter_project_ids: Optional[List[str]] = None,
+        filter_created_by: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         Lấy danh sách bản ghi hồ sơ tóm tắt kèm hỗ trợ các bộ lọc:
-        - folder_result: Lọc theo thư mục kết quả
-        - source_path: Lọc theo link/thư mục nguồn trên máy
-        - batch_id: Lọc theo đợt quét
-        - min_files / max_files: Lọc các hồ sơ thuộc mẻ quét có số lượng file tương ứng
-        - search: Tìm kiếm theo tên file, tên chủ, số phát hành, thửa/tờ
-        Trả về (danh sách bản ghi, tổng số lượng thỏa mãn điều kiện).
+        - filter_project_ids: Chỉ lấy record thuộc các dự án này (None = không filter)
+        - filter_created_by: Chỉ lấy record do user này tạo
+        - folder_result, source_path, batch_id, min/max_files, search: bộ lọc thông thường
         """
         if not self._pool:
             return [], 0
         try:
             where_clauses = []
             params: List[Any] = []
+
+            # Phân quyền theo dự án (truong_phong/member)
+            if filter_project_ids is not None:
+                if len(filter_project_ids) == 0:
+                    return [], 0  # Không có dự án nào -> trả rỗng
+                placeholders = ",".join(["%s"] * len(filter_project_ids))
+                where_clauses.append(f"r.project_id IN ({placeholders})")
+                params.extend(filter_project_ids)
+
+            # Phân quyền theo người tạo (member chỉ xem dữ liệu mình)
+            if filter_created_by:
+                where_clauses.append("r.created_by = %s")
+                params.append(filter_created_by)
 
             if folder_result and folder_result.strip() and folder_result != "all":
                 where_clauses.append("r.folder_result = %s")
@@ -657,6 +975,7 @@ class PostgresStore:
                                r.so_vao_so, r.ma_vach, r.ten_chu, r.cmnd, r.so_thua,
                                r.to_ban_do, r.dien_tich, r.dia_chi, r.status,
                                r.elapsed_seconds, r.created_at,
+                               r.project_id, r.created_by,
                                LENGTH(r.raw_markdown) as content_length,
                                b.total_files as batch_total_files
                         FROM ocr_records r
@@ -677,6 +996,7 @@ class PostgresStore:
 
                     return result, total_count
         except Exception as e:
+
             logger.error(f"Lỗi list_records PostgreSQL: {e}")
             return [], 0
 

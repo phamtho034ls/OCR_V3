@@ -50,7 +50,7 @@ const initialForm = {
   last_name: '',
   email: '',
   temporary_password: '',
-  roles: ['ocr-viewer'] as string[],
+  roles: ['ocr-member'] as string[],
 };
 
 const USERNAME_REGEX = /^[a-zA-Z0-9._-]+$/;
@@ -62,29 +62,17 @@ const ROLE_DISPLAY: Record<string, { label: string; badge: string; color: string
     color: 'text-rose-600',
     icon: ShieldCheck,
   },
-  'ocr-operator': {
-    label: 'Nhập liệu',
+  'ocr-truongphong': {
+    label: 'Trưởng phòng',
     badge: 'bg-blue-50 text-blue-800 border-blue-200',
     color: 'text-blue-600',
-    icon: FolderUp,
+    icon: UserCog,
   },
-  'ocr-reviewer': {
-    label: 'Tra soát',
-    badge: 'bg-amber-50 text-amber-800 border-amber-200',
-    color: 'text-amber-600',
-    icon: UserCheck,
-  },
-  'ocr-exporter': {
-    label: 'Khai thác',
+  'ocr-member': {
+    label: 'Nhân viên',
     badge: 'bg-emerald-50 text-emerald-800 border-emerald-200',
     color: 'text-emerald-600',
-    icon: FileSpreadsheet,
-  },
-  'ocr-viewer': {
-    label: 'Chỉ xem',
-    badge: 'bg-slate-50 text-slate-700 border-slate-200',
-    color: 'text-slate-600',
-    icon: Database,
+    icon: Users,
   },
 };
 

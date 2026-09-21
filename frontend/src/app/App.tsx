@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Database, FileSpreadsheet, FolderUp, Layers, LogOut, Upload, UserCog } from 'lucide-react';
+import { Database, FileSpreadsheet, Folder, FolderUp, Layers, LogOut, Upload, UserCog } from 'lucide-react';
 import { DataConversionPage } from '../pages/data-conversion/DataConversionPage';
 import { DocumentUploadPage } from '../pages/document-upload/DocumentUploadPage';
 import { BatchScanPage } from '../pages/batch-scan/BatchScanPage';
 import { RawMarkdownPage } from '../pages/raw-markdown/RawMarkdownPage';
 import { UserManagementPage } from '../pages/admin/UserManagementPage';
+import { ProjectListPage } from '../pages/projects/ProjectListPage';
 import { LoginPage } from '../pages/login/LoginPage';
 import { useAuth } from '../shared/auth/AuthProvider';
 import { UserProfileModal } from '../shared/components/UserProfileModal';
 
-type AppTab = 'batch' | 'conversion' | 'records' | 'upload' | 'admin';
+type AppTab = 'batch' | 'conversion' | 'records' | 'upload' | 'admin' | 'projects';
 
 const navigation: Array<{
   id: AppTab;
@@ -23,6 +24,7 @@ const navigation: Array<{
   { id: 'upload', label: 'Kiểm tra hồ sơ', shortLabel: 'Hồ sơ', Icon: Upload, permission: 'document.create' },
   { id: 'conversion', label: 'Bảng dữ liệu 129 cột', shortLabel: 'Bảng dữ liệu', Icon: FileSpreadsheet, permission: 'record.read' },
   { id: 'records', label: 'Kho hồ sơ', shortLabel: 'Kho hồ sơ', Icon: Database, permission: 'record.read' },
+  { id: 'projects', label: 'Dự án', shortLabel: 'Dự án', Icon: Folder, permission: 'project.read' },
   { id: 'admin', label: 'Tài khoản & quyền', shortLabel: 'Quyền', Icon: UserCog, permission: 'user.manage' },
 ];
 
@@ -223,6 +225,9 @@ export const App: React.FC = () => {
         </div>
         <div className={currentTab === 'upload' ? 'block' : 'hidden'}>
           <DocumentUploadPage />
+        </div>
+        <div className={currentTab === 'projects' ? 'block' : 'hidden'}>
+          <ProjectListPage />
         </div>
         <div className={currentTab === 'admin' ? 'block' : 'hidden'}>
           <UserManagementPage />

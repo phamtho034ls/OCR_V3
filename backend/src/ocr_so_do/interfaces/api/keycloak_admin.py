@@ -76,11 +76,21 @@ class KeycloakAdminClient:
 
     def available_roles(self) -> list[dict[str, str]]:
         return [
-            {"name": "ocr-admin", "label": "Quản trị đơn vị", "description": "Tạo tài khoản, cấp quyền và quản lý dữ liệu."},
-            {"name": "ocr-operator", "label": "Nhập liệu", "description": "Upload, tạo và theo dõi lô OCR."},
-            {"name": "ocr-reviewer", "label": "Tra soát", "description": "Xem và xác nhận/chỉnh kết quả OCR."},
-            {"name": "ocr-exporter", "label": "Khai thác dữ liệu", "description": "Xem và xuất Excel 129 cột."},
-            {"name": "ocr-viewer", "label": "Chỉ xem", "description": "Tra cứu hồ sơ đã được cấp quyền."},
+            {
+                "name": "ocr-admin",
+                "label": "Quản trị viên",
+                "description": "Toàn quyền hệ thống: tạo tài khoản, quản lý mọi dự án, xem tất cả dữ liệu OCR.",
+            },
+            {
+                "name": "ocr-truongphong",
+                "label": "Trưởng phòng",
+                "description": "Tạo dự án, thêm/xóa thành viên, xem toàn bộ dữ liệu OCR trong dự án mình quản lý.",
+            },
+            {
+                "name": "ocr-member",
+                "label": "Nhân viên",
+                "description": "Quét OCR trong dự án được giao, chỉ xem dữ liệu do chính mình tạo.",
+            },
         ]
 
     def _role_representations(self, roles: Iterable[str]) -> list[dict[str, Any]]:

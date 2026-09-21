@@ -76,6 +76,7 @@ async def list_pg_batches(limit: int = Query(100, ge=1, le=500)):
 
 @router.get("/records", summary="Tra cứu danh sách hồ sơ với bộ lọc thư mục và số lượng file")
 async def list_pg_records(
+    principal: Principal = Depends(get_current_principal),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     folder_result: Optional[str] = Query(None, description="Lọc theo thư mục kết quả"),
@@ -86,6 +87,9 @@ async def list_pg_records(
     search: Optional[str] = Query(None, description="Tìm kiếm từ khóa (tên file, tên chủ, số seri, thửa đất...)")
 ):
     store = get_postgres_store()
+    # Áp dụng phân quyền: admin thấy tất cả, truong_phong thấy dự án mình,
+    # member chỉ thấy dữ liệu do chính mình tạo trong dự án được giao.
+    permission_filter = store.get_record_filter(principal.subject, principal.primary_role())
     records, total = store.list_records(
         limit=limit,
         offset=offset,
@@ -94,7 +98,8 @@ async def list_pg_records(
         batch_id=batch_id,
         min_files=min_files,
         max_files=max_files,
-        search=search
+        search=search,
+        **permission_filter
     )
     return JSONResponse(content={
         "total": total,

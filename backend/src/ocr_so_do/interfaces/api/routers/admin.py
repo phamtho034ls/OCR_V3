@@ -5,16 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from ..keycloak_admin import KeycloakAdminClient, KeycloakAdminError
-from ..security import AUTH_ENABLED, Permission, Principal, require_permission
+from ..security import AUTH_ENABLED, Permission, Principal, get_current_principal, require_permission
 
 router = APIRouter(prefix="/admin", tags=["Administration"])
-require_user_management = Depends(require_permission(Permission.USER_MANAGE))
 
 
 class CreateEmployeeRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=100, pattern=r"^[a-zA-Z0-9._-]+$")
     temporary_password: str = Field(..., min_length=6, max_length=128)
-    roles: List[str] = Field(default_factory=lambda: ["ocr-viewer"])
+    roles: List[str] = Field(default_factory=lambda: ["ocr-member"])
     email: Optional[str] = Field(None, max_length=255)
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
@@ -48,14 +47,16 @@ def _raise_keycloak_error(error: KeycloakAdminError) -> None:
     raise HTTPException(status_code=status_code, detail=str(error)) from error
 
 
-@router.get("/roles", dependencies=[require_user_management])
-async def list_roles():
+@router.get("/roles")
+async def list_roles(principal: Principal = Depends(get_current_principal)):
     return {"roles": _client().available_roles()}
 
 
-@router.get("/users", dependencies=[require_user_management])
+@router.get("/users")
 async def list_users(
-    first: int = Query(0, ge=0), max_results: int = Query(100, ge=1, le=200),
+    first: int = Query(0, ge=0),
+    max_results: int = Query(100, ge=1, le=200),
+    principal: Principal = Depends(get_current_principal),
 ):
     if not AUTH_ENABLED:
         return {
@@ -77,8 +78,11 @@ async def list_users(
         _raise_keycloak_error(error)
 
 
-@router.post("/users", status_code=status.HTTP_201_CREATED, dependencies=[require_user_management])
-async def create_employee(payload: CreateEmployeeRequest):
+@router.post("/users", status_code=status.HTTP_201_CREATED)
+async def create_employee(
+    payload: CreateEmployeeRequest,
+    principal: Principal = Depends(get_current_principal),
+):
     if not AUTH_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -97,10 +101,11 @@ async def create_employee(payload: CreateEmployeeRequest):
         _raise_keycloak_error(error)
 
 
-@router.put("/users/{user_id}", dependencies=[require_user_management])
+@router.put("/users/{user_id}")
 async def update_employee(
     user_id: str,
     payload: UpdateUserRequest,
+    principal: Principal = Depends(get_current_principal),
 ):
     if not AUTH_ENABLED:
         raise HTTPException(
@@ -118,11 +123,11 @@ async def update_employee(
         _raise_keycloak_error(error)
 
 
-@router.put("/users/{user_id}/roles", dependencies=[require_user_management])
+@router.put("/users/{user_id}/roles")
 async def replace_employee_roles(
     user_id: str,
     payload: ReplaceRolesRequest,
-    principal: Principal = require_user_management,
+    principal: Principal = Depends(get_current_principal),
 ):
     if not AUTH_ENABLED:
         raise HTTPException(
@@ -140,11 +145,11 @@ async def replace_employee_roles(
         _raise_keycloak_error(error)
 
 
-@router.put("/users/{user_id}/enabled", dependencies=[require_user_management])
+@router.put("/users/{user_id}/enabled")
 async def set_employee_enabled(
     user_id: str,
     payload: SetEnabledRequest,
-    principal: Principal = require_user_management,
+    principal: Principal = Depends(get_current_principal),
 ):
     if not AUTH_ENABLED:
         raise HTTPException(
@@ -162,10 +167,11 @@ async def set_employee_enabled(
         _raise_keycloak_error(error)
 
 
-@router.put("/users/{user_id}/reset-password", dependencies=[require_user_management])
+@router.put("/users/{user_id}/reset-password")
 async def reset_employee_password(
     user_id: str,
     payload: ResetPasswordRequest,
+    principal: Principal = Depends(get_current_principal),
 ):
     if not AUTH_ENABLED:
         raise HTTPException(
@@ -182,10 +188,10 @@ async def reset_employee_password(
         _raise_keycloak_error(error)
 
 
-@router.delete("/users/{user_id}", dependencies=[require_user_management])
+@router.delete("/users/{user_id}")
 async def delete_employee(
     user_id: str,
-    principal: Principal = require_user_management,
+    principal: Principal = Depends(get_current_principal),
 ):
     if not AUTH_ENABLED:
         raise HTTPException(

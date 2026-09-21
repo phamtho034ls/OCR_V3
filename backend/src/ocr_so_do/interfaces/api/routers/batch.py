@@ -15,9 +15,11 @@ import threading
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import JSONResponse
 
+from ..security import Principal, get_current_principal
+from ....infrastructure.persistence.postgres_store import get_postgres_store as _get_pg_store
 from ....bootstrap import DEFAULT_OUTPUT_DIR, get_container
 from ....infrastructure.memory import cleanup_memory
 from ....infrastructure.persistence.postgres_store import get_postgres_store
@@ -264,6 +266,10 @@ def _load_batch_129_rows(batch_id: str) -> tuple[List[Dict[str, Any]], List[Dict
 
 class ScanDirectoryRequest(BaseModel):
     directory_path: str = Field(..., description="Đường dẫn thư mục chứa PDF/Ảnh trên máy chủ")
+    project_id: str = Field(
+        ...,
+        description="ID dự án OCR mà đợt quét này thuộc về"
+    )
     sample_count: int = Field(0, description="Số file mẫu cần quét (0 = tất cả file)")
     split_a3: bool = Field(True, description="Tự động cắt đôi trang A3 scan đôi")
     smart_gcn_filter: bool = Field(True, description="Chỉ xử lý trang phôi Sổ Đỏ")
@@ -556,12 +562,25 @@ def _run_batch_scan_job(
 
 
 @router.post("/scan-directory", summary="Khởi chạy hoặc tiếp tục quét thư mục trên máy chủ")
-async def scan_directory(req: ScanDirectoryRequest, background_tasks: BackgroundTasks):
+async def scan_directory(
+    req: ScanDirectoryRequest,
+    background_tasks: BackgroundTasks,
+    principal: Principal = Depends(get_current_principal),
+):
     """
     Quét thư mục máy chủ và thực thi OCR từng file trong background.
     Hỗ trợ tiếp tục quét từ start_index với resume_batch_id mà không xóa kết quả cũ.
     """
     dir_p = permitted_source_directory(req.directory_path)
+
+    # Kiểm tra user có thuộc dự án không (admin bypass)
+    if not principal.is_admin():
+        pg_chk = _get_pg_store()
+        if not pg_chk.is_project_member(req.project_id, principal.subject):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Bạn không phải thành viên của dự án '{req.project_id}'.",
+            )
 
     # Thu thập toàn bộ file PDF và ảnh (dùng set để tránh lặp file trên Windows case-insensitive)
     found_files = set()
@@ -612,7 +631,9 @@ async def scan_directory(req: ScanDirectoryRequest, background_tasks: Background
             source_path=str(dir_p.resolve()),
             output_dir=str(DEFAULT_OUTPUT_DIR / "batches" / batch_id),
             total_files=len(target_files),
-            status="running"
+            status="running",
+            project_id=req.project_id,
+            created_by=principal.subject,
         ):
             raise HTTPException(
                 status_code=500,
@@ -621,6 +642,8 @@ async def scan_directory(req: ScanDirectoryRequest, background_tasks: Background
 
         batch_jobs[batch_id] = {
             "batch_id": batch_id,
+            "project_id": req.project_id,
+            "created_by": principal.subject,
             "status": "processing",
             "directory_path": str(dir_p),
             "total_files": len(target_files),
@@ -650,11 +673,17 @@ async def scan_directory(req: ScanDirectoryRequest, background_tasks: Background
         if is_resuming
         else f"Bắt đầu quét {len(target_files)} hồ sơ trong thư mục."
     )
+    queue_position = sum(
+        1 for j in batch_jobs.values()
+        if j.get("status") in ("processing", "queued")
+    )
     return JSONResponse(content={
         "batch_id": batch_id,
-        "status": "processing",
+        "status": "queued" if queue_position > 1 else "processing",
+        "queue_position": queue_position,
         "total_files": len(target_files),
-        "message": msg
+        "message": msg,
+        "project_id": req.project_id,
     })
 
 

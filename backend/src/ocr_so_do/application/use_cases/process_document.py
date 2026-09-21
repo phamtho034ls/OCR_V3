@@ -33,7 +33,9 @@ class ProcessDocumentUseCase:
         smart_gcn_filter: bool = True,
         stt: int = 1,
         batch_id: Optional[str] = None,
-        folder_result: Optional[str] = None
+        folder_result: Optional[str] = None,
+        project_id: Optional[str] = None,
+        created_by: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Thực thi xử lý OCR toàn bộ các trang của 1 tài liệu.
@@ -248,6 +250,8 @@ class ProcessDocumentUseCase:
                 chuyen_doi_rows=chuyen_doi_rows,
                 status="success",
                 elapsed_seconds=elapsed,
+                project_id=project_id,
+                created_by=created_by,
             )
             if not saved:
                 reason = pg_store.unavailable_reason or "Lỗi lưu bản ghi vào PostgreSQL"

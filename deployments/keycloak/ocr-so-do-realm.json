@@ -13,11 +13,9 @@
   "duplicateEmailsAllowed": false,
   "roles": {
     "realm": [
-      {"name": "ocr-admin", "description": "Quản trị người dùng, quyền và dữ liệu OCR"},
-      {"name": "ocr-operator", "description": "Nhập liệu và vận hành batch OCR"},
-      {"name": "ocr-reviewer", "description": "Tra soát kết quả OCR"},
-      {"name": "ocr-exporter", "description": "Khai thác và xuất bảng 129 cột"},
-      {"name": "ocr-viewer", "description": "Chỉ tra cứu hồ sơ được cấp quyền"}
+      {"name": "ocr-admin", "description": "Quản trị viên: toàn quyền hệ thống, tạo tài khoản và quản lý mọi dự án"},
+      {"name": "ocr-truongphong", "description": "Trưởng phòng: tạo dự án, thêm/xóa thành viên, xem toàn bộ dữ liệu OCR trong dự án mình"},
+      {"name": "ocr-member", "description": "Nhân viên: quét OCR trong dự án được giao, chỉ xem dữ liệu của chính mình"}
     ]
   },
   "clients": [
@@ -53,6 +51,20 @@
             "id.token.claim": "false",
             "introspection.token.claim": "true"
           }
+        },
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
         }
       ]
     },
@@ -67,7 +79,7 @@
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
-      "fullScopeAllowed": false
+      "fullScopeAllowed": true
     }
   ],
   "users": [

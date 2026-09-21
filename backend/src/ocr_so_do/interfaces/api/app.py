@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .routers import admin, auth, documents, exports, batch, pg_storage, batch_pairs
+from .routers import admin, auth, documents, exports, batch, pg_storage, batch_pairs, projects
 from .security import (
     authenticate_authorization_header,
     required_permission_for_request,
@@ -84,6 +84,7 @@ app.include_router(pg_storage.router, prefix=api_v1_prefix)
 app.include_router(batch_pairs.router, prefix=api_v1_prefix)
 app.include_router(auth.router, prefix=api_v1_prefix)
 app.include_router(admin.router, prefix=api_v1_prefix)
+app.include_router(projects.router, prefix=api_v1_prefix)
 
 # Ảnh trang gốc, crop OCR và sơ đồ thửa đất là bằng chứng trực quan trong màn
 # tra soát. AuthenticationMiddleware bắt buộc `record.read` cho mọi URL /output.

@@ -2,6 +2,11 @@
 
 Keycloak là nguồn danh tính duy nhất.  Backend không tin role, username hay
 reviewer do trình duyệt gửi lên; tất cả được lấy từ access token đã xác minh.
+
+Hệ thống phân quyền 3 cấp:
+  - ocr-admin      : full quyền toàn hệ thống
+  - ocr-truongphong: tạo/quản lý dự án, xem toàn bộ dữ liệu trong dự án mình
+  - ocr-member     : OCR trong dự án được giao, chỉ xem dữ liệu của chính mình
 """
 from __future__ import annotations
 
@@ -16,6 +21,16 @@ from fastapi import HTTPException, Request, status
 
 
 class Permission:
+    # ── Quản trị hệ thống ────────────────────────────────────────────────
+    USER_MANAGE = "user.manage"
+    AUDIT_READ = "audit.read"
+
+    # ── Quản lý dự án ──────────────────────────────────────────────────
+    PROJECT_CREATE = "project.create"
+    PROJECT_MANAGE = "project.manage"
+    PROJECT_READ = "project.read"
+
+    # ── Dữ liệu OCR (kiểm tra thêm project/user context ở tầng data) ───────
     DOCUMENT_CREATE = "document.create"
     BATCH_CREATE = "batch.create"
     BATCH_READ = "batch.read"
@@ -25,27 +40,41 @@ class Permission:
     RECORD_DELETE = "record.delete"
     EXPORT_129 = "export.129"
     EXPORT_RAW = "export.raw"
-    USER_MANAGE = "user.manage"
-    AUDIT_READ = "audit.read"
 
     ALL = frozenset({
-        DOCUMENT_CREATE, BATCH_CREATE, BATCH_READ, BATCH_CANCEL, RECORD_READ,
-        RECORD_REVIEW, RECORD_DELETE, EXPORT_129, EXPORT_RAW, USER_MANAGE,
-        AUDIT_READ,
+        USER_MANAGE, AUDIT_READ,
+        PROJECT_CREATE, PROJECT_MANAGE, PROJECT_READ,
+        DOCUMENT_CREATE, BATCH_CREATE, BATCH_READ, BATCH_CANCEL,
+        RECORD_READ, RECORD_REVIEW, RECORD_DELETE, EXPORT_129, EXPORT_RAW,
     })
 
 
-# Role được quản lý trong realm Keycloak.  Role chỉ là gói quyền, còn backend
-# luôn kiểm tra permission theo endpoint để UI không phải là lớp bảo vệ duy nhất.
 ROLE_PERMISSIONS: dict[str, FrozenSet[str]] = {
     "ocr-admin": Permission.ALL,
-    "ocr-operator": frozenset({
-        Permission.DOCUMENT_CREATE, Permission.BATCH_CREATE, Permission.BATCH_READ,
-        Permission.BATCH_CANCEL, Permission.RECORD_READ,
+    "ocr-truongphong": frozenset({
+        Permission.PROJECT_CREATE,
+        Permission.PROJECT_MANAGE,
+        Permission.PROJECT_READ,
+        Permission.DOCUMENT_CREATE,
+        Permission.BATCH_CREATE,
+        Permission.BATCH_READ,
+        Permission.BATCH_CANCEL,
+        Permission.RECORD_READ,
+        Permission.RECORD_REVIEW,
+        Permission.RECORD_DELETE,
+        Permission.EXPORT_129,
+        Permission.EXPORT_RAW,
+        Permission.AUDIT_READ,
     }),
-    "ocr-reviewer": frozenset({Permission.RECORD_READ, Permission.RECORD_REVIEW}),
-    "ocr-exporter": frozenset({Permission.RECORD_READ, Permission.EXPORT_129}),
-    "ocr-viewer": frozenset({Permission.RECORD_READ}),
+    "ocr-member": frozenset({
+        Permission.PROJECT_READ,
+        Permission.DOCUMENT_CREATE,
+        Permission.BATCH_CREATE,
+        Permission.BATCH_READ,
+        Permission.BATCH_CANCEL,
+        Permission.RECORD_READ,
+        Permission.EXPORT_129,
+    }),
 }
 APP_ROLES = tuple(ROLE_PERMISSIONS.keys())
 
@@ -73,6 +102,22 @@ class Principal:
     roles: FrozenSet[str]
     permissions: FrozenSet[str]
 
+    def is_admin(self) -> bool:
+        return "ocr-admin" in self.roles
+
+    def is_truong_phong(self) -> bool:
+        return "ocr-truongphong" in self.roles
+
+    def is_member(self) -> bool:
+        return "ocr-member" in self.roles and not self.is_admin() and not self.is_truong_phong()
+
+    def primary_role(self) -> str:
+        if self.is_admin():
+            return "ocr-admin"
+        if self.is_truong_phong():
+            return "ocr-truongphong"
+        return "ocr-member"
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "id": self.subject,
@@ -81,6 +126,7 @@ class Principal:
             "email": self.email,
             "roles": sorted(self.roles),
             "permissions": sorted(self.permissions),
+            "primary_role": self.primary_role(),
         }
 
 
@@ -135,6 +181,15 @@ def _decode_bearer_token(token: str) -> Principal:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Không thể kết nối tới máy chủ Keycloak để xác thực: {exc}",
         ) from exc
+
+    import logging as _logging
+    _log = _logging.getLogger("ocr.security.debug")
+    _log.warning(
+        "[DEBUG-AUTH] sub=%s realm_access=%s resource_access_keys=%s",
+        claims.get("sub", "?")[:8],
+        claims.get("realm_access", {}),
+        list(claims.get("resource_access", {}).keys()),
+    )
 
     roles = _roles_from_claims(claims)
     username = str(claims.get("preferred_username") or claims.get("sub"))
@@ -198,14 +253,30 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
     """Ánh xạ tập trung endpoint -> quyền; backend kiểm tra trước khi vào router."""
     if path in {"/api/v1/auth/config", "/health", "/docs", "/redoc", "/openapi.json"}:
         return None
+
     if path.startswith("/api/v1/admin"):
         return Permission.USER_MANAGE
+
     if path == "/api/v1/auth/me":
         return "authenticated"
+
+    if path.startswith("/api/v1/projects"):
+        if method == "POST" and path == "/api/v1/projects":
+            return Permission.PROJECT_CREATE
+        if method == "DELETE" and "/members/" in path:
+            return Permission.PROJECT_MANAGE
+        if method == "POST" and path.endswith("/members"):
+            return Permission.PROJECT_MANAGE
+        if method == "DELETE" and "/members" not in path:
+            return Permission.PROJECT_MANAGE
+        return Permission.PROJECT_READ
+
     if path.startswith("/output/"):
         return Permission.RECORD_READ
+
     if path.startswith("/api/v1/documents"):
         return Permission.DOCUMENT_CREATE
+
     if path.startswith("/api/v1/batch-pairs"):
         if method == "POST" and path.endswith("/cancel"):
             return Permission.BATCH_CANCEL
@@ -216,6 +287,7 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
         if method == "GET" and "/crops" in path:
             return Permission.RECORD_READ
         return Permission.BATCH_READ
+
     if path.startswith("/api/v1/batch"):
         if method == "POST" and path.endswith("/scan-directory"):
             return Permission.BATCH_CREATE
@@ -226,8 +298,10 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
         if method == "GET" and path.endswith("/download-excel"):
             return Permission.EXPORT_129
         return Permission.BATCH_READ
+
     if path.startswith("/api/v1/exports"):
         return Permission.EXPORT_129 if method == "POST" else Permission.RECORD_READ
+
     if path.startswith("/api/v1/pg"):
         if method == "DELETE":
             return Permission.RECORD_DELETE
@@ -238,15 +312,12 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
         if "export-129" in path:
             return Permission.EXPORT_129
         return Permission.RECORD_READ
+
     return "authenticated"
 
 
 def permitted_source_directory(raw_path: str) -> Path:
-    """Resolve a batch source only when it is inside an administrator allowlist.
-
-    Đường dẫn server là quyền đọc file rất mạnh. Không được dùng nó như input
-    tự do từ trình duyệt, kể cả với role nhập liệu.
-    """
+    """Resolve a batch source only when it is inside an administrator allowlist."""
     raw_roots = os.getenv("OCR_ALLOWED_SOURCE_ROOTS", "").strip()
     if not raw_roots:
         raise HTTPException(
@@ -258,7 +329,7 @@ def permitted_source_directory(raw_path: str) -> Path:
     except (OSError, RuntimeError):
         raise HTTPException(status_code=400, detail="Thư mục nguồn không tồn tại hoặc không thể truy cập.")
     if not directory.is_dir():
-        raise HTTPException(status_code=400, detail="Đường dẫn nguồn phải là một thư mục.")
+        raise HTTPException(status_code=400, detail="Đường dọn nguồn phải là một thư mục.")
 
     for root_value in raw_roots.split(","):
         root_value = root_value.strip()

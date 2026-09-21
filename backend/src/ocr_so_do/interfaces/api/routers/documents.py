@@ -1,14 +1,17 @@
 """
 API Router /api/v1/documents: Upload và truy vấn tài liệu OCR.
 """
+import asyncio
 import os
 import uuid
 import tempfile
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, Form, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
 from ....bootstrap import get_container
+from ....infrastructure.persistence.postgres_store import get_postgres_store
+from ..security import Principal, get_current_principal
 
 import logging
 logger = logging.getLogger(__name__)
@@ -60,19 +63,39 @@ async def _save_upload_to_tempfile(file: UploadFile) -> str:
 @router.post("", summary="Upload tài liệu và khởi tạo OCR")
 async def upload_document(
     file: UploadFile = File(...),
+    project_id: str = Form(..., description="ID dự án OCR sẽ thuộc về"),
+    principal: Principal = Depends(get_current_principal),
 ):
+    """Upload một file PDF/ảnh, OCR và trả kết quả.
+
+    Yêu cầu:
+    - file: tệp PDF, JPG, PNG, TIF
+    - project_id: ID dự án mà tài liệu này thuộc về
+    """
+    # Kiểm tra user có thuộc dự án không
+    pg_store = get_postgres_store()
+    if not pg_store.is_project_member(project_id, principal.subject):
+        raise HTTPException(
+            status_code=403,
+            detail="Bạn không phải thành viên của dự án này hoặc dự án không tồn tại.",
+        )
+
     doc_id = f"doc_{uuid.uuid4().hex[:8]}"
     tmp_path = await _save_upload_to_tempfile(file)
     container = get_container()
 
     try:
-        # Chạy use case
-        result = container.process_document_uc.execute(
+        # Dùng asyncio.to_thread để không block event loop của uvicorn.
+        # process_document_uc.execute() là CPU-bound (OCR pipeline ~15-60s).
+        result = await asyncio.to_thread(
+            container.process_document_uc.execute,
             document_path=tmp_path,
             document_id=doc_id,
             file_name=file.filename,
             split_a3=True,
-            smart_gcn_filter=True
+            smart_gcn_filter=True,
+            project_id=project_id,
+            created_by=principal.subject,
         )
         merged_data = result["merged"]
         merged_data["file_name"] = file.filename
@@ -80,6 +103,7 @@ async def upload_document(
         return JSONResponse(content={
             "document_id": doc_id,
             "file_name": file.filename,
+            "project_id": project_id,
             "status": "success",
             "elapsed_seconds": result["elapsed_seconds"],
             "data": merged_data,
