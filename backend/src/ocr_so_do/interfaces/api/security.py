@@ -75,8 +75,26 @@ ROLE_PERMISSIONS: dict[str, FrozenSet[str]] = {
         Permission.RECORD_READ,
         Permission.EXPORT_129,
     }),
+    # Giữ khả năng đọc token của đợt RBAC cũ trong thời gian chuyển đổi. Các
+    # role này không còn được cấp mới từ UI/Keycloak realm, nhưng nếu bỏ qua
+    # chúng thì nhân sự đang đăng nhập sẽ thành tài khoản không có quyền.
+    "ocr-operator": frozenset({
+        Permission.PROJECT_READ,
+        Permission.DOCUMENT_CREATE,
+        Permission.BATCH_CREATE,
+        Permission.BATCH_READ,
+        Permission.BATCH_CANCEL,
+        Permission.RECORD_READ,
+    }),
+    "ocr-exporter": frozenset({
+        Permission.PROJECT_READ,
+        Permission.RECORD_READ,
+        Permission.EXPORT_129,
+    }),
 }
-APP_ROLES = tuple(ROLE_PERMISSIONS.keys())
+# Chỉ ba role này được cấp mới. ROLE_PERMISSIONS còn chứa các role legacy để
+# access token cũ không bị mất quyền đột ngột.
+APP_ROLES = ("ocr-admin", "ocr-truongphong", "ocr-member")
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -109,7 +127,7 @@ class Principal:
         return "ocr-truongphong" in self.roles
 
     def is_member(self) -> bool:
-        return "ocr-member" in self.roles and not self.is_admin() and not self.is_truong_phong()
+        return not self.is_admin() and not self.is_truong_phong()
 
     def primary_role(self) -> str:
         if self.is_admin():
@@ -135,6 +153,58 @@ def permissions_for_roles(roles: Iterable[str]) -> FrozenSet[str]:
     for role in roles:
         permissions.update(ROLE_PERMISSIONS.get(role, ()))
     return frozenset(permissions)
+
+
+def is_project_manager(store: Any, principal: Principal, project_id: Optional[str]) -> bool:
+    """True khi người dùng được quản lý thành viên/dữ liệu của một dự án.
+
+    Role Keycloak ``ocr-truongphong`` chỉ có hiệu lực trong dự án mà người đó
+    tham gia. Bản ghi ``role_in_project=truong_phong`` cũng là một quyền quản
+    lý thực sự, không chỉ là nhãn UI.
+    """
+    if principal.is_admin():
+        return True
+    if not project_id:
+        return False
+    member_role = store.get_project_member_role(project_id, principal.subject)
+    if not member_role:
+        return False
+    return principal.is_truong_phong() or member_role == "truong_phong"
+
+
+def can_access_project_data(
+    store: Any,
+    principal: Principal,
+    project_id: Optional[str],
+    created_by: Optional[str],
+) -> bool:
+    """Kiểm tra scope đọc dữ liệu OCR ở mọi endpoint chi tiết/artifact."""
+    if principal.is_admin():
+        return True
+    if not project_id or not store.is_project_member(project_id, principal.subject):
+        return False
+    return is_project_manager(store, principal, project_id) or created_by == principal.subject
+
+
+def require_project_data_access(
+    store: Any,
+    principal: Principal,
+    project_id: Optional[str],
+    created_by: Optional[str],
+) -> None:
+    if not can_access_project_data(store, principal, project_id, created_by):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền truy cập dữ liệu của dự án này.",
+        )
+
+
+def require_project_management(store: Any, principal: Principal, project_id: str) -> None:
+    if not is_project_manager(store, principal, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền quản lý dự án này.",
+        )
 
 
 def _roles_from_claims(claims: dict[str, Any]) -> FrozenSet[str]:
@@ -182,15 +252,6 @@ def _decode_bearer_token(token: str) -> Principal:
             detail=f"Không thể kết nối tới máy chủ Keycloak để xác thực: {exc}",
         ) from exc
 
-    import logging as _logging
-    _log = _logging.getLogger("ocr.security.debug")
-    _log.warning(
-        "[DEBUG-AUTH] sub=%s realm_access=%s resource_access_keys=%s",
-        claims.get("sub", "?")[:8],
-        claims.get("realm_access", {}),
-        list(claims.get("resource_access", {}).keys()),
-    )
-
     roles = _roles_from_claims(claims)
     username = str(claims.get("preferred_username") or claims.get("sub"))
     display_name = str(claims.get("name") or username)
@@ -222,7 +283,24 @@ def authenticate_authorization_header(authorization: Optional[str]) -> Principal
             detail="Cần đăng nhập Keycloak trước khi sử dụng hệ thống.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return _decode_bearer_token(authorization.removeprefix("Bearer ").strip())
+    principal = _decode_bearer_token(authorization.removeprefix("Bearer ").strip())
+
+    # Kiểm tra tài khoản có bị khóa hay không (chặn tức thời kể cả khi token chưa hết hạn)
+    try:
+        from ...infrastructure.persistence.postgres_store import get_postgres_store
+        store = get_postgres_store()
+        if hasattr(store, "is_user_locked") and store.is_user_locked(principal.subject):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Quản trị viên.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    return principal
 
 
 def get_current_principal(request: Request) -> Principal:
@@ -233,6 +311,19 @@ def get_current_principal(request: Request) -> Principal:
             detail="Phiên đăng nhập không hợp lệ.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    try:
+        from ...infrastructure.persistence.postgres_store import get_postgres_store
+        store = get_postgres_store()
+        if hasattr(store, "is_user_locked") and store.is_user_locked(principal.subject):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Quản trị viên.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     return principal
 
 
@@ -263,12 +354,14 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
     if path.startswith("/api/v1/projects"):
         if method == "POST" and path == "/api/v1/projects":
             return Permission.PROJECT_CREATE
+        # Quyền quản lý theo từng dự án được router kiểm tra sau khi biết
+        # project_id. Middleware chỉ yêu cầu người gọi là thành viên hợp lệ.
         if method == "DELETE" and "/members/" in path:
-            return Permission.PROJECT_MANAGE
+            return Permission.PROJECT_READ
         if method == "POST" and path.endswith("/members"):
-            return Permission.PROJECT_MANAGE
+            return Permission.PROJECT_READ
         if method == "DELETE" and "/members" not in path:
-            return Permission.PROJECT_MANAGE
+            return Permission.PROJECT_READ
         return Permission.PROJECT_READ
 
     if path.startswith("/output/"):
@@ -279,7 +372,7 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
 
     if path.startswith("/api/v1/batch-pairs"):
         if method == "POST" and path.endswith("/cancel"):
-            return Permission.BATCH_CANCEL
+            return Permission.BATCH_READ
         if method == "POST" and (path.endswith("/preview") or path.endswith("/start")):
             return Permission.BATCH_CREATE
         if method == "GET" and path.endswith("/export-129"):
@@ -292,7 +385,7 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
         if method == "POST" and path.endswith("/scan-directory"):
             return Permission.BATCH_CREATE
         if method == "POST" and path.endswith("/cancel"):
-            return Permission.BATCH_CANCEL
+            return Permission.BATCH_READ
         if method == "POST" and path.endswith("/convert-markdown-to-129-excel"):
             return Permission.EXPORT_129
         if method == "GET" and path.endswith("/download-excel"):

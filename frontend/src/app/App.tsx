@@ -45,6 +45,17 @@ export const App: React.FC = () => {
   }, [currentTab, visibleNavigation]);
 
   useEffect(() => {
+    const handleNav = (e: Event) => {
+      const customEvent = e as CustomEvent<AppTab>;
+      if (customEvent.detail && navigation.some((n) => n.id === customEvent.detail)) {
+        setCurrentTab(customEvent.detail);
+      }
+    };
+    window.addEventListener('app:navigate', handleNav);
+    return () => window.removeEventListener('app:navigate', handleNav);
+  }, []);
+
+  useEffect(() => {
     // App được mount trong khi AuthProvider còn đang đổi code OIDC lấy token.
     // Không gọi API bảo vệ trước thời điểm đó, nếu không health check sẽ bị 401
     // dù phiên Keycloak sau đó hợp lệ.
@@ -212,6 +223,7 @@ export const App: React.FC = () => {
             onView129Table={handleView129Table}
             onOpenPgStorage={() => setCurrentTab('records')}
             onRunningChange={setIsBatchRunning}
+            onNavigateToProjects={() => setCurrentTab('projects')}
           />
         </div>
         <div className={currentTab === 'conversion' ? 'block' : 'hidden'}>
@@ -224,7 +236,7 @@ export const App: React.FC = () => {
           />
         </div>
         <div className={currentTab === 'upload' ? 'block' : 'hidden'}>
-          <DocumentUploadPage />
+          <DocumentUploadPage onNavigateToProjects={() => setCurrentTab('projects')} />
         </div>
         <div className={currentTab === 'projects' ? 'block' : 'hidden'}>
           <ProjectListPage />

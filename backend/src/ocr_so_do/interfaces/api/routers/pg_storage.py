@@ -18,9 +18,31 @@ from pydantic import BaseModel, Field
 
 from ....infrastructure.persistence.postgres_store import get_postgres_store
 from ....application.projections.review_projection import build_document_review
-from ..security import Principal, get_current_principal
+from ..security import (
+    Principal,
+    get_current_principal,
+    is_project_manager,
+    require_project_data_access,
+)
 
 router = APIRouter(prefix="/pg", tags=["PostgreSQL Storage"])
+
+
+def _access_scope(store, principal: Principal) -> dict:
+    return store.get_record_filter(principal.subject, principal.primary_role())
+
+
+def _accessible_record(store, principal: Principal, doc_id: str) -> dict:
+    record = store.get_record(doc_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy hồ sơ: {doc_id}")
+    require_project_data_access(
+        store,
+        principal,
+        record.get("project_id"),
+        record.get("created_by"),
+    )
+    return record
 
 
 class DeleteRecordsRequest(BaseModel):
@@ -54,23 +76,26 @@ async def check_pg_health():
 
 
 @router.get("/stats", summary="Thống kê tổng quan cơ sở dữ liệu PostgreSQL")
-async def get_pg_stats():
+async def get_pg_stats(principal: Principal = Depends(get_current_principal)):
     store = get_postgres_store()
-    stats = store.get_stats()
+    stats = store.get_stats(access_scope=_access_scope(store, principal))
     return JSONResponse(content=stats)
 
 
 @router.get("/filters", summary="Lấy danh sách thư mục kết quả, link máy & mẻ quét để lọc")
-async def get_pg_filter_options():
+async def get_pg_filter_options(principal: Principal = Depends(get_current_principal)):
     store = get_postgres_store()
-    options = store.get_filter_options()
+    options = store.get_filter_options(access_scope=_access_scope(store, principal))
     return JSONResponse(content=options)
 
 
 @router.get("/batches", summary="Lấy danh sách các đợt quét / thư mục kết quả")
-async def list_pg_batches(limit: int = Query(100, ge=1, le=500)):
+async def list_pg_batches(
+    limit: int = Query(100, ge=1, le=500),
+    principal: Principal = Depends(get_current_principal),
+):
     store = get_postgres_store()
-    batches = store.list_batches(limit=limit)
+    batches = store.list_batches(limit=limit, access_scope=_access_scope(store, principal))
     return JSONResponse(content={"total": len(batches), "batches": batches})
 
 
@@ -89,7 +114,7 @@ async def list_pg_records(
     store = get_postgres_store()
     # Áp dụng phân quyền: admin thấy tất cả, truong_phong thấy dự án mình,
     # member chỉ thấy dữ liệu do chính mình tạo trong dự án được giao.
-    permission_filter = store.get_record_filter(principal.subject, principal.primary_role())
+    permission_filter = _access_scope(store, principal)
     records, total = store.list_records(
         limit=limit,
         offset=offset,
@@ -99,7 +124,7 @@ async def list_pg_records(
         min_files=min_files,
         max_files=max_files,
         search=search,
-        **permission_filter
+        access_scope=permission_filter,
     )
     return JSONResponse(content={
         "total": total,
@@ -110,21 +135,17 @@ async def list_pg_records(
 
 
 @router.get("/records/{doc_id}", summary="Lấy chi tiết đầy đủ của một hồ sơ")
-async def get_pg_record_detail(doc_id: str):
+async def get_pg_record_detail(doc_id: str, principal: Principal = Depends(get_current_principal)):
     store = get_postgres_store()
-    record = store.get_record(doc_id)
-    if not record:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy hồ sơ: {doc_id}")
+    record = _accessible_record(store, principal, doc_id)
     return JSONResponse(content=record)
 
 
 @router.get("/records/{doc_id}/review", summary="Lấy dữ liệu gọn để tra soát trường OCR trên ảnh")
-async def get_pg_record_review(doc_id: str):
+async def get_pg_record_review(doc_id: str, principal: Principal = Depends(get_current_principal)):
     """Trả về trường nghiệp vụ thiết yếu kèm ảnh trang, crop và polygon OCR."""
     store = get_postgres_store()
-    record = store.get_record(doc_id)
-    if not record:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy hồ sơ: {doc_id}")
+    record = _accessible_record(store, principal, doc_id)
     return JSONResponse(content=build_document_review(
         record=record,
         field_reviews=store.get_latest_field_reviews(doc_id),
@@ -139,9 +160,7 @@ async def save_pg_record_review(
 ):
     """Ghi audit trail, không sửa đè dữ liệu OCR/raw hoặc bảng 129 cột."""
     store = get_postgres_store()
-    record = store.get_record(doc_id)
-    if not record:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy hồ sơ: {doc_id}")
+    record = _accessible_record(store, principal, doc_id)
 
     review_view = build_document_review(record=record)
     field = next((item for item in review_view["fields"] if item["key"] == payload.field_key), None)
@@ -167,11 +186,9 @@ async def save_pg_record_review(
 
 
 @router.get("/records/{doc_id}/download-md", summary="Tải về file văn bản Markdown thô của hồ sơ")
-async def download_pg_record_markdown(doc_id: str):
+async def download_pg_record_markdown(doc_id: str, principal: Principal = Depends(get_current_principal)):
     store = get_postgres_store()
-    record = store.get_record(doc_id)
-    if not record:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy hồ sơ: {doc_id}")
+    record = _accessible_record(store, principal, doc_id)
 
     file_name = record.get("file_name", doc_id)
     base_name = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
@@ -187,12 +204,10 @@ async def download_pg_record_markdown(doc_id: str):
 
 
 @router.get("/records/{doc_id}/preview-excel", summary="Xem trước bảng tính Excel của hồ sơ")
-async def preview_pg_record_excel(doc_id: str):
+async def preview_pg_record_excel(doc_id: str, principal: Principal = Depends(get_current_principal)):
     from ....infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
     store = get_postgres_store()
-    record = store.get_record(doc_id)
-    if not record:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy hồ sơ: {doc_id}")
+    record = _accessible_record(store, principal, doc_id)
 
     preview_data = RawMarkdownExcelExporter.get_excel_preview_data(record)
     return JSONResponse(content=preview_data)
@@ -203,14 +218,16 @@ async def get_pg_129_rows(
     folder_result: Optional[str] = Query(None, description="Lọc theo thư mục kết quả"),
     source_path: Optional[str] = Query(None, description="Lọc theo link máy"),
     batch_id: Optional[str] = Query(None, description="Lọc theo đợt quét"),
-    limit: int = Query(5000, ge=1, le=10000)
+    limit: int = Query(5000, ge=1, le=10000),
+    principal: Principal = Depends(get_current_principal),
 ):
     store = get_postgres_store()
     rows = store.get_129_rows(
         folder_result=folder_result,
         source_path=source_path,
         batch_id=batch_id,
-        limit=limit
+        limit=limit,
+        access_scope=_access_scope(store, principal),
     )
     return JSONResponse(content={
         "total": len(rows),
@@ -225,6 +242,7 @@ async def export_pg_129_excel(
     folder_result: Optional[str] = Query(None),
     source_path: Optional[str] = Query(None),
     batch_id: Optional[str] = Query(None),
+    principal: Principal = Depends(get_current_principal),
 ):
     from ....infrastructure.exporters.excel_129_exporter import Excel129Exporter
     import tempfile
@@ -235,7 +253,8 @@ async def export_pg_129_excel(
         folder_result=folder_result,
         source_path=source_path,
         batch_id=batch_id,
-        limit=10000
+        limit=10000,
+        access_scope=_access_scope(store, principal),
     )
     if not rows:
         raise HTTPException(status_code=400, detail="Không có dữ liệu 129 cột thỏa mãn điều kiện lọc")
@@ -273,6 +292,7 @@ async def export_pg_raw_db(
     batch_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     ids: Optional[str] = Query(None, description="Danh sách ID hồ sơ cách nhau bởi dấu phẩy"),
+    principal: Principal = Depends(get_current_principal),
 ):
     """
     Xuất và tải về toàn bộ cơ sở dữ liệu thô dạng JSON phục vụ sao lưu hoặc đối soát ngoại tuyến.
@@ -291,7 +311,8 @@ async def export_pg_raw_db(
         batch_id=b_id,
         search=q_search,
         ids=id_list,
-        limit=10000
+        limit=10000,
+        access_scope=_access_scope(store, principal),
     )
     if not records:
         raise HTTPException(status_code=400, detail="Không có dữ liệu thô thỏa mãn điều kiện lọc")
@@ -328,6 +349,7 @@ async def export_pg_raw_markdown(
     batch_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     ids: Optional[str] = Query(None, description="Danh sách ID hồ sơ cách nhau bởi dấu phẩy"),
+    principal: Principal = Depends(get_current_principal),
 ):
     """
     Xuất và tải về gói ZIP chứa toàn bộ file văn bản Markdown (.md) thô của các hồ sơ.
@@ -350,7 +372,8 @@ async def export_pg_raw_markdown(
         batch_id=b_id,
         search=q_search,
         ids=id_list,
-        limit=10000
+        limit=10000,
+        access_scope=_access_scope(store, principal),
     )
     if not records:
         raise HTTPException(status_code=400, detail="Không có dữ liệu Markdown thô thỏa mãn điều kiện")
@@ -408,6 +431,7 @@ async def export_pg_raw_excel(
     source_path: Optional[str] = Query(None),
     batch_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    principal: Principal = Depends(get_current_principal),
 ):
     from ....infrastructure.exporters.raw_markdown_excel_exporter import RawMarkdownExcelExporter
     store = get_postgres_store()
@@ -416,7 +440,8 @@ async def export_pg_raw_excel(
         source_path=source_path,
         batch_id=batch_id,
         search=search,
-        limit=10000
+        limit=10000,
+        access_scope=_access_scope(store, principal),
     )
     if not records:
         raise HTTPException(status_code=400, detail="Không có dữ liệu thô thỏa mãn điều kiện lọc")
@@ -437,10 +462,19 @@ async def export_pg_raw_excel(
 # ─── CÁC ENDPOINT XÓA CÓ CHỌN LỌC (SELECTIVE DELETION) ─────────────────────────
 
 @router.delete("/records", summary="Xóa có chọn lọc danh sách hồ sơ theo ID")
-async def delete_pg_records_by_ids(payload: DeleteRecordsRequest):
+async def delete_pg_records_by_ids(
+    payload: DeleteRecordsRequest,
+    principal: Principal = Depends(get_current_principal),
+):
     store = get_postgres_store()
     if not payload.ids:
         return JSONResponse(content={"deleted_count": 0})
+    for doc_id in payload.ids:
+        record = store.get_record(doc_id)
+        if not record:
+            continue
+        if not is_project_manager(store, principal, record.get("project_id")):
+            raise HTTPException(status_code=403, detail="Bạn không có quyền xóa hồ sơ của dự án này.")
     count = store.delete_records_by_ids(payload.ids)
     return JSONResponse(content={
         "status": "success",
@@ -450,9 +484,19 @@ async def delete_pg_records_by_ids(payload: DeleteRecordsRequest):
 
 
 @router.delete("/by-folder", summary="Xóa có chọn lọc toàn bộ hồ sơ thuộc thư mục kết quả")
-async def delete_pg_records_by_folder(folder_result: str = Query(..., description="Tên thư mục kết quả cần xóa")):
+async def delete_pg_records_by_folder(
+    folder_result: str = Query(..., description="Tên thư mục kết quả cần xóa"),
+    principal: Principal = Depends(get_current_principal),
+):
     store = get_postgres_store()
-    count = store.delete_by_folder(folder_result.strip())
+    records = store.get_raw_records_dump(
+        folder_result=folder_result.strip(),
+        limit=10000,
+        access_scope=_access_scope(store, principal),
+    )
+    if any(not is_project_manager(store, principal, record.get("project_id")) for record in records):
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xóa toàn bộ thư mục này.")
+    count = store.delete_records_by_ids([str(record["id"]) for record in records])
     return JSONResponse(content={
         "status": "success",
         "deleted_count": count,
@@ -462,9 +506,19 @@ async def delete_pg_records_by_folder(folder_result: str = Query(..., descriptio
 
 
 @router.delete("/by-source", summary="Xóa có chọn lọc toàn bộ hồ sơ thuộc đường dẫn máy")
-async def delete_pg_records_by_source(source_path: str = Query(..., description="Đường dẫn nguồn trên máy cần xóa")):
+async def delete_pg_records_by_source(
+    source_path: str = Query(..., description="Đường dẫn nguồn trên máy cần xóa"),
+    principal: Principal = Depends(get_current_principal),
+):
     store = get_postgres_store()
-    count = store.delete_by_source_path(source_path.strip())
+    records = store.get_raw_records_dump(
+        source_path=source_path.strip(),
+        limit=10000,
+        access_scope=_access_scope(store, principal),
+    )
+    if any(not is_project_manager(store, principal, record.get("project_id")) for record in records):
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xóa dữ liệu từ nguồn này.")
+    count = store.delete_records_by_ids([str(record["id"]) for record in records])
     return JSONResponse(content={
         "status": "success",
         "deleted_count": count,
@@ -474,8 +528,13 @@ async def delete_pg_records_by_source(source_path: str = Query(..., description=
 
 
 @router.delete("/batches/{batch_id}", summary="Xóa toàn bộ đợt quét")
-async def delete_pg_batch(batch_id: str):
+async def delete_pg_batch(batch_id: str, principal: Principal = Depends(get_current_principal)):
     store = get_postgres_store()
+    batch = store.get_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch: {batch_id}")
+    if not is_project_manager(store, principal, batch.get("project_id")):
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xóa batch của dự án này.")
     count = store.delete_batch(batch_id)
     return JSONResponse(content={
         "status": "success",

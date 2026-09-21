@@ -2,6 +2,19 @@ import io
 import json
 import zipfile
 from unittest.mock import MagicMock, patch
+
+from ocr_so_do.interfaces.api.security import Permission, Principal
+
+
+def _admin_principal():
+    return Principal(
+        subject="admin",
+        username="admin",
+        display_name="Admin",
+        email=None,
+        roles=frozenset({"ocr-admin"}),
+        permissions=Permission.ALL,
+    )
 import pytest
 
 
@@ -35,7 +48,13 @@ def test_export_pg_raw_markdown_zip():
 
     with patch.object(pg_storage, "get_postgres_store", return_value=mock_store):
         import asyncio
-        resp = asyncio.run(export_pg_raw_markdown(folder_result="Batch_01", ids="doc-uuid-1,doc-uuid-2"))
+        resp = asyncio.run(
+            export_pg_raw_markdown(
+                folder_result="Batch_01",
+                ids="doc-uuid-1,doc-uuid-2",
+                principal=_admin_principal(),
+            )
+        )
 
     assert resp.status_code == 200
     assert resp.media_type == "application/zip"
@@ -79,7 +98,7 @@ def test_export_pg_raw_db_json():
 
     with patch.object(pg_storage, "get_postgres_store", return_value=mock_store):
         import asyncio
-        resp = asyncio.run(export_pg_raw_db(folder_result="TestFolder"))
+        resp = asyncio.run(export_pg_raw_db(folder_result="TestFolder", principal=_admin_principal()))
 
     assert resp.status_code == 200
     assert resp.media_type == "application/json; charset=utf-8"

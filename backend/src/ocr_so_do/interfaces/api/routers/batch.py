@@ -18,12 +18,17 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import JSONResponse
 
-from ..security import Principal, get_current_principal
+from ..security import (
+    Principal,
+    can_access_project_data,
+    get_current_principal,
+    is_project_manager,
+    permitted_source_directory,
+)
 from ....infrastructure.persistence.postgres_store import get_postgres_store as _get_pg_store
 from ....bootstrap import DEFAULT_OUTPUT_DIR, get_container
 from ....infrastructure.memory import cleanup_memory
 from ....infrastructure.persistence.postgres_store import get_postgres_store
-from ..security import permitted_source_directory
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +36,29 @@ router = APIRouter(prefix="/batch", tags=["Batch"])
 
 # In-memory store lưu trạng thái các batch job đang chạy
 batch_jobs: Dict[str, Dict[str, Any]] = {}
+
+
+def _require_batch_access(batch_id: str, principal: Principal, *, manage: bool = False) -> Dict[str, Any]:
+    """Chặn batch ngoài phạm vi dự án, kể cả khi process đã khởi động lại."""
+    store = _get_pg_store()
+    job = batch_jobs.get(batch_id)
+    if job is None:
+        # Các endpoint tải kết quả/Excel vẫn hoạt động sau restart nhờ metadata
+        # bền vững; chỉ tiến độ live và thao tác cancel cần object trong RAM.
+        job = store.get_batch(batch_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch job: {batch_id}")
+    project_id = job.get("project_id")
+    created_by = job.get("created_by")
+    if manage:
+        allowed = is_project_manager(store, principal, project_id) or (
+            created_by == principal.subject and store.is_project_member(project_id, principal.subject)
+        )
+    else:
+        allowed = can_access_project_data(store, principal, project_id, created_by)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền truy cập batch của dự án này.")
+    return job
 
 # PaddleOCR/PaddlePaddle giữ native allocations theo shape ảnh và không trả hết
 # bộ nhớ cho Windows khi chỉ ``del`` model trong cùng process. Vì vậy batch chạy
@@ -571,6 +599,13 @@ async def scan_directory(
     Quét thư mục máy chủ và thực thi OCR từng file trong background.
     Hỗ trợ tiếp tục quét từ start_index với resume_batch_id mà không xóa kết quả cũ.
     """
+    req.project_id = (req.project_id or "").strip()
+    if not req.project_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Vui lòng chọn dự án hợp lệ trước khi xử lý hồ sơ.",
+        )
+
     dir_p = permitted_source_directory(req.directory_path)
 
     # Kiểm tra user có thuộc dự án không (admin bypass)
@@ -602,6 +637,10 @@ async def scan_directory(
 
     is_resuming = bool(req.resume_batch_id and req.resume_batch_id in batch_jobs and start_idx > 0)
     batch_id = req.resume_batch_id if is_resuming else f"dir_{uuid.uuid4().hex[:8]}"
+    if is_resuming:
+        resumed_job = _require_batch_access(batch_id, principal, manage=True)
+        if resumed_job.get("project_id") != req.project_id:
+            raise HTTPException(status_code=422, detail="Không thể tiếp tục batch bằng một dự án khác.")
     _trim_batch_jobs()
 
     # Khởi tạo bản ghi đợt quét trong PostgreSQL (Bắt buộc)
@@ -688,12 +727,9 @@ async def scan_directory(
 
 
 @router.get("/{batch_id}", summary="Lấy tiến trình và kết quả batch job")
-async def get_batch_progress(batch_id: str):
+async def get_batch_progress(batch_id: str, principal: Principal = Depends(get_current_principal)):
     """Truy vấn tiến trình real-time của tác vụ quét thư mục."""
-    if batch_id not in batch_jobs:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch job: {batch_id}")
-
-    bj = batch_jobs[batch_id]
+    bj = _require_batch_access(batch_id, principal)
     total = bj.get("total_files", 0)
     proc = bj.get("processed_count", 0)
     elapsed = bj.get("elapsed_seconds", 0.0)
@@ -725,12 +761,13 @@ async def get_batch_progress(batch_id: str):
 
 
 @router.get("/{batch_id}/download-excel", summary="Tải file Excel 129 cột checkpoint hiện tại")
-async def download_batch_excel(batch_id: str):
+async def download_batch_excel(batch_id: str, principal: Principal = Depends(get_current_principal)):
     """
     Tải file Excel 129 cột được xuất tự động sau mỗi 10 file hoặc khi hoàn thành.
     Người dùng có thể tải về bất cứ lúc nào trong khi quét mà không cần đợi chạy hết.
     """
     # Endpoint tải file không được khởi tạo model OCR trong process FastAPI.
+    _require_batch_access(batch_id, principal)
     output_dir = Path(DEFAULT_OUTPUT_DIR)
     excel_path = output_dir / "batches" / batch_id / f"BaoCao_129Cot_{batch_id}.xlsx"
 
@@ -752,8 +789,9 @@ async def download_batch_excel(batch_id: str):
 
 
 @router.get("/{batch_id}/rows-129", summary="Lấy dữ liệu 129 cột thuộc đúng một đợt quét")
-async def get_batch_129_rows(batch_id: str):
+async def get_batch_129_rows(batch_id: str, principal: Principal = Depends(get_current_principal)):
     """Return structured rows for the selected batch without querying global history."""
+    _require_batch_access(batch_id, principal)
     rows, quality_reports = _load_batch_129_rows(batch_id)
     if not rows:
         raise HTTPException(
@@ -772,12 +810,13 @@ async def get_batch_129_rows(batch_id: str):
 
 
 @router.post("/{batch_id}/cancel", summary="Hủy tác vụ quét thư mục")
-async def cancel_batch_scan(batch_id: str):
+async def cancel_batch_scan(batch_id: str, principal: Principal = Depends(get_current_principal)):
     """Yêu cầu dừng tiến trình quét hàng loạt."""
-    if batch_id not in batch_jobs:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch job: {batch_id}")
-
-    batch_jobs[batch_id]["cancel_requested"] = True
+    _require_batch_access(batch_id, principal, manage=True)
+    job = batch_jobs.get(batch_id)
+    if job is None:
+        raise HTTPException(status_code=409, detail="Batch không còn chạy trong tiến trình hiện tại nên không thể hủy.")
+    job["cancel_requested"] = True
     return JSONResponse(content={
         "batch_id": batch_id,
         "message": "Đã gửi yêu cầu hủy quét thư mục."
@@ -785,10 +824,11 @@ async def cancel_batch_scan(batch_id: str):
 
 
 @router.post("/{batch_id}/convert-markdown-to-129-excel", summary="Chuyển đổi on-demand từ Markdown đã lưu sang file Excel 129 cột")
-async def convert_batch_markdown_to_129_excel(batch_id: str):
+async def convert_batch_markdown_to_129_excel(batch_id: str, principal: Principal = Depends(get_current_principal)):
     """
     Khi người dùng bấm xuất, endpoint này đọc kết quả JSON trên đĩa và chuyển đổi sang Excel 129 cột.
     """
+    _require_batch_access(batch_id, principal)
     # Chuyển đổi Excel chỉ cần dữ liệu trên đĩa, không được lazy-load model OCR.
     output_dir = Path(DEFAULT_OUTPUT_DIR)
     from ....infrastructure.exporters.excel_129_exporter import Excel129Exporter

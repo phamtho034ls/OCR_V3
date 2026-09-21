@@ -11,8 +11,14 @@ import threading
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
-from ..security import permitted_source_directory
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from ..security import (
+    Principal,
+    can_access_project_data,
+    get_current_principal,
+    is_project_manager,
+    permitted_source_directory,
+)
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 
 from ....bootstrap import DEFAULT_OUTPUT_DIR
@@ -28,12 +34,41 @@ pair_batch_jobs: Dict[str, Dict[str, Any]] = {}
 _pair_batch_lock = threading.Lock()
 
 
+def _require_pair_batch_access(batch_id: str, principal: Principal, *, manage: bool = False) -> Dict[str, Any]:
+    """Kiểm tra scope batch pair với fallback metadata sau restart."""
+    from ....infrastructure.persistence.postgres_store import get_postgres_store
+
+    store = get_postgres_store()
+    job = pair_batch_jobs.get(batch_id)
+    if job is None:
+        job = store.get_batch(batch_id)
+        if job:
+            output_dir = Path(DEFAULT_OUTPUT_DIR) / "batches" / batch_id
+            job["excel_129_path"] = str(output_dir / f"KetQua_129Cot_{batch_id}.xlsx")
+            job["crops_dir"] = str(output_dir / "crops")
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch ID: {batch_id}")
+    project_id = job.get("project_id")
+    created_by = job.get("created_by")
+    if manage:
+        allowed = is_project_manager(store, principal, project_id) or (
+            created_by == principal.subject and store.is_project_member(project_id, principal.subject)
+        )
+    else:
+        allowed = can_access_project_data(store, principal, project_id, created_by)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền truy cập batch ghép cặp của dự án này.")
+    return job
+
+
 class PairPreviewRequest(BaseModel):
     directory_path: str = Field(..., description="Đường dẫn thư mục chứa các file GCN và GT trên máy chủ")
+    project_id: str = Field(..., min_length=1, max_length=100, description="ID dự án OCR")
 
 
 class PairBatchStartRequest(BaseModel):
     directory_path: str = Field(..., description="Đường dẫn thư mục chứa các file GCN và GT trên máy chủ")
+    project_id: str = Field(..., min_length=1, max_length=100, description="ID dự án OCR")
     sample_limit: int = Field(0, description="Giới hạn số bộ hồ sơ xử lý (0 = toàn bộ)")
     use_gpu: bool = Field(True, description="Sử dụng GPU tăng tốc (nếu có)")
     template_path: Optional[str] = Field(None, description="Đường dẫn file template Excel mẫu")
@@ -82,23 +117,27 @@ def _run_pair_batch_thread(
         job["total_pairs"] = len(sorted_keys)
         job["status"] = "running"
 
-        if persist_cccd_audit:
-            try:
-                from ocr_so_do.infrastructure.persistence.postgres_store import get_postgres_store
-                postgres_store = get_postgres_store()
-                postgres_store.save_batch(
-                    batch_id=batch_id,
-                    folder_name=Path(directory_path).name,
-                    source_path=directory_path,
-                    output_dir=str(output_dir),
-                    total_files=len(sorted_keys),
-                    status="running",
-                )
-                job["cccd_audit_db_connected"] = postgres_store.is_connected()
-            except Exception as exc_db:
-                # DB không phải điều kiện để xuất crop/JSON/Excel của batch pair.
-                logger.warning("[BatchPairs %s] Không khởi tạo được lưu audit CCCD: %s", batch_id, exc_db)
-                job["cccd_audit_db_connected"] = False
+        try:
+            # Metadata batch luôn phải được lưu để kiểm soát quyền với artifact
+            # sau khi worker/RAM đã kết thúc. `persist_cccd_audit` chỉ điều
+            # khiển các bản ghi audit crop chi tiết ở bên dưới.
+            from ocr_so_do.infrastructure.persistence.postgres_store import get_postgres_store
+            postgres_store = get_postgres_store()
+            postgres_store.save_batch(
+                batch_id=batch_id,
+                folder_name=Path(directory_path).name,
+                source_path=directory_path,
+                output_dir=str(output_dir),
+                total_files=len(sorted_keys),
+                status="running",
+                project_id=job.get("project_id"),
+                created_by=job.get("created_by"),
+            )
+            job["cccd_audit_db_connected"] = postgres_store.is_connected()
+        except Exception as exc_db:
+            # DB không phải điều kiện để xuất crop/JSON/Excel của batch pair.
+            logger.warning("[BatchPairs %s] Không khởi tạo được metadata/audit CCCD: %s", batch_id, exc_db)
+            job["cccd_audit_db_connected"] = False
 
         all_129_rows: List[Dict[str, Any]] = []
         results_summary: List[Dict[str, Any]] = []
@@ -167,7 +206,7 @@ def _run_pair_batch_thread(
                     }
 
                     db_persisted = False
-                    if postgres_store is not None:
+                    if persist_cccd_audit and postgres_store is not None:
                         db_persisted = postgres_store.save_cccd_crop_audit(
                             batch_id=batch_id,
                             pair_id=pid,
@@ -290,12 +329,19 @@ def _run_pair_batch_thread(
 
 
 @router.post("/preview", summary="Xem trước danh sách các cặp file GCN và GT trong thư mục")
-async def preview_directory_pairs(req: PairPreviewRequest):
+async def preview_directory_pairs(
+    req: PairPreviewRequest,
+    principal: Principal = Depends(get_current_principal),
+):
     """
     Quét nhanh thư mục, phát hiện các file có chung mã định danh theo quy tắc [Mã]-GCN và [Mã]-GT.
     Không chạy OCR, trả về kết quả ngay lập tức để người dùng đối chiếu.
     """
     dir_p = permitted_source_directory(req.directory_path)
+    if not principal.is_admin():
+        from ....infrastructure.persistence.postgres_store import get_postgres_store
+        if not get_postgres_store().is_project_member(req.project_id, principal.subject):
+            raise HTTPException(status_code=403, detail="Bạn không phải thành viên của dự án này.")
 
     from extraction.gcn_cccd_pair_merger import GCNCCCDPairMerger
     merger = GCNCCCDPairMerger(use_gpu=False)
@@ -333,17 +379,27 @@ async def preview_directory_pairs(req: PairPreviewRequest):
 
 
 @router.post("/start", summary="Khởi chạy tiến trình OCR bóc tách và ghép cặp điền vào Excel 129 Cột")
-async def start_pair_batch(req: PairBatchStartRequest, background_tasks: BackgroundTasks):
+async def start_pair_batch(
+    req: PairBatchStartRequest,
+    background_tasks: BackgroundTasks,
+    principal: Principal = Depends(get_current_principal),
+):
     """
     Bắt đầu tiến trình nền bóc tách thông tin từ các cặp GCN và GT, tự động điền vào bảng 129 cột.
     """
     dir_p = permitted_source_directory(req.directory_path)
+    if not principal.is_admin():
+        from ....infrastructure.persistence.postgres_store import get_postgres_store
+        if not get_postgres_store().is_project_member(req.project_id, principal.subject):
+            raise HTTPException(status_code=403, detail="Bạn không phải thành viên của dự án này.")
 
     batch_id = f"pairs_{uuid.uuid4().hex[:8]}"
 
     with _pair_batch_lock:
         pair_batch_jobs[batch_id] = {
             "batch_id": batch_id,
+            "project_id": req.project_id,
+            "created_by": principal.subject,
             "status": "pending",
             "directory_path": str(dir_p.resolve()),
             "total_pairs": 0,
@@ -383,11 +439,9 @@ async def start_pair_batch(req: PairBatchStartRequest, background_tasks: Backgro
 
 
 @router.get("/{batch_id}/status", summary="Kiểm tra tiến độ quét ghép cặp theo thời gian thực")
-async def get_pair_batch_status(batch_id: str):
+async def get_pair_batch_status(batch_id: str, principal: Principal = Depends(get_current_principal)):
     """Lấy thông tin tiến độ, kết quả của từng bộ hồ sơ đã bóc tách."""
-    job = pair_batch_jobs.get(batch_id)
-    if not job:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch ID: {batch_id}")
+    job = _require_pair_batch_access(batch_id, principal)
 
     excel_ready = False
     excel_path = job.get("excel_129_path")
@@ -414,11 +468,9 @@ async def get_pair_batch_status(batch_id: str):
 
 
 @router.get("/{batch_id}/export-129", summary="Tải file Excel bảng chuyển đổi 129 cột đã điền đầy đủ dữ liệu")
-async def export_pair_batch_excel_129(batch_id: str):
+async def export_pair_batch_excel_129(batch_id: str, principal: Principal = Depends(get_current_principal)):
     """Tải tệp .xlsx chuẩn 129 cột chứa dữ liệu đã ghép cặp."""
-    job = pair_batch_jobs.get(batch_id)
-    if not job:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch ID: {batch_id}")
+    job = _require_pair_batch_access(batch_id, principal)
 
     excel_path = job.get("excel_129_path")
     if not excel_path or not os.path.exists(excel_path):
@@ -433,22 +485,25 @@ async def export_pair_batch_excel_129(batch_id: str):
 
 
 @router.post("/{batch_id}/cancel", summary="Hủy tiến trình quét ghép cặp")
-async def cancel_pair_batch(batch_id: str):
+async def cancel_pair_batch(batch_id: str, principal: Principal = Depends(get_current_principal)):
     """Yêu cầu dừng tiến trình quét ghép cặp."""
+    _require_pair_batch_access(batch_id, principal, manage=True)
     job = pair_batch_jobs.get(batch_id)
-    if not job:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch ID: {batch_id}")
+    if job is None:
+        raise HTTPException(status_code=409, detail="Batch không còn chạy trong tiến trình hiện tại nên không thể hủy.")
 
     job["cancel_requested"] = True
     return {"batch_id": batch_id, "message": "Đã gửi yêu cầu dừng tiến trình quét."}
 
 
 @router.get("/{batch_id}/pairs/{pair_id}/crops", summary="Lấy danh sách ảnh crop đối soát của một cặp hồ sơ")
-async def get_pair_crops(batch_id: str, pair_id: str):
+async def get_pair_crops(
+    batch_id: str,
+    pair_id: str,
+    principal: Principal = Depends(get_current_principal),
+):
     """Trả về chi tiết các ảnh crop và ảnh trang trực quan của cặp hồ sơ."""
-    job = pair_batch_jobs.get(batch_id)
-    if not job:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy batch ID: {batch_id}")
+    job = _require_pair_batch_access(batch_id, principal)
 
     from extraction.pair_cropper import sanitize_folder_name
     folder_name = sanitize_folder_name(pair_id)

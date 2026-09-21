@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { BatchItemSummary, BatchProgressResponse } from '../../shared/types';
 import { QuickReviewPanel } from '../../shared/components/QuickReviewPanel';
+import { ProjectSelector } from '../../shared/components/ProjectSelector';
 import { useAuth } from '../../shared/auth/AuthProvider';
 import { extractErrorMessage } from '../../shared/lib/errorHelper';
 
@@ -36,11 +37,18 @@ interface BatchScanPageProps {
   onView129Table: (rows: Record<string, any>[]) => void;
   onOpenPgStorage?: () => void;
   onRunningChange?: (isRunning: boolean) => void;
+  onNavigateToProjects?: () => void;
 }
 
-export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, onOpenPgStorage, onRunningChange }) => {
+export const BatchScanPage: React.FC<BatchScanPageProps> = ({
+  onView129Table,
+  onOpenPgStorage,
+  onRunningChange,
+  onNavigateToProjects,
+}) => {
   const { can } = useAuth();
   const [scanMode, setScanMode] = useState<'client_folder' | 'server_path' | 'pair_scan'>('client_folder');
+  const [projectId, setProjectId] = useState<string>('');
 
   // Pair Scan State (GCN & GT -> 129 Cột)
   const [pairServerPath, setPairServerPath] = useState<string>('');
@@ -113,6 +121,11 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
 
   // Handle client folder select
   const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!projectId) {
+      alert('Vui lòng chọn dự án trước khi chọn hồ sơ để xử lý.');
+      if (e.target) e.target.value = '';
+      return;
+    }
     if (!e.target.files || e.target.files.length === 0) return;
     const rawFiles = Array.from(e.target.files);
     // Filter only valid PDF and image files
@@ -150,6 +163,10 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
   // Run Client Folder Processing sequentially (hỗ trợ tiếp tục sau khi dừng)
   const startClientProcessing = async (resume: boolean = false) => {
     if (clientFiles.length === 0) return;
+    if (!projectId) {
+      alert('Vui lòng chọn dự án trước khi xử lý hồ sơ.');
+      return;
+    }
 
     const startIdx = resume ? clientPausedIndexRef.current : 0;
     if (startIdx >= clientFiles.length) {
@@ -197,6 +214,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
 
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('project_id', projectId);
 
       try {
         const res = await axios.post('/api/v1/documents', formData, {
@@ -289,6 +307,10 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
       alert('Vui lòng nhập đường dẫn thư mục máy chủ!');
       return;
     }
+    if (!projectId) {
+      alert('Vui lòng chọn dự án trước khi quét hồ sơ.');
+      return;
+    }
 
     const startIdx = resume ? processedCount : 0;
     const resumeBatchId = resume ? activeBatchId : null;
@@ -307,6 +329,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
     try {
       const res = await axios.post('/api/v1/batch/scan-directory', {
         directory_path: serverPath.trim(),
+        project_id: projectId,
         sample_count: sampleCount,
         split_a3: true,
         smart_gcn_filter: true,
@@ -388,11 +411,16 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
       alert('Vui lòng nhập đường dẫn thư mục chứa hồ sơ!');
       return;
     }
+    if (!projectId) {
+      alert('Vui lòng chọn dự án trước khi phân tích hồ sơ.');
+      return;
+    }
     setIsPreviewingPairs(true);
     setErrorMessage(null);
     try {
       const res = await axios.post('/api/v1/batch-pairs/preview', {
         directory_path: pairServerPath.trim(),
+        project_id: projectId,
       });
       setPairPreviewData(res.data);
     } catch (err: any) {
@@ -407,6 +435,10 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
       alert('Vui lòng nhập đường dẫn thư mục!');
       return;
     }
+    if (!projectId) {
+      alert('Vui lòng chọn dự án trước khi quét hồ sơ.');
+      return;
+    }
     setErrorMessage(null);
     setPairResults([]);
     setPairProgressPercent(0);
@@ -417,6 +449,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
     try {
       const res = await axios.post('/api/v1/batch-pairs/start', {
         directory_path: pairServerPath.trim(),
+        project_id: projectId,
         sample_limit: pairSampleLimit,
         use_gpu: true,
         enable_cccd_audit: true,
@@ -486,7 +519,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
 
   const handleExportPairExcel129 = async () => {
     if (!can('export.129')) {
-      alert("Tài khoản của bạn cần có vai trò 'Khai thác dữ liệu' (ocr-exporter) để xuất file Excel 129 cột.");
+      alert('Tài khoản của bạn chưa có quyền xuất file Excel 129 cột.');
       return;
     }
     if (!activePairBatchId) return;
@@ -521,7 +554,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
   // Export Excel 129 Columns (On-Demand từ Markdown đã lưu)
   const handleExportExcel = async () => {
     if (!can('export.129')) {
-      alert("Tài khoản của bạn cần có vai trò 'Khai thác dữ liệu' (ocr-exporter) để xuất file Excel 129 cột.");
+      alert('Tài khoản của bạn chưa có quyền xuất file Excel 129 cột.');
       return;
     }
     if (results.length === 0 && chuyenDoiRows.length === 0) {
@@ -566,7 +599,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
   // Tải trực tiếp file Excel Checkpoint đã xuất tự động sau mỗi 20 file
   const handleDownloadCheckpointExcel = async () => {
     if (!can('export.129')) {
-      alert("Tài khoản của bạn cần có vai trò 'Khai thác dữ liệu' (ocr-exporter) để tải file Excel checkpoint.");
+      alert('Tài khoản của bạn chưa có quyền tải file Excel checkpoint.');
       return;
     }
     if (!activeBatchId) return;
@@ -655,6 +688,17 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
             </div>
           </div>
 
+          <div className="w-full sm:w-72">
+            <ProjectSelector
+              value={projectId}
+              onChange={(id) => setProjectId(id)}
+              required
+              disabled={isRunning || isPairScanning}
+              label="Dự án lưu hồ sơ"
+              onNavigateToProjects={onNavigateToProjects}
+            />
+          </div>
+
           {/* Mode Switcher */}
           <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
             <button
@@ -702,15 +746,50 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
         {/* ── CHẾ ĐỘ 1: TẢI THƯ MỤC TỪ MÁY TÍNH ── */}
         {scanMode === 'client_folder' && (
           <div className="mt-6 pt-6 border-t border-slate-100 space-y-4">
+            {!projectId && (
+              <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 flex items-start gap-3 shadow-xs">
+                <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
+                <div className="flex-1">
+                  <h4 className="text-xs font-bold text-amber-900 mb-0.5">
+                    Yêu cầu chọn dự án trước khi xử lý hồ sơ
+                  </h4>
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    {can('project.create') ? (
+                      <>
+                        Bạn chưa chọn hoặc chưa có dự án để lưu trữ kết quả đợt quét. Vui lòng chọn dự án ở phía trên, hoặc{' '}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onNavigateToProjects) onNavigateToProjects();
+                            else window.dispatchEvent(new CustomEvent('app:navigate', { detail: 'projects' }));
+                          }}
+                          className="font-bold underline text-indigo-700 hover:text-indigo-900 cursor-pointer inline"
+                        >
+                          tạo dự án mới tại Quản lý dự án
+                        </button>.
+                      </>
+                    ) : (
+                      'Tài khoản của bạn chưa được phân quyền vào bất kỳ dự án nào. Vui lòng liên hệ Trưởng phòng hoặc Quản trị viên để được thêm vào dự án trước khi tải hồ sơ.'
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
               <div className="md:col-span-8">
                 {/* Drag and Drop / Select Folder Area */}
                 <div
-                  onClick={() => folderInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition ${
-                    clientFiles.length > 0
-                      ? 'border-emerald-300 bg-emerald-50/40'
-                      : 'border-slate-300 hover:border-indigo-400 bg-slate-50/70 hover:bg-indigo-50/30'
+                  onClick={() => {
+                    if (!projectId) return;
+                    folderInputRef.current?.click();
+                  }}
+                  className={`border-2 border-dashed rounded-xl p-5 text-center transition ${
+                    !projectId
+                      ? 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-60'
+                      : clientFiles.length > 0
+                      ? 'border-emerald-300 bg-emerald-50/40 cursor-pointer'
+                      : 'border-slate-300 hover:border-indigo-400 bg-slate-50/70 hover:bg-indigo-50/30 cursor-pointer'
                   }`}
                 >
                   <input
@@ -792,7 +871,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                 ) : (
                   <button
                     onClick={() => startClientProcessing(false)}
-                    disabled={clientFiles.length === 0}
+                    disabled={clientFiles.length === 0 || !projectId}
                     className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-sm font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-2"
                   >
                     <Play size={16} />
@@ -802,16 +881,22 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => folderInputRef.current?.click()}
-                    disabled={isRunning}
-                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
+                    onClick={() => {
+                      if (!projectId) return;
+                      folderInputRef.current?.click();
+                    }}
+                    disabled={isRunning || !projectId}
+                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-xs font-semibold rounded-lg transition"
                   >
                     Chọn thư mục khác
                   </button>
                   <button
-                    onClick={() => multiFileInputRef.current?.click()}
-                    disabled={isRunning}
-                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
+                    onClick={() => {
+                      if (!projectId) return;
+                      multiFileInputRef.current?.click();
+                    }}
+                    disabled={isRunning || !projectId}
+                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-xs font-semibold rounded-lg transition"
                   >
                     Chọn từng file
                   </button>
@@ -824,6 +909,36 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
         {/* ── CHẾ ĐỘ 2: QUÉT THƯ MỤC TRÊN MÁY CHỦ ── */}
         {scanMode === 'server_path' && (
           <div className="mt-6 pt-6 border-t border-slate-100 space-y-4">
+            {!projectId && (
+              <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 flex items-start gap-3 shadow-xs">
+                <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
+                <div className="flex-1">
+                  <h4 className="text-xs font-bold text-amber-900 mb-0.5">
+                    Yêu cầu chọn dự án trước khi quét thư mục máy chủ
+                  </h4>
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    {can('project.create') ? (
+                      <>
+                        Bạn chưa chọn hoặc chưa có dự án để lưu trữ kết quả đợt quét. Vui lòng chọn dự án ở phía trên, hoặc{' '}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onNavigateToProjects) onNavigateToProjects();
+                            else window.dispatchEvent(new CustomEvent('app:navigate', { detail: 'projects' }));
+                          }}
+                          className="font-bold underline text-indigo-700 hover:text-indigo-900 cursor-pointer inline"
+                        >
+                          tạo dự án mới tại Quản lý dự án
+                        </button>.
+                      </>
+                    ) : (
+                      'Tài khoản của bạn chưa được phân quyền vào bất kỳ dự án nào. Vui lòng liên hệ Trưởng phòng hoặc Quản trị viên để được thêm vào dự án trước khi quét.'
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
               <div className="md:col-span-7">
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -886,7 +1001,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({ onView129Table, on
                 ) : (
                   <button
                     onClick={() => startServerScan(false)}
-                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
+                    disabled={!projectId || isRunning || !serverPath.trim()}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
                   >
                     <Play size={15} />
                     <span>Bắt Đầu Quét</span>

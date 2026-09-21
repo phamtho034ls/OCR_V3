@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   AlertCircle,
   ArrowRight,
-  Database,
   FileSpreadsheet,
   FolderUp,
   KeyRound,
@@ -11,58 +10,14 @@ import {
   Lock,
   RefreshCw,
   ShieldCheck,
-  UserCheck,
 } from 'lucide-react';
-import { AuthUser, useAuth } from '../../shared/auth/AuthProvider';
+import { useAuth } from '../../shared/auth/AuthProvider';
 
 interface LoginPageProps {
   onLocalLogin?: (role: string) => void;
   error?: string | null;
   onRetry?: () => void;
 }
-
-const DEMO_ROLES = [
-  {
-    role: 'ocr-admin',
-    name: 'Quản trị viên',
-    desc: 'Toàn quyền quản lý hệ thống, nhân viên và phân quyền',
-    icon: ShieldCheck,
-    color: 'border-rose-200 bg-rose-50/70 text-rose-800 hover:bg-rose-100/80',
-    iconColor: 'text-rose-600',
-  },
-  {
-    role: 'ocr-operator',
-    name: 'Nhập liệu & Quét lô',
-    desc: 'Tải lên hồ sơ, khởi chạy và theo dõi tiến trình xử lý',
-    icon: FolderUp,
-    color: 'border-blue-200 bg-blue-50/70 text-blue-800 hover:bg-blue-100/80',
-    iconColor: 'text-blue-600',
-  },
-  {
-    role: 'ocr-reviewer',
-    name: 'Tra soát & Sửa lỗi',
-    desc: 'Kiểm tra đối chiếu bằng chứng ảnh OCR và xác nhận',
-    icon: UserCheck,
-    color: 'border-amber-200 bg-amber-50/70 text-amber-800 hover:bg-amber-100/80',
-    iconColor: 'text-amber-600',
-  },
-  {
-    role: 'ocr-exporter',
-    name: 'Khai thác dữ liệu',
-    desc: 'Xem báo cáo và xuất bảng tính Excel 129 cột chuẩn địa chính',
-    icon: FileSpreadsheet,
-    color: 'border-emerald-200 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100/80',
-    iconColor: 'text-emerald-600',
-  },
-  {
-    role: 'ocr-viewer',
-    name: 'Chỉ xem',
-    desc: 'Tra cứu hồ sơ đã lưu trữ mà không chỉnh sửa',
-    icon: Database,
-    color: 'border-slate-200 bg-slate-50/70 text-slate-800 hover:bg-slate-100/80',
-    iconColor: 'text-slate-600',
-  },
-];
 
 export const LoginPage: React.FC<LoginPageProps> = ({ error, onRetry }) => {
   const { retry } = useAuth();

@@ -21,19 +21,14 @@ const ROLE_INFO: Record<string, { label: string; desc: string; badgeClass: strin
     desc: 'Toàn quyền quản lý hệ thống, nhân viên và dữ liệu',
     badgeClass: 'bg-rose-50 text-rose-800 border-rose-200',
   },
-  'ocr-operator': {
-    label: 'Nhập liệu & Quét lô',
-    desc: 'Tải lên hồ sơ, khởi tạo và theo dõi tiến trình quét lô',
+  'ocr-truongphong': {
+    label: 'Trưởng phòng',
+    desc: 'Tạo, quản lý dự án và xem toàn bộ dữ liệu thuộc dự án mình phụ trách',
     badgeClass: 'bg-blue-50 text-blue-800 border-blue-200',
   },
-  'ocr-reviewer': {
-    label: 'Tra soát dữ liệu',
-    desc: 'Kiểm tra đối chiếu bằng chứng ảnh OCR và chỉnh sửa',
-    badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
-  },
-  'ocr-exporter': {
-    label: 'Khai thác dữ liệu',
-    desc: 'Xem và xuất bảng tính Excel 129 cột chuẩn địa chính',
+  'ocr-member': {
+    label: 'Nhân viên',
+    desc: 'Quét hồ sơ trong dự án được giao và xem dữ liệu do mình tạo',
     badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   },
   'ocr-viewer': {
@@ -173,4 +168,3 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     </>
   );
 };
-

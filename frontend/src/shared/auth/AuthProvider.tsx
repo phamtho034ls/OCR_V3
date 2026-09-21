@@ -9,6 +9,7 @@ export interface AuthUser {
   email?: string | null;
   roles: string[];
   permissions: string[];
+  region?: string;
 }
 
 interface KeycloakPublicConfig {

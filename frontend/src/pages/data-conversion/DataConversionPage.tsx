@@ -80,7 +80,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
   // Xuất file Excel 129 cột
   const handleExportExcel = async () => {
     if (!can('export.129')) {
-      alert('Tài khoản của bạn cần có vai trò Khai thác dữ liệu (ocr-exporter) để xuất file Excel.');
+      alert('Tài khoản của bạn chưa có quyền xuất file Excel.');
       return;
     }
     if (rows.length === 0) {
@@ -158,7 +158,7 @@ export const DataConversionPage: React.FC<DataConversionPageProps> = ({ initialR
           <button
             onClick={handleExportExcel}
             disabled={rows.length === 0 || exporting || !can('export.129')}
-            title={!can('export.129') ? "Cần quyền 'Khai thác dữ liệu' (ocr-exporter) để xuất Excel" : "Xuất File Excel (129 Cột)"}
+            title={!can('export.129') ? 'Bạn chưa có quyền xuất Excel' : 'Xuất File Excel (129 Cột)'}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
           >
             <Download size={15} />

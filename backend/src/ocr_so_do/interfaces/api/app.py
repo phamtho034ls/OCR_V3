@@ -14,9 +14,11 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from ...infrastructure.persistence.postgres_store import get_postgres_store
 from .routers import admin, auth, documents, exports, batch, pg_storage, batch_pairs, projects
 from .security import (
     authenticate_authorization_header,
+    can_access_project_data,
     required_permission_for_request,
 )
 
@@ -24,6 +26,39 @@ from .security import (
 def _allowed_origins() -> list[str]:
     raw = os.getenv("OCR_ALLOWED_ORIGINS", "").strip()
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def _can_read_output_path(path: str, principal) -> bool:
+    """Map artifact URL về bản ghi/batch trước khi static server trả file.
+
+    `StaticFiles` chỉ biết đường dẫn đĩa, nên kiểm tra `record.read` đơn thuần
+    sẽ khiến thành viên có thể đoán URL của hồ sơ thuộc dự án khác. Chỉ hai cấu
+    trúc URL do ứng dụng sinh được phép: output/<document_id>/... và
+    output/batches/<batch_id>/.... URL không ánh xạ được bị từ chối an toàn.
+    """
+    if principal.is_admin():
+        return True
+
+    relative = path.removeprefix("/output/").strip("/")
+    parts = relative.split("/") if relative else []
+    if not parts:
+        return False
+
+    store = get_postgres_store()
+    try:
+        if len(parts) >= 2 and parts[0] == "batches":
+            batch = store.get_batch(parts[1])
+            return bool(batch) and can_access_project_data(
+                store, principal, batch.get("project_id"), batch.get("created_by")
+            )
+
+        record = store.get_record(parts[0])
+        return bool(record) and can_access_project_data(
+            store, principal, record.get("project_id"), record.get("created_by")
+        )
+    except Exception:
+        # Không mở artifact nếu database không thể xác nhận ownership.
+        return False
 
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
@@ -48,6 +83,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Tài khoản không có quyền thực hiện thao tác này."},
                 )
             request.state.principal = principal
+            if request.url.path.startswith("/output/") and not _can_read_output_path(request.url.path, principal):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Bạn không có quyền truy cập dữ liệu đầu ra này."},
+                )
         except Exception as exc:
             status_code = getattr(exc, "status_code", 401)
             detail = getattr(exc, "detail", "Không thể xác thực phiên đăng nhập.")

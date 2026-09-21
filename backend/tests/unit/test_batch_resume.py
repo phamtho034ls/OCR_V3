@@ -3,7 +3,7 @@ import pytest
 from ocr_so_do.interfaces.api.routers.batch import ScanDirectoryRequest
 
 def test_scan_directory_request_defaults():
-    req = ScanDirectoryRequest(directory_path="D:/data")
+    req = ScanDirectoryRequest(directory_path="D:/data", project_id="project-a")
     assert req.directory_path == "D:/data"
     assert req.start_index == 0
     assert req.resume_batch_id is None
@@ -14,6 +14,7 @@ def test_scan_directory_request_defaults():
 def test_scan_directory_request_with_resume():
     req = ScanDirectoryRequest(
         directory_path="D:/data",
+        project_id="project-a",
         sample_count=10,
         start_index=5,
         resume_batch_id="dir_abc12345"

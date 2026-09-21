@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import { AlertCircle, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, X } from 'lucide-react';
 import React, { FormEvent, useMemo, useState } from 'react';
 import { extractErrorMessage } from '../lib/errorHelper';
@@ -14,8 +14,10 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   onClose,
   username,
 }) => {
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -47,11 +49,20 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   }, [strength]);
 
   const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
+  const isSameAsCurrent = currentPassword.length > 0 && newPassword.length > 0 && currentPassword === newPassword;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!currentPassword) {
+      setError('Vui lòng nhập mật khẩu hiện tại.');
+      return;
+    }
     if (newPassword.length < 6) {
       setError('Mật khẩu mới phải có tối thiểu 6 ký tự.');
+      return;
+    }
+    if (currentPassword === newPassword) {
+      setError('Mật khẩu mới không được trùng với mật khẩu cũ.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -64,6 +75,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
     try {
       await axios.post('/api/v1/auth/change-password', {
+        current_password: currentPassword,
         new_password: newPassword,
       });
       setSuccess(true);
@@ -78,8 +90,12 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   };
 
   const handleClose = () => {
+    setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    setShowCurrentPassword(false);
+    setShowPassword(false);
+    setShowConfirm(false);
     setError(null);
     setSuccess(false);
     onClose();
@@ -135,6 +151,31 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
               </div>
             )}
 
+            {/* Mật khẩu hiện tại */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Mật khẩu hiện tại <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  required
+                  type={showCurrentPassword ? 'text' : 'password'}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu đang sử dụng"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-9 text-xs outline-none ring-indigo-500 focus:ring-2"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showCurrentPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+
             {/* Mật khẩu mới */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -148,7 +189,9 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Tối thiểu 6 ký tự"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-9 text-xs outline-none ring-indigo-500 focus:ring-2"
+                  className={`w-full rounded-xl border ${
+                    isSameAsCurrent ? 'border-rose-400 ring-1 ring-rose-400' : 'border-slate-200'
+                  } bg-white px-3 py-2 pr-9 text-xs outline-none ring-indigo-500 focus:ring-2`}
                 />
                 <button
                   type="button"
@@ -160,8 +203,14 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
                 </button>
               </div>
 
+              {isSameAsCurrent && (
+                <p className="mt-1 text-[11px] font-medium text-rose-600">
+                  ✕ Mật khẩu mới không được trùng với mật khẩu cũ
+                </p>
+              )}
+
               {/* Password strength bar */}
-              {newPassword.length > 0 && (
+              {newPassword.length > 0 && !isSameAsCurrent && (
                 <div className="mt-2 flex items-center gap-2">
                   <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden flex gap-1">
                     <div className={`h-full flex-1 ${strength >= 1 ? strengthColor : 'bg-slate-200'}`} />
@@ -220,7 +269,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={saving || !passwordsMatch}
+                disabled={saving || !currentPassword || !passwordsMatch || isSameAsCurrent}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition disabled:opacity-50 cursor-pointer"
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}

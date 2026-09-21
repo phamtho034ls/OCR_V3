@@ -32,12 +32,18 @@ import {
 import { DocumentResult, PageResult, CropItem, ParcelItem } from '../../shared/types';
 import { QuickReviewPanel } from '../../shared/components/QuickReviewPanel';
 import { ProtectedImage } from '../../shared/components/ProtectedImage';
+import { ProjectSelector } from '../../shared/components/ProjectSelector';
 import { useAuth } from '../../shared/auth/AuthProvider';
 import { extractErrorMessage } from '../../shared/lib/errorHelper';
 
-export const DocumentUploadPage: React.FC = () => {
+interface DocumentUploadPageProps {
+  onNavigateToProjects?: () => void;
+}
+
+export const DocumentUploadPage: React.FC<DocumentUploadPageProps> = ({ onNavigateToProjects }) => {
   const { can } = useAuth();
   const [file, setFile] = useState<File | null>(null);
+  const [projectId, setProjectId] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<DocumentResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +59,11 @@ export const DocumentUploadPage: React.FC = () => {
   const [reviewOpen, setReviewOpen] = useState<boolean>(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!projectId) {
+      alert('Vui lòng chọn dự án trước khi chọn tài liệu để xử lý.');
+      if (e.target) e.target.value = '';
+      return;
+    }
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
       setResult(null);
@@ -66,11 +77,16 @@ export const DocumentUploadPage: React.FC = () => {
 
   const handleUpload = async () => {
     if (!file) return;
+    if (!projectId) {
+      setError('Vui lòng chọn dự án trước khi xử lý hồ sơ.');
+      return;
+    }
     setLoading(true);
     setError(null);
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('project_id', projectId);
 
     try {
       const res = await axios.post('/api/v1/documents', formData);
@@ -106,7 +122,7 @@ export const DocumentUploadPage: React.FC = () => {
   // Export Excel
   const handleExportExcel = async () => {
     if (!can('export.129')) {
-      alert("Tài khoản của bạn cần có vai trò 'Khai thác dữ liệu' (ocr-exporter) để xuất file Excel.");
+      alert('Tài khoản của bạn chưa có quyền xuất file Excel.');
       return;
     }
     if (!result) return;
@@ -282,8 +298,42 @@ export const DocumentUploadPage: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {!projectId && (
+        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 flex items-start gap-3 shadow-xs">
+          <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
+          <div className="flex-1">
+            <h4 className="text-xs font-bold text-amber-900 mb-0.5">
+              Yêu cầu chọn dự án trước khi kiểm tra hồ sơ
+            </h4>
+            <p className="text-xs text-amber-700 leading-relaxed">
+              {can('project.create') ? (
+                <>
+                  Bạn chưa chọn hoặc chưa có dự án để lưu trữ kết quả OCR. Vui lòng chọn dự án bên dưới, hoặc{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onNavigateToProjects) onNavigateToProjects();
+                      else window.dispatchEvent(new CustomEvent('app:navigate', { detail: 'projects' }));
+                    }}
+                    className="font-bold underline text-indigo-700 hover:text-indigo-900 cursor-pointer inline"
+                  >
+                    tạo dự án mới tại Quản lý dự án
+                  </button>.
+                </>
+              ) : (
+                'Tài khoản của bạn chưa được phân quyền vào bất kỳ dự án nào. Vui lòng liên hệ Trưởng phòng hoặc Quản trị viên để được thêm vào dự án trước khi tải hồ sơ.'
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Upload Box */}
-      <div className="bg-white border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-6 text-center transition shadow-sm">
+      <div className={`bg-white border-2 border-dashed rounded-2xl p-6 text-center transition shadow-sm ${
+        !projectId
+          ? 'border-slate-200 bg-slate-50/40'
+          : 'border-slate-300 hover:border-emerald-500'
+      }`}>
         <input
           type="file"
           id="file-upload"
@@ -303,18 +353,31 @@ export const DocumentUploadPage: React.FC = () => {
               Hỗ trợ PDF và ảnh. Kiểm tra kết quả trước khi tải bảng dữ liệu.
             </p>
           </div>
+          <ProjectSelector
+            value={projectId}
+            onChange={(id) => setProjectId(id)}
+            required
+            disabled={loading}
+            label="Dự án lưu hồ sơ"
+            className="mx-auto max-w-md text-left"
+            onNavigateToProjects={onNavigateToProjects}
+          />
           <div className="flex items-center justify-center gap-3 pt-1">
             <label
-              htmlFor="file-upload"
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer transition flex items-center gap-1.5"
+              htmlFor={projectId ? "file-upload" : undefined}
+              className={`px-4 py-2 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 ${
+                !projectId
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer'
+              }`}
             >
               <FileText size={14} /> Chọn File Từ Máy Tính
             </label>
             {file && (
               <button
                 onClick={handleUpload}
-                disabled={loading}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-md transition flex items-center gap-2"
+                disabled={loading || !projectId}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-semibold rounded-xl shadow-md transition flex items-center gap-2"
               >
                 {loading && <Loader2 size={15} className="animate-spin" />}
                 {loading ? 'Đang xử lý hồ sơ...' : 'Bắt đầu xử lý'}
@@ -539,7 +602,7 @@ export const DocumentUploadPage: React.FC = () => {
                 <button
                   onClick={handleExportExcel}
                   disabled={exportingExcel || !can('export.129')}
-                  title={!can('export.129') ? "Cần quyền 'Khai thác dữ liệu' (ocr-exporter) để xuất Excel" : "Xuất bảng chuyển đổi 129 cột"}
+                  title={!can('export.129') ? 'Bạn chưa có quyền xuất Excel' : 'Xuất bảng chuyển đổi 129 cột'}
                   className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer disabled:cursor-not-allowed"
                 >
                   {exportingExcel ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}

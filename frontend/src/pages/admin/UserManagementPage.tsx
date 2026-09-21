@@ -13,6 +13,7 @@ import {
   KeyRound,
   Loader2,
   Lock,
+  MapPin,
   Plus,
   RefreshCw,
   Search,
@@ -42,6 +43,7 @@ interface ManagedUser {
   email: string;
   enabled: boolean;
   roles: string[];
+  region?: string;
 }
 
 const initialForm = {
@@ -51,9 +53,19 @@ const initialForm = {
   email: '',
   temporary_password: '',
   roles: ['ocr-member'] as string[],
+  region: 'Ninh Bình',
 };
 
 const USERNAME_REGEX = /^[a-zA-Z0-9._-]+$/;
+
+const generateStrongPassword = () => {
+  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let rand = '';
+  for (let i = 0; i < 6; i++) {
+    rand += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `Ocr@${rand}!`;
+};
 
 const ROLE_DISPLAY: Record<string, { label: string; badge: string; color: string; icon: typeof ShieldCheck }> = {
   'ocr-admin': {
@@ -78,8 +90,10 @@ const ROLE_DISPLAY: Record<string, { label: string; badge: string; color: string
 
 export const UserManagementPage: React.FC = () => {
   const { can, user: currentUser } = useAuth();
+  const isCurrentUserRootAdmin = currentUser?.username === 'admin';
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [regions, setRegions] = useState<string[]>(['Ninh Bình', 'Hà Nam', 'Hà Nội', 'Nam Định']);
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,9 +104,17 @@ export const UserManagementPage: React.FC = () => {
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+  const [filterRegion, setFilterRegion] = useState('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'locked'>('all');
 
   // Form toggles
   const [showCreatePassword, setShowCreatePassword] = useState(false);
+
+  // Region modal
+  const [showAddRegionModal, setShowAddRegionModal] = useState(false);
+  const [newRegionName, setNewRegionName] = useState('');
+  const [addingRegion, setAddingRegion] = useState(false);
+  const [addRegionError, setAddRegionError] = useState<string | null>(null);
 
   // Modals state
   const [resetModalUser, setResetModalUser] = useState<ManagedUser | null>(null);
@@ -103,7 +125,7 @@ export const UserManagementPage: React.FC = () => {
   const [resetError, setResetError] = useState<string | null>(null);
 
   const [editModalUser, setEditModalUser] = useState<ManagedUser | null>(null);
-  const [editForm, setEditForm] = useState({ first_name: '', last_name: '', email: '' });
+  const [editForm, setEditForm] = useState({ first_name: '', last_name: '', email: '', region: '' });
   const [editing, setEditing] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -118,12 +140,22 @@ export const UserManagementPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [roleResponse, userResponse] = await Promise.all([
+      const [roleResponse, userResponse, regionResponse] = await Promise.all([
         axios.get<{ roles: AppRole[] }>('/api/v1/admin/roles'),
         axios.get<{ users: ManagedUser[]; is_local_dev?: boolean; message?: string }>('/api/v1/admin/users'),
+        axios.get<{ regions: string[] }>('/api/v1/admin/regions').catch(() => ({ data: { regions: ['Ninh Bình', 'Hà Nam', 'Hà Nội', 'Nam Định'] } })),
       ]);
       setRoles(roleResponse.data.roles || []);
       setUsers(userResponse.data.users || []);
+      if (regionResponse.data?.regions && regionResponse.data.regions.length > 0) {
+        setRegions(regionResponse.data.regions);
+        setForm((prev) => ({
+          ...prev,
+          region: currentUser?.username !== 'admin' && currentUser?.region
+            ? currentUser.region
+            : prev.region || regionResponse.data.regions[0],
+        }));
+      }
       if (userResponse.data.is_local_dev) {
         setIsLocalDev(true);
       }
@@ -134,17 +166,59 @@ export const UserManagementPage: React.FC = () => {
     }
   }, []);
 
+  const silentRefresh = useCallback(async () => {
+    try {
+      const [roleResponse, userResponse, regionResponse] = await Promise.all([
+        axios.get<{ roles: AppRole[] }>('/api/v1/admin/roles'),
+        axios.get<{ users: ManagedUser[]; is_local_dev?: boolean; message?: string }>('/api/v1/admin/users'),
+        axios.get<{ regions: string[] }>('/api/v1/admin/regions').catch(() => ({ data: { regions: [] } })),
+      ]);
+      if (roleResponse.data?.roles) {
+        setRoles(roleResponse.data.roles);
+      }
+      if (userResponse.data?.users) {
+        setUsers(userResponse.data.users);
+      }
+      if (regionResponse.data?.regions && regionResponse.data.regions.length > 0) {
+        setRegions(regionResponse.data.regions);
+      }
+    } catch {
+      // Giữ nguyên dữ liệu hiện tại
+    }
+  }, []);
+
   useEffect(() => {
     if (can('user.manage')) void load();
   }, [can, load]);
 
-  const toggleFormRole = (role: string) =>
+  const selectFormRole = (role: string) =>
     setForm((current) => ({
       ...current,
-      roles: current.roles.includes(role)
-        ? current.roles.filter((item) => item !== role)
-        : [...current.roles, role],
+      roles: [role],
     }));
+
+  const handleAddRegion = async (e: FormEvent) => {
+    e.preventDefault();
+    const name = newRegionName.trim();
+    if (!name) return;
+    setAddingRegion(true);
+    setAddRegionError(null);
+    try {
+      await axios.post('/api/v1/admin/regions', { name });
+      setRegions((prev) => (prev.includes(name) ? prev : [...prev, name]));
+      setForm((prev) => ({ ...prev, region: name }));
+      if (editModalUser) {
+        setEditForm((prev) => ({ ...prev, region: name }));
+      }
+      setNewRegionName('');
+      setShowAddRegionModal(false);
+      setNotice(`Đã thêm khu vực "${name}" thành công.`);
+    } catch (cause: any) {
+      setAddRegionError(await extractErrorMessage(cause));
+    } finally {
+      setAddingRegion(false);
+    }
+  };
 
   // Create User
   const createEmployee = async (event: FormEvent) => {
@@ -153,14 +227,58 @@ export const UserManagementPage: React.FC = () => {
       setError('Tên đăng nhập chỉ chấp nhận chữ cái, số, dấu chấm (.), gạch dưới (_) hoặc gạch ngang (-).');
       return;
     }
+    if (!form.roles || form.roles.length !== 1) {
+      setError('Vui lòng chọn 1 vai trò đảm nhiệm duy nhất cho tài khoản.');
+      return;
+    }
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      await axios.post('/api/v1/admin/users', form);
-      setForm(initialForm);
+      const res = await axios.post<{
+        id: string;
+        username: string;
+        first_name?: string;
+        last_name?: string;
+        email?: string;
+        roles?: string[];
+        enabled?: boolean;
+        region?: string;
+      }>('/api/v1/admin/users', form);
+
+      const created = res.data || {};
+      const newUser: ManagedUser = {
+        id: created.id || `user_${Date.now()}`,
+        username: created.username || form.username,
+        first_name: created.first_name !== undefined ? created.first_name : form.first_name,
+        last_name: created.last_name !== undefined ? created.last_name : form.last_name,
+        email: created.email !== undefined ? created.email : form.email,
+        enabled: created.enabled ?? true,
+        roles: created.roles && created.roles.length > 0 ? created.roles : form.roles,
+        region: created.region !== undefined ? created.region : form.region,
+      };
+
+      // Cập nhật ngay lập tức xuống danh sách nhân viên phía dưới
+      setUsers((current) => [newUser, ...current.filter((item) => item.id !== newUser.id)]);
+      setForm((prev) => ({
+        ...initialForm,
+        region: prev.region, // Giữ lại khu vực vừa chọn cho thuận tiện
+      }));
       setNotice(`Đã tạo tài khoản "${form.username}" thành công.`);
-      await load();
+
+      // Đảm bảo tài khoản mới luôn hiển thị nếu đang lọc role khác
+      if (filterRole !== 'all' && !newUser.roles.includes(filterRole)) {
+        setFilterRole('all');
+      }
+      if (filterRegion !== 'all' && newUser.region !== filterRegion) {
+        setFilterRegion('all');
+      }
+      if (searchQuery) {
+        setSearchQuery('');
+      }
+
+      // Làm mới dữ liệu ngầm để đồng bộ với server mà không hiện spinner che bảng
+      void silentRefresh();
     } catch (cause: any) {
       setError(await extractErrorMessage(cause));
     } finally {
@@ -256,6 +374,7 @@ export const UserManagementPage: React.FC = () => {
                 first_name: editForm.first_name,
                 last_name: editForm.last_name,
                 email: editForm.email,
+                region: editForm.region,
               }
             : item
         )
@@ -293,6 +412,17 @@ export const UserManagementPage: React.FC = () => {
       if (filterRole !== 'all' && !u.roles.includes(filterRole)) {
         return false;
       }
+      // Region filter
+      if (filterRegion !== 'all' && (u.region || '') !== filterRegion) {
+        return false;
+      }
+      // Status filter
+      if (filterStatus === 'active' && !u.enabled) {
+        return false;
+      }
+      if (filterStatus === 'locked' && u.enabled) {
+        return false;
+      }
       // Query filter
       if (!searchQuery.trim()) return true;
       const query = searchQuery.toLowerCase().trim();
@@ -300,10 +430,11 @@ export const UserManagementPage: React.FC = () => {
       return (
         u.username.toLowerCase().includes(query) ||
         fullName.includes(query) ||
-        (u.email && u.email.toLowerCase().includes(query))
+        (u.email && u.email.toLowerCase().includes(query)) ||
+        (u.region && u.region.toLowerCase().includes(query))
       );
     });
-  }, [users, filterRole, searchQuery]);
+  }, [users, filterRole, filterRegion, filterStatus, searchQuery]);
 
   // Role counts
   const roleStats = useMemo(() => {
@@ -453,7 +584,7 @@ export const UserManagementPage: React.FC = () => {
         </div>
 
         <form onSubmit={createEmployee} className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Tên đăng nhập <span className="text-rose-500">*</span>
@@ -500,18 +631,29 @@ export const UserManagementPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Mật khẩu khởi tạo <span className="text-rose-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Mật khẩu khởi tạo <span className="text-rose-500">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setForm((prev) => ({ ...prev, temporary_password: generateStrongPassword() }))}
+                  className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
+                  title="Tạo mật khẩu mạnh ngẫu nhiên"
+                >
+                  Tạo mật khẩu
+                </button>
+              </div>
               <div className="relative">
                 <input
                   required
                   type={showCreatePassword ? 'text' : 'password'}
                   minLength={6}
-                  placeholder="Tối thiểu 6 ký tự"
+                  autoComplete="new-password"
+                  placeholder="Ví dụ: Ocr@Sodo2026!"
                   value={form.temporary_password}
                   onChange={(e) => setForm({ ...form, temporary_password: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-9 text-xs outline-none ring-indigo-500 focus:ring-2"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-9 text-xs outline-none ring-indigo-500 focus:ring-2 font-mono"
                 />
                 <button
                   type="button"
@@ -523,29 +665,74 @@ export const UserManagementPage: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Khu vực <span className="text-rose-500">*</span>
+                </label>
+                {isCurrentUserRootAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddRegionError(null);
+                      setNewRegionName('');
+                      setShowAddRegionModal(true);
+                    }}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
+                  >
+                    + Thêm mới
+                  </button>
+                )}
+              </div>
+              {isCurrentUserRootAdmin ? (
+                <select
+                  value={form.region}
+                  onChange={(e) => setForm({ ...form, region: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none ring-indigo-500 focus:ring-2"
+                >
+                  {regions.map((reg) => (
+                    <option key={reg} value={reg}>
+                      {reg}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  readOnly
+                  disabled
+                  value={currentUser?.region || form.region || 'Chưa phân khu vực'}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 cursor-not-allowed"
+                />
+              )}
+            </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-2">Vai trò đảm nhiệm</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-2">
+              Vai trò đảm nhiệm <span className="text-rose-500">*</span>
+            </label>
             <div className="flex flex-wrap gap-2">
               {roles.map((r) => {
-                const isSelected = form.roles.includes(r.name);
+                const isSelected = form.roles[0] === r.name;
                 const display = ROLE_DISPLAY[r.name] || { label: r.label, icon: ShieldCheck };
                 const Icon = display.icon;
                 return (
                   <label
                     key={r.name}
-                    className={`inline-flex items-center gap-2 cursor-pointer rounded-xl border px-3 py-2 text-xs transition shadow-sm select-none ${
+                    className={`inline-flex items-center gap-2 cursor-pointer rounded-xl border px-3.5 py-2 text-xs transition shadow-xs select-none ${
                       isSelected
-                        ? 'border-indigo-400 bg-indigo-50/90 text-indigo-900 font-semibold'
+                        ? 'border-indigo-500 bg-indigo-50/90 text-indigo-900 font-semibold ring-1 ring-indigo-500'
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                     }`}
                   >
                     <input
-                      type="checkbox"
+                      type="radio"
+                      name="account_role"
                       checked={isSelected}
-                      onChange={() => toggleFormRole(r.name)}
-                      className="accent-indigo-600 rounded"
+                      onChange={() => selectFormRole(r.name)}
+                      className="accent-indigo-600"
                     />
                     <Icon size={14} className={isSelected ? 'text-indigo-600' : 'text-slate-400'} />
                     <span>{display.label}</span>
@@ -580,25 +767,67 @@ export const UserManagementPage: React.FC = () => {
             </span>
           </div>
 
-          {/* Search box */}
-          <div className="relative min-w-[240px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Tìm kiếm theo tên, tài khoản, email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-xs outline-none ring-indigo-500 focus:ring-2"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X size={12} />
-              </button>
+          {/* Filters & Search box */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Region Filter */}
+            {isCurrentUserRootAdmin ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">Khu vực:</span>
+                <select
+                  value={filterRegion}
+                  onChange={(e) => setFilterRegion(e.target.value)}
+                  className="rounded-xl border border-slate-200 bg-white py-1.5 px-2.5 text-xs outline-none ring-indigo-500 focus:ring-2 text-slate-700 font-medium cursor-pointer"
+                >
+                  <option value="all">Tất cả khu vực</option>
+                  {regions.map((reg) => (
+                    <option key={reg} value={reg}>
+                      {reg}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              currentUser?.region ? (
+                <span className="text-[11px] text-indigo-700 font-semibold bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-xl">
+                  Khu vực: {currentUser.region}
+                </span>
+              ) : null
             )}
+
+            {/* Status Filter */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">Trạng thái:</span>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as 'all' | 'active' | 'locked')}
+                className="rounded-xl border border-slate-200 bg-white py-1.5 px-2.5 text-xs outline-none ring-indigo-500 focus:ring-2 text-slate-700 font-medium cursor-pointer"
+              >
+                <option value="all">Tất cả trạng thái</option>
+                <option value="active">Hoạt động</option>
+                <option value="locked">Đã khóa</option>
+              </select>
+            </div>
+
+            {/* Search box */}
+            <div className="relative min-w-[220px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Tìm tên, tài khoản, email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-xs outline-none ring-indigo-500 focus:ring-2"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -610,7 +839,7 @@ export const UserManagementPage: React.FC = () => {
           </div>
         ) : filteredUsers.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-400">
-            {searchQuery || filterRole !== 'all'
+            {searchQuery || filterRole !== 'all' || filterRegion !== 'all'
               ? 'Không tìm thấy tài khoản phù hợp.'
               : 'Chưa có tài khoản nào.'}
           </div>
@@ -620,6 +849,7 @@ export const UserManagementPage: React.FC = () => {
               <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Nhân viên</th>
+                  <th className="px-5 py-3 font-semibold">Khu vực</th>
                   <th className="px-5 py-3 font-semibold">Vai trò đảm nhiệm</th>
                   <th className="px-5 py-3 font-semibold">Trạng thái</th>
                   <th className="px-5 py-3 text-right font-semibold">Thao tác</th>
@@ -632,8 +862,31 @@ export const UserManagementPage: React.FC = () => {
                   const fullName = [user.last_name, user.first_name].filter(Boolean).join(' ');
                   const initials = (fullName || user.username).slice(0, 2).toUpperCase();
 
+                  const isCurrentUserRootAdmin = currentUser?.username === 'admin';
+                  const isRowRootAdmin = user.username === 'admin';
+                  const isRowAdmin = user.roles.includes('ocr-admin');
+
+                  // 1. Root admin gốc không bao giờ bị xóa
+                  // 2. Không được tự xóa tài khoản của chính mình
+                  // 3. Tài khoản quản trị viên sau này không được xóa nhau, chỉ admin gốc mới xóa được
+                  const canDelete = !isSelf && !isRowRootAdmin && (!isRowAdmin || isCurrentUserRootAdmin);
+                  const deleteTooltip = isSelf
+                    ? 'Không thể xóa tài khoản của chính mình'
+                    : isRowRootAdmin
+                    ? 'Không thể xóa tài khoản Quản trị viên gốc của hệ thống'
+                    : isRowAdmin && !isCurrentUserRootAdmin
+                    ? 'Chỉ tài khoản admin tổng mới có quyền xóa Quản trị viên'
+                    : 'Xóa tài khoản';
+
                   return (
-                    <tr key={user.id} className="hover:bg-slate-50/60 transition-colors">
+                    <tr
+                      key={user.id}
+                      className={`transition-colors ${
+                        user.enabled
+                          ? 'hover:bg-slate-50/60'
+                          : 'bg-slate-50/40 opacity-75 hover:bg-slate-100/60'
+                      }`}
+                    >
                       {/* Name & User */}
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
@@ -659,44 +912,59 @@ export const UserManagementPage: React.FC = () => {
                         </div>
                       </td>
 
+                      {/* Region */}
+                      <td className="px-5 py-3.5">
+                        {user.region ? (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50/70 border border-indigo-100/80 px-2.5 py-1 text-[11px] font-semibold text-indigo-800">
+                            <MapPin size={12} className="text-indigo-600" />
+                            {user.region}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">—</span>
+                        )}
+                      </td>
+
                       {/* Roles */}
                       <td className="px-5 py-3.5">
-                        <div className="flex min-w-[260px] flex-wrap gap-1.5">
-                          {roles.map((r) => {
-                            const isAssigned = user.roles.includes(r.name);
-                            const cannotToggle = isSelf && r.name === 'ocr-admin';
-                            const display = ROLE_DISPLAY[r.name] || {
-                              label: r.label,
-                              badge: 'bg-indigo-50 text-indigo-800 border-indigo-200',
-                            };
+                        {user.roles.includes('ocr-admin') ? (
+                          <div className="flex items-center">
+                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800">
+                              <ShieldCheck size={13} className="text-rose-600" />
+                              Quản trị viên
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex min-w-[190px] flex-wrap gap-1.5">
+                            {roles
+                              .filter((r) => r.name !== 'ocr-admin')
+                              .map((r) => {
+                                const isAssigned = user.roles.includes(r.name);
+                                const display = ROLE_DISPLAY[r.name] || {
+                                  label: r.label,
+                                  badge: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+                                };
 
-                            return (
-                              <label
-                                key={r.name}
-                                className={`cursor-pointer rounded-lg border px-2 py-1 text-[11px] transition select-none ${
-                                  isAssigned
-                                    ? `${display.badge} font-semibold`
-                                    : 'border-slate-200 text-slate-400 hover:border-slate-300'
-                                } ${cannotToggle ? 'opacity-70 cursor-not-allowed' : ''}`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  disabled={cannotToggle}
-                                  checked={isAssigned}
-                                  onChange={() => {
-                                    if (cannotToggle) return;
-                                    const nextRoles = isAssigned
-                                      ? user.roles.filter((roleName) => roleName !== r.name)
-                                      : [...user.roles, r.name];
-                                    void replaceRoles(user, nextRoles);
-                                  }}
-                                  className="sr-only"
-                                />
-                                {display.label}
-                              </label>
-                            );
-                          })}
-                        </div>
+                                return (
+                                  <button
+                                    key={r.name}
+                                    type="button"
+                                    onClick={() => {
+                                      if (!isAssigned) {
+                                        void replaceRoles(user, [r.name]);
+                                      }
+                                    }}
+                                    className={`rounded-lg border px-2.5 py-1 text-[11px] transition select-none cursor-pointer ${
+                                      isAssigned
+                                        ? `${display.badge} font-semibold shadow-xs`
+                                        : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    {display.label}
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        )}
                       </td>
 
                       {/* Status */}
@@ -740,6 +1008,7 @@ export const UserManagementPage: React.FC = () => {
                                 first_name: user.first_name || '',
                                 last_name: user.last_name || '',
                                 email: user.email || '',
+                                region: user.region || '',
                               });
                               setEditError(null);
                             }}
@@ -748,38 +1017,41 @@ export const UserManagementPage: React.FC = () => {
                             <Edit3 size={14} />
                           </button>
 
-                          <button
-                            type="button"
-                            title={
-                              isSelf
-                                ? 'Không thể khóa tài khoản của chính mình'
-                                : user.enabled
-                                ? 'Khóa tài khoản'
-                                : 'Mở khóa tài khoản'
-                            }
-                            disabled={isSelf}
-                            onClick={() => setLockModalUser(user)}
-                            className={`rounded-lg border p-1.5 transition cursor-pointer ${
-                              isSelf
-                                ? 'opacity-40 border-slate-200 text-slate-400 cursor-not-allowed'
-                                : user.enabled
-                                ? 'border-amber-200 text-amber-700 hover:bg-amber-50'
-                                : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                            }`}
-                          >
-                            {user.enabled ? <Lock size={14} /> : <Unlock size={14} />}
-                          </button>
+                          {!isRowRootAdmin && (
+                            <button
+                              type="button"
+                              title={
+                                isSelf
+                                  ? 'Không thể khóa tài khoản của chính mình'
+                                  : user.enabled
+                                  ? 'Khóa tài khoản'
+                                  : 'Mở khóa tài khoản'
+                              }
+                              disabled={isSelf}
+                              onClick={() => setLockModalUser(user)}
+                              className={`rounded-lg border p-1.5 transition cursor-pointer ${
+                                isSelf
+                                  ? 'opacity-40 border-slate-200 text-slate-400 cursor-not-allowed'
+                                  : user.enabled
+                                  ? 'border-amber-200 text-amber-700 hover:bg-amber-50'
+                                  : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                              }`}
+                            >
+                              {user.enabled ? <Lock size={14} /> : <Unlock size={14} />}
+                            </button>
+                          )}
 
                           <button
                             type="button"
-                            title={isSelf ? 'Không thể xóa tài khoản của chính mình' : 'Xóa tài khoản'}
-                            disabled={isSelf}
+                            title={deleteTooltip}
+                            disabled={!canDelete}
                             onClick={() => {
+                              if (!canDelete) return;
                               setDeleteModalUser(user);
                               setDeleteError(null);
                             }}
                             className={`rounded-lg border p-1.5 transition cursor-pointer ${
-                              isSelf
+                              !canDelete
                                 ? 'opacity-40 border-slate-200 text-slate-400 cursor-not-allowed'
                                 : 'border-rose-200 text-rose-700 hover:bg-rose-50'
                             }`}
@@ -829,18 +1101,29 @@ export const UserManagementPage: React.FC = () => {
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Mật khẩu mới <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Mật khẩu mới <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setNewPassword(generateStrongPassword())}
+                    className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
+                    title="Tạo mật khẩu mạnh ngẫu nhiên"
+                  >
+                    Tạo mật khẩu
+                  </button>
+                </div>
                 <div className="relative">
                   <input
                     required
                     type={showNewPassword ? 'text' : 'password'}
                     minLength={6}
-                    placeholder="Tối thiểu 6 ký tự"
+                    autoComplete="new-password"
+                    placeholder="Ví dụ: Ocr@Sodo2026!"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-9 text-xs outline-none ring-indigo-500 focus:ring-2"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-9 text-xs outline-none ring-indigo-500 focus:ring-2 font-mono"
                   />
                   <button
                     type="button"
@@ -946,6 +1229,35 @@ export const UserManagementPage: React.FC = () => {
                   placeholder="an.nv@donvi.gov.vn"
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none ring-indigo-500 focus:ring-2"
                 />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">Khu vực</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddRegionError(null);
+                      setNewRegionName('');
+                      setShowAddRegionModal(true);
+                    }}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
+                  >
+                    + Thêm mới
+                  </button>
+                </div>
+                <select
+                  value={editForm.region}
+                  onChange={(e) => setEditForm({ ...editForm, region: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none ring-indigo-500 focus:ring-2"
+                >
+                  <option value="">-- Chưa phân khu vực --</option>
+                  {regions.map((reg) => (
+                    <option key={reg} value={reg}>
+                      {reg}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
@@ -1069,6 +1381,71 @@ export const UserManagementPage: React.FC = () => {
                 Xóa tài khoản
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: Thêm khu vực mới */}
+      {showAddRegionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <span className="grid h-8 w-8 place-items-center rounded-lg bg-indigo-100 text-indigo-700">
+                  <MapPin size={16} />
+                </span>
+                <h4 className="text-sm font-bold text-slate-900">Thêm khu vực mới</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddRegionModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddRegion} className="p-5 space-y-4">
+              {addRegionError && (
+                <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                  <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                  <span>{addRegionError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Tên khu vực <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  required
+                  placeholder="Ví dụ: Ninh Bình, Hà Nam, Thái Bình,..."
+                  value={newRegionName}
+                  onChange={(e) => setNewRegionName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none ring-indigo-500 focus:ring-2"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddRegionModal(false)}
+                  disabled={addingRegion}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingRegion || !newRegionName.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-indigo-700 disabled:opacity-60 cursor-pointer"
+                >
+                  {addingRegion && <Loader2 size={14} className="animate-spin" />}
+                  Thêm khu vực
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

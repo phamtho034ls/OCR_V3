@@ -64,6 +64,7 @@ services:
       - "${OCR_BIND_HOST:-127.0.0.1}:8081:8080"
     volumes:
       - ./deployments/keycloak/ocr-so-do-realm.json:/opt/keycloak/data/import/ocr-so-do-realm.json:ro
+      - ./deployments/keycloak/themes:/opt/keycloak/themes:ro
     depends_on:
       keycloak-db:
         condition: service_healthy

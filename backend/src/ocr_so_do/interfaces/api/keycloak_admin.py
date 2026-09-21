@@ -108,7 +108,7 @@ class KeycloakAdminClient:
             if item.get("name") in APP_ROLES
         )
 
-    def _fetch_all_role_mappings(self) -> dict[str, set[str]]:
+    def _fetch_all_role_mappings(self) -> dict[str, set[str]] | None:
         """Map user_id -> set of APP_ROLES by querying roles instead of N users."""
         role_map: dict[str, set[str]] = {}
         for role_name in APP_ROLES:
@@ -118,13 +118,14 @@ class KeycloakAdminClient:
                     uid = str(u.get("id", ""))
                     if uid:
                         role_map.setdefault(uid, set()).add(role_name)
-            except Exception:
-                pass
+            except KeycloakAdminError:
+                # Không được trả danh sách role thiếu rồi để UI ghi đè nhầm.
+                return None
         return role_map
 
     def list_users(self, first: int = 0, max_results: int = 100) -> list[dict[str, Any]]:
         response = self._request(
-            "GET", "/users", params={"first": first, "max": max_results, "briefRepresentation": "true"}
+            "GET", "/users", params={"first": first, "max": max_results, "briefRepresentation": "false"}
         )
         user_items = response.json()
         if not user_items:
@@ -134,10 +135,18 @@ class KeycloakAdminClient:
         users = []
         for item in user_items:
             user_id = str(item["id"])
-            user_roles = sorted(role_map.get(user_id, set()))
-            # Fallback nếu role_map rỗng hoặc lỗi
-            if not user_roles and not role_map:
-                user_roles = self._user_roles(user_id)
+            user_roles = (
+                sorted(role_map.get(user_id, set()))
+                if role_map is not None
+                else self._user_roles(user_id)
+            )
+            raw_region = item.get("attributes", {}).get("region")
+            region_str = ""
+            if isinstance(raw_region, list) and raw_region:
+                region_str = str(raw_region[0])
+            elif isinstance(raw_region, str):
+                region_str = raw_region
+
             users.append({
                 "id": user_id,
                 "username": item.get("username", ""),
@@ -146,20 +155,49 @@ class KeycloakAdminClient:
                 "email": item.get("email", ""),
                 "enabled": bool(item.get("enabled", False)),
                 "roles": user_roles,
+                "region": region_str,
             })
         return users
 
+    def get_user(self, user_id: str) -> dict[str, Any]:
+        response = self._request("GET", f"/users/{quote(user_id, safe='')}")
+        return dict(response.json())
+
+    def has_another_active_admin(self, excluded_user_id: str) -> bool:
+        response = self._request("GET", "/roles/ocr-admin/users", params={"first": 0, "max": 200})
+        return any(
+            str(item.get("id")) != excluded_user_id and bool(item.get("enabled", False))
+            for item in response.json()
+        )
+
+    def user_has_role(self, user_id: str, role: str) -> bool:
+        """Kiểm tra realm role hiện tại của một người dùng.
+
+        Giữ chi tiết REST API trong client thay vì để router dựa vào method nội
+        bộ `_user_roles`, nhờ vậy các chốt an toàn quản trị có thể được test rõ
+        ràng và không phụ thuộc cấu trúc response của Keycloak.
+        """
+        return role in self._user_roles(user_id)
+
+    def logout_user(self, user_id: str) -> None:
+        """Chấm dứt session Keycloak để token được refresh/logout ngay."""
+        self._request("POST", f"/users/{quote(user_id, safe='')}/logout")
+
     def create_user(
         self, *, username: str, email: str | None, first_name: str | None,
-        last_name: str | None, temporary_password: str, roles: Iterable[str]
+        last_name: str | None, temporary_password: str, roles: Iterable[str],
+        region: str | None = None,
     ) -> dict[str, Any]:
         if len(temporary_password) < 6:
             raise KeycloakAdminError("Mật khẩu tạm phải có ít nhất 6 ký tự.", 422)
         role_representations = self._role_representations(roles)
-        response = self._request("POST", "/users", json={
+        user_payload: dict[str, Any] = {
             "username": username, "email": email or None, "firstName": first_name or None,
             "lastName": last_name or None, "enabled": True, "emailVerified": False,
-        })
+        }
+        if region:
+            user_payload["attributes"] = {"region": [region.strip()]}
+        response = self._request("POST", "/users", json=user_payload)
         location = response.headers.get("Location", "")
         user_id = location.rstrip("/").split("/")[-1]
         if not user_id:
@@ -167,25 +205,54 @@ class KeycloakAdminClient:
             if not matches:
                 raise KeycloakAdminError("Không xác định được tài khoản vừa tạo.")
             user_id = str(matches[0]["id"])
-        self._request("PUT", f"/users/{quote(user_id, safe='')}/reset-password", json={
-            "type": "password", "value": temporary_password, "temporary": True,
-        })
-        if role_representations:
-            self._request("POST", f"/users/{quote(user_id, safe='')}/role-mappings/realm", json=role_representations)
-        return {"id": user_id, "username": username, "roles": self._user_roles(user_id), "enabled": True}
+        try:
+            self._request("PUT", f"/users/{quote(user_id, safe='')}/reset-password", json={
+                "type": "password", "value": temporary_password, "temporary": True,
+            })
+            if role_representations:
+                self._request("POST", f"/users/{quote(user_id, safe='')}/role-mappings/realm", json=role_representations)
+        except KeycloakAdminError:
+            # Tạo user là thao tác nhiều bước; dọn bản ghi dở dang khi bước sau lỗi.
+            try:
+                self._request("DELETE", f"/users/{quote(user_id, safe='')}")
+            except KeycloakAdminError:
+                pass
+            raise
+        return {
+            "id": user_id,
+            "username": username,
+            "first_name": first_name or "",
+            "last_name": last_name or "",
+            "email": email or "",
+            "roles": self._user_roles(user_id) or list(roles),
+            "enabled": True,
+            "region": region.strip() if region else "",
+        }
 
     def replace_user_roles(self, user_id: str, roles: Iterable[str]) -> dict[str, Any]:
         new_representations = self._role_representations(roles)
         old_representations = self._role_representations(self._user_roles(user_id))
         path = f"/users/{quote(user_id, safe='')}/role-mappings/realm"
-        if old_representations:
-            self._request("DELETE", path, json=old_representations)
-        if new_representations:
-            self._request("POST", path, json=new_representations)
+        try:
+            if old_representations:
+                self._request("DELETE", path, json=old_representations)
+            if new_representations:
+                self._request("POST", path, json=new_representations)
+        except KeycloakAdminError:
+            # Keycloak không có replace atomic; cố gắng phục hồi role cũ nếu add thất bại.
+            try:
+                if old_representations:
+                    self._request("POST", path, json=old_representations)
+            except KeycloakAdminError:
+                pass
+            raise
+        self.logout_user(user_id)
         return {"id": user_id, "roles": self._user_roles(user_id)}
 
     def set_user_enabled(self, user_id: str, enabled: bool) -> dict[str, Any]:
         self._request("PUT", f"/users/{quote(user_id, safe='')}", json={"enabled": enabled})
+        if not enabled:
+            self.logout_user(user_id)
         return {"id": user_id, "enabled": enabled}
 
     def reset_password(self, user_id: str, new_password: str, temporary: bool = True) -> dict[str, Any]:
@@ -198,7 +265,8 @@ class KeycloakAdminClient:
 
     def update_user(
         self, user_id: str, *, first_name: str | None = None,
-        last_name: str | None = None, email: str | None = None
+        last_name: str | None = None, email: str | None = None,
+        region: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         if first_name is not None:
@@ -207,6 +275,8 @@ class KeycloakAdminClient:
             payload["lastName"] = last_name.strip() or None
         if email is not None:
             payload["email"] = email.strip() or None
+        if region is not None:
+            payload["attributes"] = {"region": [region.strip()] if region.strip() else []}
         if payload:
             self._request("PUT", f"/users/{quote(user_id, safe='')}", json=payload)
         return {"id": user_id, "status": "success", **payload}
@@ -214,3 +284,29 @@ class KeycloakAdminClient:
     def delete_user(self, user_id: str) -> dict[str, Any]:
         self._request("DELETE", f"/users/{quote(user_id, safe='')}")
         return {"id": user_id, "status": "deleted"}
+
+    def verify_password(self, username: str, password: str) -> bool:
+        """Xác thực mật khẩu người dùng thông qua Keycloak token endpoint."""
+        if not username or not password:
+            return False
+        client_ids = [os.getenv("OCR_KEYCLOAK_CLIENT_ID", "ocr-so-do-web"), "admin-cli"]
+        for cid in client_ids:
+            try:
+                response = httpx.post(
+                    f"{self.base_url}/realms/{quote(self.realm, safe='')}/protocol/openid-connect/token",
+                    data={
+                        "grant_type": "password",
+                        "client_id": cid,
+                        "username": username,
+                        "password": password,
+                    },
+                    timeout=self.timeout,
+                )
+                if response.status_code == 200:
+                    return True
+                if response.status_code == 400 and response.json().get("error") == "invalid_grant":
+                    return False
+            except Exception:
+                continue
+        return False
+

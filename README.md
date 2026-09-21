@@ -36,7 +36,7 @@
 
 6. **Xác Thực & Phân Quyền Tập Trung (Keycloak OIDC)**:
    - Xác thực OpenID Connect (OIDC) qua Keycloak 26, hỗ trợ PKCE S256.
-   - 5 vai trò nghiệp vụ rõ ràng: **Quản trị viên** · **Nhập liệu** · **Tra soát** · **Khai thác** · **Chỉ xem**.
+   - 3 vai trò nghiệp vụ: **Quản trị viên** · **Trưởng phòng** · **Nhân viên**. Phạm vi dữ liệu được xác định thêm theo từng dự án.
    - Giao diện Quản lý tài khoản & Phân quyền dành cho Admin: tạo tài khoản, gán vai trò, khóa/mở khóa, đặt lại mật khẩu.
    - Trang đăng nhập thương hiệu riêng (Keycloak custom theme `ocr-sodo`) với giao diện tiếng Việt hoàn toàn.
    - Người dùng có thể tự đổi mật khẩu từ modal tài khoản trên thanh điều hướng.

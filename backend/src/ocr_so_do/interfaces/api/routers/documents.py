@@ -72,9 +72,16 @@ async def upload_document(
     - file: tệp PDF, JPG, PNG, TIF
     - project_id: ID dự án mà tài liệu này thuộc về
     """
+    project_id = (project_id or "").strip()
+    if not project_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Vui lòng chọn dự án hợp lệ trước khi xử lý hồ sơ.",
+        )
+
     # Kiểm tra user có thuộc dự án không
     pg_store = get_postgres_store()
-    if not pg_store.is_project_member(project_id, principal.subject):
+    if not principal.is_admin() and not pg_store.is_project_member(project_id, principal.subject):
         raise HTTPException(
             status_code=403,
             detail="Bạn không phải thành viên của dự án này hoặc dự án không tồn tại.",

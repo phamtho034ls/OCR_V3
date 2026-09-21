@@ -62,6 +62,7 @@ class PostgresStore:
         self._maxconn = maxconn
         self._next_retry_at = 0.0
         self.unavailable_reason: Optional[str] = None
+        self._locked_users_cache: Optional[set[str]] = None
         if self.enabled:
             self._init_pool(minconn, maxconn)
             self._init_schema()
@@ -230,6 +231,15 @@ class PostgresStore:
                             );
                         """)
 
+                        # Migration tương thích cho các DB đã tạo từ phiên bản cũ:
+                        cur.execute("""
+                            ALTER TABLE ocr_projects ADD COLUMN IF NOT EXISTS region VARCHAR(100);
+                            ALTER TABLE ocr_batches ADD COLUMN IF NOT EXISTS project_id VARCHAR(100) REFERENCES ocr_projects(project_id);
+                            ALTER TABLE ocr_batches ADD COLUMN IF NOT EXISTS created_by VARCHAR(255);
+                            ALTER TABLE ocr_records ADD COLUMN IF NOT EXISTS project_id VARCHAR(100) REFERENCES ocr_projects(project_id);
+                            ALTER TABLE ocr_records ADD COLUMN IF NOT EXISTS created_by VARCHAR(255);
+                        """)
+
                         # ── 3. CCCD crop audit ─────────────────────────────────────────────
                         cur.execute("""
                             CREATE TABLE IF NOT EXISTS cccd_crop_audits (
@@ -264,6 +274,30 @@ class PostgresStore:
                             );
                         """)
 
+                        # 5. Khu vực hệ thống và phân bổ khu vực người dùng
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS system_regions (
+                                name VARCHAR(100) PRIMARY KEY,
+                                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                            );
+
+                            CREATE TABLE IF NOT EXISTS user_regions (
+                                user_id VARCHAR(255) PRIMARY KEY,
+                                region VARCHAR(100) NOT NULL,
+                                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                            );
+
+                            CREATE TABLE IF NOT EXISTS locked_users (
+                                user_id VARCHAR(255) PRIMARY KEY,
+                                locked_by VARCHAR(255),
+                                locked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                            );
+
+                            INSERT INTO system_regions (name) VALUES
+                                ('Ninh Bình'), ('Hà Nam'), ('Hà Nội'), ('Nam Định')
+                            ON CONFLICT (name) DO NOTHING;
+                        """)
+
                         # ── Index ─────────────────────────────────────────────────────────
                         cur.execute("""
                             CREATE INDEX IF NOT EXISTS idx_projects_created_by ON ocr_projects(created_by);
@@ -282,6 +316,7 @@ class PostgresStore:
                             CREATE INDEX IF NOT EXISTS idx_cccd_crop_audits_batch ON cccd_crop_audits(batch_id);
                             CREATE INDEX IF NOT EXISTS idx_cccd_crop_audits_status ON cccd_crop_audits(audit_status);
                             CREATE INDEX IF NOT EXISTS idx_ocr_field_reviews_document ON ocr_field_reviews(document_id, field_key, created_at DESC);
+                            CREATE INDEX IF NOT EXISTS idx_user_regions_region ON user_regions(region);
                         """)
                         conn.commit()
                 logger.info("Khởi tạo Schema PostgreSQL ocr_so_do thành công.")
@@ -297,6 +332,7 @@ class PostgresStore:
         created_by: str,
         description: Optional[str] = None,
         status: str = "active",
+        region: Optional[str] = None,
     ) -> bool:
         """Tạo dự án mới."""
         if not self._pool:
@@ -306,10 +342,10 @@ class PostgresStore:
                 with conn.cursor() as cur:
                     cur.execute("""
                         INSERT INTO ocr_projects
-                            (project_id, project_name, description, created_by, status)
-                        VALUES (%s, %s, %s, %s, %s)
+                            (project_id, project_name, description, created_by, status, region)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         ON CONFLICT (project_id) DO NOTHING;
-                    """, (project_id, project_name, description, created_by, status))
+                    """, (project_id, project_name, description, created_by, status, region))
                     conn.commit()
             return True
         except Exception as e:
@@ -361,6 +397,34 @@ class PostgresStore:
                     return results
         except Exception as e:
             logger.error(f"Lỗi list_all_projects: {e}")
+            return []
+
+    def list_projects_by_region(self, region: str, limit: int = 200) -> List[Dict[str, Any]]:
+        """Lấy danh sách dự án thuộc một khu vực (hoặc tạo bởi nhân sự thuộc khu vực)."""
+        if not self._pool:
+            return []
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT DISTINCT p.*
+                        FROM ocr_projects p
+                        LEFT JOIN user_regions ur ON ur.user_id = p.created_by
+                        WHERE p.region = %s OR (p.region IS NULL AND ur.region = %s)
+                        ORDER BY p.created_at DESC
+                        LIMIT %s
+                    """, (region, region, limit))
+                    rows = cur.fetchall()
+                    results = []
+                    for row in rows:
+                        r = dict(row)
+                        for key in ("created_at", "updated_at"):
+                            if r.get(key):
+                                r[key] = r[key].isoformat()
+                        results.append(r)
+                    return results
+        except Exception as e:
+            logger.error(f"Lỗi list_projects_by_region: {e}")
             return []
 
     def list_projects_for_user(self, user_id: str, limit: int = 200) -> List[Dict[str, Any]]:
@@ -430,14 +494,11 @@ class PostgresStore:
                         INSERT INTO project_members
                             (project_id, user_id, username, display_name, role_in_project, added_by)
                         VALUES (%s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (project_id, user_id) DO UPDATE SET
-                            username         = EXCLUDED.username,
-                            display_name     = EXCLUDED.display_name,
-                            role_in_project  = EXCLUDED.role_in_project,
-                            added_by         = EXCLUDED.added_by;
+                        ON CONFLICT (project_id, user_id) DO NOTHING;
                     """, (project_id, user_id, username, display_name, role_in_project, added_by))
+                    inserted = cur.rowcount > 0
                     conn.commit()
-            return True
+            return inserted
         except Exception as e:
             logger.error(f"Lỗi add_project_member: {e}")
             return False
@@ -453,8 +514,9 @@ class PostgresStore:
                         "DELETE FROM project_members WHERE project_id = %s AND user_id = %s",
                         (project_id, user_id)
                     )
+                    deleted = cur.rowcount > 0
                     conn.commit()
-            return True
+            return deleted
         except Exception as e:
             logger.error(f"Lỗi remove_project_member: {e}")
             return False
@@ -475,6 +537,23 @@ class PostgresStore:
         except Exception as e:
             logger.error(f"Lỗi is_project_member: {e}")
             return False
+
+    def get_project_member_role(self, project_id: str, user_id: str) -> Optional[str]:
+        """Lấy role theo dự án, hoặc None nếu user không là thành viên."""
+        if not self._pool:
+            return None
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT role_in_project FROM project_members WHERE project_id = %s AND user_id = %s",
+                        (project_id, user_id),
+                    )
+                    row = cur.fetchone()
+                    return str(row[0]) if row and row[0] else None
+        except Exception as e:
+            logger.error(f"Lỗi get_project_member_role: {e}")
+            return None
 
     def list_project_members(self, project_id: str) -> List[Dict[str, Any]]:
         """Lấy danh sách thành viên của dự án."""
@@ -529,12 +608,60 @@ class PostgresStore:
         - member        → {project_ids: [...], created_by: user_id}
         """
         if primary_role == "ocr-admin":
-            return {}
-        accessible = self.get_accessible_project_ids(user_id, primary_role)
+            return {"is_admin": True}
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT project_id, role_in_project FROM project_members WHERE user_id = %s",
+                        (user_id,),
+                    )
+                    rows = cur.fetchall()
+        except Exception as e:
+            logger.error(f"Lỗi get_record_filter: {e}")
+            rows = []
+
+        all_project_ids = {str(row[0]) for row in rows}
+        # Global trưởng phòng có quyền xem toàn bộ dữ liệu ở dự án họ tham gia.
         if primary_role == "ocr-truongphong":
-            return {"filter_project_ids": accessible}
-        # member: chỉ xem dữ liệu của chính mình trong dự án được giao
-        return {"filter_project_ids": accessible, "filter_created_by": user_id}
+            managed_project_ids = all_project_ids
+        else:
+            managed_project_ids = {
+                str(row[0]) for row in rows if str(row[1] or "") == "truong_phong"
+            }
+        return {
+            "managed_project_ids": sorted(managed_project_ids),
+            "member_project_ids": sorted(all_project_ids.difference(managed_project_ids)),
+            "filter_created_by": user_id,
+        }
+
+    @staticmethod
+    def _scope_conditions(alias: str, access_scope: Optional[Dict[str, Any]]) -> Tuple[List[str], List[Any]]:
+        """Tạo điều kiện SQL cho manager-project và member-project.
+
+        ``None`` hoặc ``is_admin`` nghĩa là không giới hạn. Với member, chỉ
+        record do chính họ tạo mới được trả về; manager được thấy mọi record
+        trong dự án họ quản lý.
+        """
+        if not access_scope or access_scope.get("is_admin"):
+            return [], []
+        managed = list(access_scope.get("managed_project_ids") or [])
+        member = list(access_scope.get("member_project_ids") or [])
+        creator = access_scope.get("filter_created_by")
+        branches: List[str] = []
+        params: List[Any] = []
+        if managed:
+            branches.append(f"{alias}.project_id IN ({','.join(['%s'] * len(managed))})")
+            params.extend(managed)
+        if member and creator:
+            branches.append(
+                f"({alias}.project_id IN ({','.join(['%s'] * len(member))}) AND {alias}.created_by = %s)"
+            )
+            params.extend(member)
+            params.append(creator)
+        if not branches:
+            return ["1 = 0"], []
+        return ["(" + " OR ".join(branches) + ")"], params
 
     # ─── QUẢN LÝ BATCH / FOLDER ──────────────────────────────────────────────
 
@@ -620,21 +747,24 @@ class PostgresStore:
             logger.error(f"Lỗi cập nhật tiến độ batch PostgreSQL: {e}")
             return False
 
-    def list_batches(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def list_batches(self, limit: int = 100, access_scope: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Lấy danh sách các thư mục kết quả / đợt quét."""
         if not self._pool:
             return []
         try:
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute("""
+                    scope_clauses, scope_params = self._scope_conditions("b", access_scope)
+                    where_sql = f"WHERE {' AND '.join(scope_clauses)}" if scope_clauses else ""
+                    cur.execute(f"""
                         SELECT batch_id, folder_name, source_path, output_dir,
                                total_files, processed_count, success_count, error_count,
-                               status, created_at, updated_at
-                        FROM ocr_batches
+                               status, project_id, created_by, created_at, updated_at
+                        FROM ocr_batches b
+                        {where_sql}
                         ORDER BY created_at DESC
                         LIMIT %s;
-                    """, (limit,))
+                    """, list(scope_params) + [limit])
                     rows = cur.fetchall()
                     result = []
                     for r in rows:
@@ -646,6 +776,29 @@ class PostgresStore:
         except Exception as e:
             logger.error(f"Lỗi truy vấn batches PostgreSQL: {e}")
             return []
+
+    def get_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
+        """Đọc metadata batch để áp dụng scope trước các thao tác theo batch."""
+        if not self._pool:
+            return None
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        """
+                        SELECT batch_id, project_id, created_by, folder_name, source_path,
+                               output_dir, total_files, processed_count, success_count,
+                               error_count, status, created_at, updated_at
+                        FROM ocr_batches
+                        WHERE batch_id = %s
+                        """,
+                        (batch_id,),
+                    )
+                    row = cur.fetchone()
+                    return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Lỗi get_batch: {e}")
+            return None
 
     # ─── QUẢN LÝ BẢN GHI HỒ SƠ (OCR_RECORDS) ──────────────────────────────────
 
@@ -896,6 +1049,7 @@ class PostgresStore:
         search: Optional[str] = None,
         filter_project_ids: Optional[List[str]] = None,
         filter_created_by: Optional[str] = None,
+        access_scope: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         Lấy danh sách bản ghi hồ sơ tóm tắt kèm hỗ trợ các bộ lọc:
@@ -909,8 +1063,12 @@ class PostgresStore:
             where_clauses = []
             params: List[Any] = []
 
-            # Phân quyền theo dự án (truong_phong/member)
-            if filter_project_ids is not None:
+            # Backward-compatible filters cho caller cũ.
+            if access_scope is not None:
+                scope_clauses, scope_params = self._scope_conditions("r", access_scope)
+                where_clauses.extend(scope_clauses)
+                params.extend(scope_params)
+            elif filter_project_ids is not None:
                 if len(filter_project_ids) == 0:
                     return [], 0  # Không có dự án nào -> trả rỗng
                 placeholders = ",".join(["%s"] * len(filter_project_ids))
@@ -1012,7 +1170,7 @@ class PostgresStore:
                                template, total_pages, so_phat_hanh, so_vao_so, ma_vach,
                                ten_chu, cmnd, so_thua, to_ban_do, dien_tich, dia_chi,
                                raw_markdown, structured_data, chuyen_doi_rows, status,
-                               elapsed_seconds, created_at
+                               elapsed_seconds, project_id, created_by, created_at
                         FROM ocr_records
                         WHERE id = %s;
                     """, (doc_id,))
@@ -1033,7 +1191,8 @@ class PostgresStore:
         batch_id: Optional[str] = None,
         search: Optional[str] = None,
         ids: Optional[List[str]] = None,
-        limit: int = 10000
+        limit: int = 10000,
+        access_scope: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Lấy toàn bộ các bản ghi OCR đầy đủ (kèm raw_markdown, structured_data) phục vụ backup/export."""
         if not self._pool:
@@ -1041,6 +1200,10 @@ class PostgresStore:
         try:
             where_clauses = []
             params: List[Any] = []
+
+            scope_clauses, scope_params = self._scope_conditions("r", access_scope)
+            where_clauses.extend(scope_clauses)
+            params.extend(scope_params)
 
             if ids:
                 where_clauses.append("r.id = ANY(%s)")
@@ -1078,7 +1241,7 @@ class PostgresStore:
                        r.so_vao_so, r.ma_vach, r.ten_chu, r.cmnd, r.so_thua,
                        r.to_ban_do, r.dien_tich, r.dia_chi, r.raw_markdown,
                        r.structured_data, r.chuyen_doi_rows, r.status,
-                       r.elapsed_seconds, r.created_at
+                       r.elapsed_seconds, r.project_id, r.created_by, r.created_at
                 FROM ocr_records r
                 {where_sql}
                 ORDER BY r.created_at DESC
@@ -1106,6 +1269,7 @@ class PostgresStore:
         source_path: Optional[str] = None,
         batch_id: Optional[str] = None,
         limit: int = 5000,
+        access_scope: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Trích xuất trực tiếp danh sách hàng 129 cột đã lưu từ PostgreSQL
@@ -1116,6 +1280,10 @@ class PostgresStore:
         try:
             where_clauses = ["r.chuyen_doi_rows IS NOT NULL"]
             params: List[Any] = []
+
+            scope_clauses, scope_params = self._scope_conditions("r", access_scope)
+            where_clauses.extend(scope_clauses)
+            params.extend(scope_params)
 
             if folder_result and folder_result.strip() and folder_result != "all":
                 where_clauses.append("r.folder_result = %s")
@@ -1163,7 +1331,7 @@ class PostgresStore:
 
     # ─── BỘ LỌC DANH SÁCH THƯ MỤC & NGUỒN ──────────────────────────────────────
 
-    def get_filter_options(self) -> Dict[str, Any]:
+    def get_filter_options(self, access_scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Lấy danh sách các thư mục kết quả (folders), các đường dẫn nguồn (source paths),
         và các mức số lượng file để hiển thị trên bộ lọc UI.
@@ -1173,16 +1341,21 @@ class PostgresStore:
         try:
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    record_scope, record_params = self._scope_conditions("r", access_scope)
+                    record_where = f"WHERE {' AND '.join(record_scope)}" if record_scope else ""
+                    batch_scope, batch_params = self._scope_conditions("b", access_scope)
+                    batch_where = f"WHERE {' AND '.join(batch_scope)}" if batch_scope else ""
                     # 1. Danh sách thư mục kết quả / batch
-                    cur.execute("""
+                    cur.execute(f"""
                         SELECT DISTINCT COALESCE(folder_result, batch_id, 'Khác') as folder,
                                COUNT(*) as doc_count,
                                MIN(created_at) as first_created,
                                MAX(created_at) as last_created
-                        FROM ocr_records
+                        FROM ocr_records r
+                        {record_where}
                         GROUP BY COALESCE(folder_result, batch_id, 'Khác')
                         ORDER BY last_created DESC;
-                    """)
+                    """, record_params)
                     folders_raw = cur.fetchall()
                     folders = [
                         {
@@ -1194,13 +1367,14 @@ class PostgresStore:
                     ]
 
                     # 2. Danh sách link trên máy (source_folder)
-                    cur.execute("""
+                    source_conditions = ["r.source_folder IS NOT NULL", "r.source_folder != ''", *record_scope]
+                    cur.execute(f"""
                         SELECT DISTINCT source_folder, COUNT(*) as doc_count
-                        FROM ocr_records
-                        WHERE source_folder IS NOT NULL AND source_folder != ''
+                        FROM ocr_records r
+                        WHERE {' AND '.join(source_conditions)}
                         GROUP BY source_folder
                         ORDER BY doc_count DESC;
-                    """)
+                    """, record_params)
                     sources_raw = cur.fetchall()
                     sources = [
                         {"path": r["source_folder"], "count": r["doc_count"]}
@@ -1208,12 +1382,13 @@ class PostgresStore:
                     ]
 
                     # 3. Phân bố số lượng file theo batch
-                    cur.execute("""
+                    cur.execute(f"""
                         SELECT batch_id, folder_name, total_files, processed_count
-                        FROM ocr_batches
+                        FROM ocr_batches b
+                        {batch_where}
                         ORDER BY created_at DESC
                         LIMIT 50;
-                    """)
+                    """, batch_params)
                     batches_raw = cur.fetchall()
                     batches = [dict(b) for b in batches_raw]
 
@@ -1226,21 +1401,27 @@ class PostgresStore:
             logger.error(f"Lỗi lấy filter options từ PostgreSQL: {e}")
             return {"folders": [], "sources": [], "batches": []}
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self, access_scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Thống kê tổng thể về số batch, tổng số hồ sơ, số hồ sơ hợp lệ và lỗi."""
         if not self._pool:
             return {"connected": False}
         try:
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute("""
-                        SELECT 
-                            (SELECT COUNT(*) FROM ocr_batches) as total_batches,
-                            (SELECT COUNT(*) FROM ocr_records) as total_records,
-                            (SELECT COUNT(*) FROM ocr_records WHERE status = 'success') as success_records,
-                            (SELECT COUNT(*) FROM ocr_records WHERE status = 'error') as error_records,
-                            (SELECT COUNT(DISTINCT folder_result) FROM ocr_records) as total_folders;
-                    """)
+                    record_scope, record_params = self._scope_conditions("r", access_scope)
+                    record_where = f"WHERE {' AND '.join(record_scope)}" if record_scope else ""
+                    batch_scope, batch_params = self._scope_conditions("b", access_scope)
+                    batch_where = f"WHERE {' AND '.join(batch_scope)}" if batch_scope else ""
+                    cur.execute(f"""
+                        SELECT
+                            (SELECT COUNT(*) FROM ocr_batches b {batch_where}) as total_batches,
+                            COUNT(*) as total_records,
+                            COUNT(*) FILTER (WHERE r.status = 'success') as success_records,
+                            COUNT(*) FILTER (WHERE r.status = 'error') as error_records,
+                            COUNT(DISTINCT r.folder_result) as total_folders
+                        FROM ocr_records r
+                        {record_where};
+                    """, list(batch_params) + list(record_params))
                     row = cur.fetchone()
                     return {
                         "connected": True,
@@ -1336,6 +1517,192 @@ class PostgresStore:
         except Exception as e:
             logger.error(f"Lỗi xóa batch trong PostgreSQL: {e}")
             return 0
+
+    # ─── QUẢN LÝ KHU VỰC (REGIONS) ─────────────────────────────────────────────
+
+    def list_regions(self) -> List[str]:
+        """Lấy danh sách các khu vực trong hệ thống."""
+        default_regions = ["Ninh Bình", "Hà Nam", "Hà Nội", "Nam Định"]
+        if not self._pool:
+            return default_regions
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT name FROM system_regions ORDER BY name ASC;")
+                    rows = cur.fetchall()
+                    if not rows:
+                        return default_regions
+                    return [r[0] for r in rows]
+        except Exception as e:
+            logger.error(f"Lỗi lấy danh sách khu vực: {e}")
+            return default_regions
+
+    def add_region(self, name: str) -> bool:
+        """Thêm khu vực mới vào hệ thống."""
+        cleaned = (name or "").strip()
+        if not cleaned:
+            return False
+        if not self._pool:
+            return False
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO system_regions (name)
+                        VALUES (%s)
+                        ON CONFLICT (name) DO NOTHING;
+                    """, (cleaned,))
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi thêm khu vực {cleaned}: {e}")
+            return False
+
+    def get_user_region(self, user_id: str) -> Optional[str]:
+        """Lấy khu vực của một người dùng theo user_id."""
+        if not self._pool or not user_id:
+            return None
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT region FROM user_regions WHERE user_id = %s;", (user_id,))
+                    row = cur.fetchone()
+                    return row[0] if row else None
+        except Exception as e:
+            logger.error(f"Lỗi lấy khu vực người dùng {user_id}: {e}")
+            return None
+
+    def set_user_region(self, user_id: str, region: str) -> bool:
+        """Lưu hoặc cập nhật khu vực của người dùng."""
+        if not self._pool or not user_id:
+            return False
+        cleaned_region = (region or "").strip()
+        if not cleaned_region:
+            return self.delete_user_region(user_id)
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO system_regions (name)
+                        VALUES (%s)
+                        ON CONFLICT (name) DO NOTHING;
+                    """, (cleaned_region,))
+                    cur.execute("""
+                        INSERT INTO user_regions (user_id, region, updated_at)
+                        VALUES (%s, %s, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id) DO UPDATE
+                        SET region = EXCLUDED.region, updated_at = CURRENT_TIMESTAMP;
+                    """, (user_id, cleaned_region))
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi đặt khu vực cho người dùng {user_id}: {e}")
+            return False
+
+    def delete_user_region(self, user_id: str) -> bool:
+        """Xóa phân bổ khu vực của người dùng."""
+        if not self._pool or not user_id:
+            return False
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM user_regions WHERE user_id = %s;", (user_id,))
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi xóa khu vực người dùng {user_id}: {e}")
+            return False
+
+    def get_all_user_regions(self) -> Dict[str, str]:
+        """Lấy bản đồ user_id -> region cho tất cả người dùng."""
+        if not self._pool:
+            return {}
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT user_id, region FROM user_regions;")
+                    rows = cur.fetchall()
+                    return {r[0]: r[1] for r in rows}
+        except Exception as e:
+            logger.error(f"Lỗi lấy danh sách khu vực người dùng: {e}")
+            return {}
+
+    # ─── QUẢN LÝ TÀI KHOẢN BỊ KHÓA (LOCKED USERS) ──────────────────────────────
+
+    def is_user_locked(self, user_id: str) -> bool:
+        """Kiểm tra tài khoản có nằm trong danh sách bị khóa hay không."""
+        if not user_id:
+            return False
+        with self._lock:
+            if self._locked_users_cache is None:
+                self._load_locked_users_cache()
+            if self._locked_users_cache is not None:
+                return user_id in self._locked_users_cache
+
+        if not self._pool:
+            return False
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM locked_users WHERE user_id = %s;", (user_id,))
+                    return bool(cur.fetchone())
+        except Exception as e:
+            logger.error(f"Lỗi kiểm tra locked_user {user_id}: {e}")
+            return False
+
+    def _load_locked_users_cache(self) -> None:
+        """Nạp danh sách tài khoản bị khóa vào bộ nhớ đệm."""
+        if not self._pool:
+            self._locked_users_cache = set()
+            return
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT user_id FROM locked_users;")
+                    rows = cur.fetchall()
+                    self._locked_users_cache = {r[0] for r in rows}
+        except Exception as e:
+            logger.error(f"Lỗi nạp locked_users_cache: {e}")
+            self._locked_users_cache = set()
+
+    def set_user_locked(self, user_id: str, locked: bool, locked_by: Optional[str] = None) -> bool:
+        """Cập nhật trạng thái khóa tài khoản."""
+        if not user_id:
+            return False
+        with self._lock:
+            if self._locked_users_cache is None:
+                self._load_locked_users_cache()
+            if locked:
+                self._locked_users_cache.add(user_id)
+            else:
+                self._locked_users_cache.discard(user_id)
+
+        if not self._pool:
+            return True
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    if locked:
+                        cur.execute("""
+                            INSERT INTO locked_users (user_id, locked_by, locked_at)
+                            VALUES (%s, %s, CURRENT_TIMESTAMP)
+                            ON CONFLICT (user_id) DO UPDATE
+                            SET locked_by = EXCLUDED.locked_by, locked_at = CURRENT_TIMESTAMP;
+                        """, (user_id, locked_by))
+                    else:
+                        cur.execute("DELETE FROM locked_users WHERE user_id = %s;", (user_id,))
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi lưu locked_user {user_id} (locked={locked}): {e}")
+            return False
+
+    def get_all_locked_users(self) -> set[str]:
+        """Lấy tập hợp tất cả user_id đang bị khóa."""
+        with self._lock:
+            if self._locked_users_cache is None:
+                self._load_locked_users_cache()
+            return set(self._locked_users_cache or ())
 
 
 # Singleton instance
