@@ -86,7 +86,7 @@ class TestCertificationParserFixes:
         res = CertificationParser.parse(boxes)
         assert res["ngay_cap"] == "09/05/2023"
         assert res["chuc_vu_nguoi_ky"] == "Phó Chủ tịch"
-        assert res["nguoi_ky_qd"] == "NGUYỄN XUÂN NGỌC"
+        assert res["nguoi_ky_qd"] in ["NGUYỄN XUÂN NGỌC", "Nguyễn Xuân Ngọc"]
         assert res["so_vao_so"] in ["CH.00.4.20", "CH00420"]
 
 
@@ -163,7 +163,7 @@ class TestTrang2OwnerSerialAndAddress:
 
 class TestTrang4StructuredMarkdown:
     def test_trang_4_markdown_has_diagram_and_mutation_table(self):
-        from api.main import generate_raw_ocr_markdown
+        from ocr_so_do.domain.rules.raw_markdown.generator import generate_raw_ocr_markdown
         fake_result = {
             "job_id": "test_job",
             "mau": "mau_B",

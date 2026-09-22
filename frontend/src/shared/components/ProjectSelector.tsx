@@ -8,6 +8,7 @@ interface Project {
   project_name: string;
   description?: string;
   status: string;
+  region?: string;
 }
 
 interface ProjectSelectorProps {
@@ -40,10 +41,11 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
     try {
       const res = await axios.get('/api/v1/projects?limit=200');
       const list: Project[] = res.data?.projects ?? [];
-      setProjects(list.filter((p) => p.status === 'active'));
+      const activeList = list.filter((p) => p.status === 'active');
+      setProjects(activeList);
       // Tự chọn dự án đầu tiên nếu chưa chọn
-      if (!value && list.length > 0) {
-        onChange(list[0].project_id, list[0].project_name);
+      if (!value && activeList.length > 0) {
+        onChange(activeList[0].project_id, activeList[0].project_name);
       }
     } catch (e: any) {
       setError('Không thể tải danh sách dự án');
@@ -54,20 +56,27 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 
   useEffect(() => {
     void loadProjects();
-  }, []);
+    const handleProjectChanged = () => {
+      void loadProjects();
+    };
+    window.addEventListener('project:changed', handleProjectChanged);
+    return () => {
+      window.removeEventListener('project:changed', handleProjectChanged);
+    };
+  }, [loadProjects]);
 
   if (loading) {
     return (
       <div className={`flex items-center gap-2 text-sm text-slate-400 ${className}`}>
-        <Loader2 size={14} className="animate-spin" />
-        <span>Đang tải dự án...</span>
+        <Loader2 size={14} className="animate-spin text-gov-800" />
+        <span>Đang tải danh mục dự án...</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className={`text-xs text-red-500 ${className}`}>{error}</div>
+      <div className={`text-xs text-red-600 font-medium ${className}`}>{error}</div>
     );
   }
 
@@ -83,24 +92,24 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
     const canCreateProject = can('project.create');
 
     return (
-      <div className={`p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-start gap-2.5 ${className}`}>
-        <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+      <div className={`p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start gap-2.5 ${className}`}>
+        <AlertTriangle size={16} className="text-amber-700 mt-0.5 shrink-0" />
         <div className="flex-1">
-          <div className="font-bold text-amber-900 mb-0.5">Chưa có dự án nào khả dụng</div>
+          <div className="font-bold text-amber-950 mb-0.5">Chưa có dự án nào khả dụng</div>
           {canCreateProject ? (
-            <p className="text-amber-700 leading-relaxed">
+            <p className="text-amber-800 leading-relaxed">
               Bạn chưa có dự án nào để xử lý hồ sơ. Vui lòng{' '}
               <button
                 type="button"
                 onClick={handleNavigate}
-                className="underline font-bold text-indigo-700 hover:text-indigo-900 cursor-pointer inline"
+                className="underline font-bold text-gov-800 hover:text-gov-950 cursor-pointer inline"
               >
                 tạo dự án mới tại Quản lý dự án
               </button>{' '}
               trước khi tiếp tục.
             </p>
           ) : (
-            <p className="text-amber-700 leading-relaxed">
+            <p className="text-amber-800 leading-relaxed">
               Tài khoản của bạn chưa được phân quyền vào bất kỳ dự án nào. Vui lòng liên hệ Trưởng phòng hoặc Quản trị viên để được thêm vào dự án trước khi xử lý hồ sơ.
             </p>
           )}
@@ -112,9 +121,9 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   return (
     <div className={className}>
       {label && (
-        <label className="block text-xs font-medium text-slate-600 mb-1">
-          <Folder size={12} className="inline mr-1" />
-          {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+        <label className="block text-xs font-semibold text-slate-700 mb-1">
+          <Folder size={13} className="inline mr-1 text-gov-800" />
+          {label}{required && <span className="text-red-600 ml-0.5">*</span>}
         </label>
       )}
       <select
@@ -125,15 +134,18 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
         }}
         disabled={disabled}
         required={required}
-        className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm
-                   text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none
-                   focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium
+                   text-slate-800 shadow-xs focus:border-gov-800 focus:outline-none
+                   focus:ring-1 focus:ring-gov-800 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {projects.map((p) => (
-          <option key={p.project_id} value={p.project_id}>
-            {p.project_name}
-          </option>
-        ))}
+        {projects.map((p) => {
+          const regionSuffix = p.region && p.region !== 'Chưa phân khu vực' ? ` [${p.region}]` : '';
+          return (
+            <option key={p.project_id} value={p.project_id}>
+              📁 {p.project_name}{regionSuffix}
+            </option>
+          );
+        })}
       </select>
     </div>
   );

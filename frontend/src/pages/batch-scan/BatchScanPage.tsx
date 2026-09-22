@@ -38,6 +38,7 @@ interface BatchScanPageProps {
   onOpenPgStorage?: () => void;
   onRunningChange?: (isRunning: boolean) => void;
   onNavigateToProjects?: () => void;
+  isActive?: boolean;
 }
 
 export const BatchScanPage: React.FC<BatchScanPageProps> = ({
@@ -45,10 +46,56 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
   onOpenPgStorage,
   onRunningChange,
   onNavigateToProjects,
+  isActive,
 }) => {
   const { can } = useAuth();
-  const [scanMode, setScanMode] = useState<'client_folder' | 'server_path' | 'pair_scan'>('client_folder');
+  const [scanMode, setScanMode] = useState<'client_folder' | 'server_path' | 'hsq_vilg' | 'pair_scan'>('client_folder');
   const [projectId, setProjectId] = useState<string>('');
+  const [projectName, setProjectName] = useState<string>('');
+  const [projectSummary, setProjectSummary] = useState<{ total_records: number; success_records: number; total_folders: number } | null>(null);
+  const [loadingProjectSummary, setLoadingProjectSummary] = useState<boolean>(false);
+
+  const fetchProjectSummary = React.useCallback(async (pId: string) => {
+    if (!pId) {
+      setProjectSummary(null);
+      return;
+    }
+    setLoadingProjectSummary(true);
+    try {
+      const res = await axios.get('/api/v1/pg/stats', { params: { project_id: pId } });
+      setProjectSummary({
+        total_records: res.data?.total_records ?? 0,
+        success_records: res.data?.success_records ?? 0,
+        total_folders: res.data?.total_folders ?? 0,
+      });
+    } catch {
+      setProjectSummary(null);
+    } finally {
+      setLoadingProjectSummary(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (projectId) {
+      void fetchProjectSummary(projectId);
+    } else {
+      setProjectSummary(null);
+    }
+  }, [projectId, fetchProjectSummary]);
+
+  useEffect(() => {
+    if (isActive && projectId) {
+      void fetchProjectSummary(projectId);
+    }
+  }, [isActive, projectId, fetchProjectSummary]);
+
+  useEffect(() => {
+    const handleProjectChanged = () => {
+      if (projectId) void fetchProjectSummary(projectId);
+    };
+    window.addEventListener('project:changed', handleProjectChanged);
+    return () => window.removeEventListener('project:changed', handleProjectChanged);
+  }, [projectId, fetchProjectSummary]);
 
   // Pair Scan State (GCN & GT -> 129 Cột)
   const [pairServerPath, setPairServerPath] = useState<string>('');
@@ -94,6 +141,30 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
   const [sampleCount, setSampleCount] = useState<number>(0);
   const [isServerScanning, setIsServerScanning] = useState<boolean>(false);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [isHSQBatch, setIsHSQBatch] = useState<boolean>(false);
+
+  // HSQ VILG State: one dossier (leaf folder) -> one selected GCN source.
+  const [hsqServerPath, setHsqServerPath] = useState<string>('');
+  const [hsqSampleCount, setHsqSampleCount] = useState<number>(0);
+  const [isPreviewingHSQ, setIsPreviewingHSQ] = useState<boolean>(false);
+  const [showHSQPreview, setShowHSQPreview] = useState<boolean>(false);
+  const [hsqPreviewData, setHsqPreviewData] = useState<{
+    total_dossiers: number;
+    ready_count: number;
+    skipped_count: number;
+    named_gcn_count: number;
+    geometry_gcn_count: number;
+    dossiers: Array<{
+      dossier_path: string;
+      gcn_file: string | null;
+      selection_method: string;
+      status: 'ready' | 'skipped';
+      skipped_reason?: string | null;
+      ground_truth: { to_ban_do: string; so_thua: string; ten_chu: string };
+      page_count?: number | null;
+      file_count: number;
+    }>;
+  } | null>(null);
 
   // Shared Progress & Results State
   const [progressPercent, setProgressPercent] = useState<number>(0);
@@ -324,6 +395,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
       setProgressPercent(0);
       setProcessedCount(0);
       setActiveBatchId(null);
+      setIsHSQBatch(false);
     }
 
     try {
@@ -339,11 +411,79 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
 
       const batchId = res.data?.batch_id;
       setActiveBatchId(batchId);
+      setIsHSQBatch(false);
       setTotalFilesCount(res.data?.total_files || 0);
     } catch (err: any) {
       setIsServerScanning(false);
       setBatchStatus('error');
       setErrorMessage(err.response?.data?.detail || 'Không thể khởi chạy quét thư mục.');
+    }
+  };
+
+  const previewHSQDossiers = async () => {
+    if (!hsqServerPath.trim()) {
+      alert('Vui lòng nhập đường dẫn thư mục HSQ VILG.');
+      return;
+    }
+    if (!projectId) {
+      alert('Vui lòng chọn dự án trước khi phân tích hồ sơ HSQ.');
+      return;
+    }
+    setIsPreviewingHSQ(true);
+    setErrorMessage(null);
+    try {
+      const res = await axios.post('/api/v1/batch/hsq/preview', {
+        directory_path: hsqServerPath.trim(),
+        project_id: projectId,
+      });
+      setHsqPreviewData(res.data);
+      setShowHSQPreview(true);
+    } catch (err: any) {
+      setErrorMessage(err.response?.data?.detail || 'Không thể xem trước danh sách hồ sơ HSQ.');
+    } finally {
+      setIsPreviewingHSQ(false);
+    }
+  };
+
+  const startHSQScan = async (resume: boolean = false) => {
+    if (!hsqServerPath.trim()) {
+      alert('Vui lòng nhập đường dẫn thư mục HSQ VILG.');
+      return;
+    }
+    if (!projectId) {
+      alert('Vui lòng chọn dự án trước khi quét hồ sơ HSQ.');
+      return;
+    }
+
+    const startIdx = resume ? processedCount : 0;
+    setIsServerScanning(true);
+    setBatchStatus('running');
+    setErrorMessage(null);
+    if (!resume) {
+      setResults([]);
+      setChuyenDoiRows([]);
+      setProgressPercent(0);
+      setProcessedCount(0);
+      setActiveBatchId(null);
+      setIsHSQBatch(false);
+    }
+    try {
+      const res = await axios.post('/api/v1/batch/scan-hsq-dossiers', {
+        directory_path: hsqServerPath.trim(),
+        project_id: projectId,
+        sample_count: hsqSampleCount,
+        split_a3: true,
+        smart_gcn_filter: true,
+        start_index: startIdx,
+        resume_batch_id: resume ? activeBatchId : null,
+      });
+      setActiveBatchId(res.data?.batch_id || null);
+      setIsHSQBatch(true);
+      setTotalFilesCount(res.data?.total_files || 0);
+    } catch (err: any) {
+      setIsServerScanning(false);
+      setBatchStatus('error');
+      setErrorMessage(err.response?.data?.detail || 'Không thể khởi chạy quét HSQ VILG.');
     }
   };
 
@@ -669,45 +809,41 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
   return (
     <div className="space-y-6">
       
-      {/* ── HEADER ── */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-800 flex items-center justify-center text-white shadow-sm">
-                <FolderUp size={22} />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold tracking-tight text-slate-950 leading-tight">
+      {/* ── 1. HEADER CHÍNH QUY & CHUYỂN ĐỔI CHẾ ĐỘ ── */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5 sm:p-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-xl bg-gov-900 border border-gov-800 flex items-center justify-center text-amber-400 shadow-sm shrink-0">
+              <FolderUp size={24} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-bold tracking-tight text-slate-950 uppercase leading-tight">
                   Xử lý hồ sơ hàng loạt
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Chọn cách nạp hồ sơ phù hợp, theo dõi tiến độ và kiểm tra kết quả trước khi xuất.
-                </p>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+                  </span>
+                  Tự động hóa
+                </span>
               </div>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Nạp hồ sơ quét, trích xuất dữ liệu đa luồng và đồng bộ vào kho cơ sở dữ liệu địa chính.
+              </p>
             </div>
           </div>
 
-          <div className="w-full sm:w-72">
-            <ProjectSelector
-              value={projectId}
-              onChange={(id) => setProjectId(id)}
-              required
-              disabled={isRunning || isPairScanning}
-              label="Dự án lưu hồ sơ"
-              onNavigateToProjects={onNavigateToProjects}
-            />
-          </div>
-
           {/* Mode Switcher */}
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+          <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200 text-xs font-semibold self-start lg:self-center">
             <button
               onClick={() => { if (!isRunning) setScanMode('client_folder'); }}
               disabled={isRunning}
-              className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
                 scanMode === 'client_folder'
-                  ? 'bg-white text-indigo-700 shadow-sm font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-gov-800 text-white shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-gov-900 hover:bg-slate-200/60'
               }`}
             >
               <FolderUp size={15} />
@@ -716,307 +852,492 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
             <button
               onClick={() => { if (!isRunning && !isPairScanning) setScanMode('server_path'); }}
               disabled={isRunning || isPairScanning}
-              className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
                 scanMode === 'server_path'
-                  ? 'bg-white text-indigo-700 shadow-sm font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-gov-800 text-white shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-gov-900 hover:bg-slate-200/60'
               }`}
             >
               <Server size={15} />
               <span>Từ máy chủ</span>
             </button>
-            {/* TODO: Tạm ẩn chức năng ghép cặp GCN */}
-            {false && (
             <button
-              onClick={() => { if (!isRunning && !isPairScanning) setScanMode('pair_scan'); }}
+              onClick={() => { if (!isRunning && !isPairScanning) setScanMode('hsq_vilg'); }}
               disabled={isRunning || isPairScanning}
-              className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
-                scanMode === 'pair_scan'
-                  ? 'bg-white text-emerald-700 shadow-sm font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+              className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+                scanMode === 'hsq_vilg'
+                  ? 'bg-gov-800 text-white shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-gov-900 hover:bg-slate-200/60'
               }`}
             >
-              <Layers size={15} />
-              <span>Ghép GCN & giấy tờ</span>
+              <FolderOpen size={15} />
+              <span>Quét HSQ VILG</span>
             </button>
-            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2. KHỐI CHỌN DỰ ÁN LƯU TRỮ (RIÊNG BIỆT & RÕ RÀNG) ── */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-gov-900 text-amber-400 text-xs font-bold flex items-center justify-center">1</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-gov-950">Dự án lưu trữ hồ sơ</span>
+              <span className="text-[11px] text-rose-600 font-bold">* Bắt buộc</span>
+            </div>
+            <p className="text-xs text-slate-500 max-w-xl">
+              Toàn bộ hồ sơ trích xuất sẽ được phân loại và quản lý tập trung theo dự án này.
+            </p>
+          </div>
+
+          <div className="w-full lg:w-96">
+            <ProjectSelector
+              value={projectId}
+              onChange={(id, name) => {
+                setProjectId(id);
+                if (name) setProjectName(name);
+              }}
+              required
+              disabled={isRunning || isPairScanning}
+              label=""
+              onNavigateToProjects={onNavigateToProjects}
+            />
           </div>
         </div>
 
-        {/* ── CHẾ ĐỘ 1: TẢI THƯ MỤC TỪ MÁY TÍNH ── */}
-        {scanMode === 'client_folder' && (
-          <div className="mt-6 pt-6 border-t border-slate-100 space-y-4">
-            {!projectId && (
-              <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 flex items-start gap-3 shadow-xs">
-                <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
-                <div className="flex-1">
-                  <h4 className="text-xs font-bold text-amber-900 mb-0.5">
-                    Yêu cầu chọn dự án trước khi xử lý hồ sơ
+        {/* Trạng thái dự án đã chọn hoặc cảnh báo */}
+        {projectId ? (
+          <div className="mt-3.5 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-gov-50 border border-gov-200 text-gov-900 font-medium">
+              <Layers size={13} className="text-gov-800" />
+              <span>Dự án: <strong className="font-bold text-gov-950">{projectName || projectId}</strong></span>
+              <span className="text-slate-300">|</span>
+              <span className="text-slate-600">Đã có: <strong className="text-gov-900 font-bold">{loadingProjectSummary ? '...' : (projectSummary?.total_records ?? 0)}</strong> hồ sơ</span>
+            </div>
+            {onOpenPgStorage && (
+              <button
+                type="button"
+                onClick={onOpenPgStorage}
+                className="font-semibold text-gov-800 hover:text-gov-950 hover:underline flex items-center gap-1.5 text-xs cursor-pointer"
+                title="Mở Kho hồ sơ để xem chi tiết các bản ghi của dự án này"
+              >
+                <Database size={13} />
+                <span>Xem trong Kho hồ sơ</span>
+                <ExternalLink size={11} />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="mt-3.5 pt-3 border-t border-amber-100 flex items-center gap-2 text-xs text-amber-800 bg-amber-50/60 p-2.5 rounded-lg border border-amber-200">
+            <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+            <span>Vui lòng chọn hoặc tạo dự án ở trên trước khi chọn hồ sơ để xử lý.</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── 3. KHỐI NẠP HỒ SƠ (CHẾ ĐỘ 1: TỪ MÁY TÍNH) ── */}
+      {scanMode === 'client_folder' && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-gov-900 text-amber-400 text-xs font-bold flex items-center justify-center">2</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-gov-950">Nạp tập tin / Thư mục từ máy tính</span>
+            </div>
+            {clientFiles.length > 0 && (
+              <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-md">
+                ✓ Sẵn sàng xử lý {clientFiles.length} tệp
+              </span>
+            )}
+          </div>
+
+          {/* Vùng Dropzone rộng rãi, trực quan */}
+          <div
+            className={`border-2 border-dashed rounded-2xl p-8 sm:p-10 text-center transition-all ${
+              !projectId
+                ? 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-60'
+                : clientFiles.length > 0
+                ? 'border-emerald-400 bg-emerald-50/30'
+                : 'border-slate-300 hover:border-gov-800 bg-slate-50/60 hover:bg-gov-50/30'
+            }`}
+          >
+            <input
+              ref={folderInputRef}
+              type="file"
+              // @ts-ignore
+              webkitdirectory=""
+              directory=""
+              multiple
+              className="hidden"
+              onChange={handleFolderSelect}
+            />
+            <input
+              ref={multiFileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.png,.jpg,.jpeg"
+              className="hidden"
+              onChange={handleFolderSelect}
+            />
+
+            {clientFiles.length > 0 ? (
+              <div className="space-y-4">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-2xs">
+                  <CheckCircle2 size={32} />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-slate-900">
+                    Đã nạp thư mục: <span className="text-emerald-800">{folderName}</span>
                   </h4>
-                  <p className="text-xs text-amber-700 leading-relaxed">
-                    {can('project.create') ? (
-                      <>
-                        Bạn chưa chọn hoặc chưa có dự án để lưu trữ kết quả đợt quét. Vui lòng chọn dự án ở phía trên, hoặc{' '}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (onNavigateToProjects) onNavigateToProjects();
-                            else window.dispatchEvent(new CustomEvent('app:navigate', { detail: 'projects' }));
-                          }}
-                          className="font-bold underline text-indigo-700 hover:text-indigo-900 cursor-pointer inline"
-                        >
-                          tạo dự án mới tại Quản lý dự án
-                        </button>.
-                      </>
-                    ) : (
-                      'Tài khoản của bạn chưa được phân quyền vào bất kỳ dự án nào. Vui lòng liên hệ Trưởng phòng hoặc Quản trị viên để được thêm vào dự án trước khi tải hồ sơ.'
-                    )}
+                  <p className="text-xs text-slate-600 mt-1">
+                    Tìm thấy <b className="text-emerald-800 font-bold">{clientFiles.length}</b> tệp PDF / ảnh hợp lệ · Tổng dung lượng:{' '}
+                    <b>{(clientFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(1)} MB</b>
                   </p>
                 </div>
-              </div>
-            )}
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-              <div className="md:col-span-8">
-                {/* Drag and Drop / Select Folder Area */}
-                <div
-                  onClick={() => {
-                    if (!projectId) return;
-                    folderInputRef.current?.click();
-                  }}
-                  className={`border-2 border-dashed rounded-xl p-5 text-center transition ${
-                    !projectId
-                      ? 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-60'
-                      : clientFiles.length > 0
-                      ? 'border-emerald-300 bg-emerald-50/40 cursor-pointer'
-                      : 'border-slate-300 hover:border-indigo-400 bg-slate-50/70 hover:bg-indigo-50/30 cursor-pointer'
-                  }`}
-                >
-                  <input
-                    ref={folderInputRef}
-                    type="file"
-                    // @ts-ignore
-                    webkitdirectory=""
-                    directory=""
-                    multiple
-                    className="hidden"
-                    onChange={handleFolderSelect}
-                  />
-                  <input
-                    ref={multiFileInputRef}
-                    type="file"
-                    multiple
-                    accept=".pdf,.png,.jpg,.jpeg"
-                    className="hidden"
-                    onChange={handleFolderSelect}
-                  />
-
-                  <div className="flex items-center justify-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                      <FolderOpen size={20} />
-                    </div>
-                    <div className="text-left">
-                      {clientFiles.length > 0 ? (
-                        <div>
-                          <p className="text-sm font-bold text-slate-800">
-                            Đã chọn: <span className="text-emerald-700">{folderName}</span>
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            Tìm thấy <b>{clientFiles.length}</b> file PDF/ảnh hợp lệ (Tổng dung lượng:{' '}
-                            {(clientFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(1)} MB)
-                          </p>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">
-                            Nhấn vào đây để chọn thư mục từ máy tính của bạn
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            Hệ thống sẽ tự động quét và lọc các file PDF và ảnh (.pdf, .png, .jpg)
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => folderInputRef.current?.click()}
+                    disabled={isRunning}
+                    className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer shadow-2xs"
+                  >
+                    📁 Chọn thư mục khác
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => multiFileInputRef.current?.click()}
+                    disabled={isRunning}
+                    className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer shadow-2xs"
+                  >
+                    📄 Chọn thêm tệp riêng lẻ
+                  </button>
                 </div>
               </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="w-16 h-16 rounded-2xl bg-gov-50 border border-gov-200 text-gov-800 flex items-center justify-center mx-auto shadow-2xs">
+                  <FolderOpen size={32} />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-slate-900">
+                    Kéo thả thư mục hoặc bấm nút bên dưới để chọn hồ sơ
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                    Hệ thống sẽ tự động quét đệ quy và bóc tách các tệp tài liệu PDF và ảnh quét Giấy chứng nhận (.pdf, .png, .jpg, .jpeg)
+                  </p>
+                </div>
 
-              {/* Action Buttons */}
-              <div className="md:col-span-4 flex flex-col gap-2">
-                {isClientProcessing ? (
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                   <button
-                    onClick={stopClientProcessing}
-                    className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-2"
-                  >
-                    <Square size={16} />
-                    <span>Dừng Tiến Trình</span>
-                  </button>
-                ) : clientPausedIndex > 0 && clientPausedIndex < clientFiles.length ? (
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={() => startClientProcessing(true)}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-2"
-                    >
-                      <Play size={16} />
-                      <span>Tiếp Tục Xử Lý (Từ file {clientPausedIndex + 1}/{clientFiles.length})</span>
-                    </button>
-                    <button
-                      onClick={() => startClientProcessing(false)}
-                      className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 border border-slate-200"
-                    >
-                      <RotateCcw size={14} />
-                      <span>Quét lại từ đầu</span>
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => startClientProcessing(false)}
-                    disabled={clientFiles.length === 0 || !projectId}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-sm font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-2"
-                  >
-                    <Play size={16} />
-                    <span>Bắt Đầu Xử Lý ({clientFiles.length} files)</span>
-                  </button>
-                )}
-
-                <div className="flex gap-2">
-                  <button
+                    type="button"
                     onClick={() => {
-                      if (!projectId) return;
+                      if (!projectId) {
+                        alert('Vui lòng chọn dự án trước khi chọn hồ sơ.');
+                        return;
+                      }
                       folderInputRef.current?.click();
                     }}
                     disabled={isRunning || !projectId}
-                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-xs font-semibold rounded-lg transition"
+                    className="px-5 py-2.5 bg-gov-800 hover:bg-gov-900 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm cursor-pointer disabled:cursor-not-allowed"
                   >
-                    Chọn thư mục khác
+                    <FolderOpen size={16} />
+                    <span>Chọn Thư mục từ máy tính</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
-                      if (!projectId) return;
+                      if (!projectId) {
+                        alert('Vui lòng chọn dự án trước khi chọn hồ sơ.');
+                        return;
+                      }
                       multiFileInputRef.current?.click();
                     }}
                     disabled={isRunning || !projectId}
-                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-xs font-semibold rounded-lg transition"
+                    className="px-5 py-2.5 bg-white hover:bg-slate-50 disabled:bg-slate-100 text-slate-700 disabled:text-slate-400 border border-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-2xs cursor-pointer disabled:cursor-not-allowed"
                   >
-                    Chọn từng file
+                    <Files size={16} />
+                    <span>Chọn Tệp riêng lẻ</span>
                   </button>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* Thanh Nút Thao Tác Bắt Đầu / Dừng */}
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-slate-500">
+              {clientFiles.length > 0 ? (
+                <span>Trạng thái: Đã sẵn sàng xử lý tuần tự {clientFiles.length} tệp</span>
+              ) : (
+                <span>Chưa có tệp nào được nạp</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              {isClientProcessing ? (
+                <button
+                  onClick={stopClientProcessing}
+                  className="px-6 py-3 bg-rose-700 hover:bg-rose-800 text-white text-sm font-bold rounded-xl shadow-sm transition flex items-center gap-2 cursor-pointer"
+                >
+                  <Square size={16} />
+                  <span>Dừng Tiến Trình</span>
+                </button>
+              ) : clientPausedIndex > 0 && clientPausedIndex < clientFiles.length ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => startClientProcessing(true)}
+                    className="px-6 py-3 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-bold rounded-xl shadow-sm transition flex items-center gap-2 cursor-pointer"
+                  >
+                    <Play size={16} />
+                    <span>Tiếp Tục Xử Lý ({clientPausedIndex + 1}/{clientFiles.length})</span>
+                  </button>
+                  <button
+                    onClick={() => startClientProcessing(false)}
+                    className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 border border-slate-300 cursor-pointer"
+                  >
+                    <RotateCcw size={14} />
+                    <span>Quét lại từ đầu</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => startClientProcessing(false)}
+                  disabled={clientFiles.length === 0 || !projectId}
+                  className="px-8 py-3 bg-gov-800 hover:bg-gov-900 disabled:bg-slate-200 text-white disabled:text-slate-400 text-sm font-bold rounded-xl shadow-sm transition flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <Play size={16} />
+                  <span>Bắt Đầu Xử Lý ({clientFiles.length} hồ sơ)</span>
+                </button>
+              )}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ── CHẾ ĐỘ 2: QUÉT THƯ MỤC TRÊN MÁY CHỦ ── */}
-        {scanMode === 'server_path' && (
-          <div className="mt-6 pt-6 border-t border-slate-100 space-y-4">
+      {/* ── CHẾ ĐỘ 2: QUÉT THƯ MỤC TRÊN MÁY CHỦ ── */}
+      {scanMode === 'server_path' && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="w-5 h-5 rounded-full bg-gov-900 text-amber-400 text-xs font-bold flex items-center justify-center">2</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-gov-950">Quét thư mục máy chủ</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+            <div className="md:col-span-7">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Đường dẫn thư mục chứa hồ sơ trên máy chủ:
+              </label>
+              <input
+                type="text"
+                value={serverPath}
+                onChange={e => setServerPath(e.target.value)}
+                disabled={isRunning}
+                placeholder="Ví dụ: /data/so_do_hai_phong hoặc D:\HSQ_GCN"
+                className="w-full text-sm font-mono bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-none focus:border-gov-800 focus:ring-2 focus:ring-gov-800/10"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Số lượng mẫu:</label>
+              <select
+                value={sampleCount}
+                onChange={e => setSampleCount(parseInt(e.target.value))}
+                disabled={isRunning}
+                className="w-full text-sm bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-800 focus:outline-none focus:border-gov-800"
+              >
+                <option value={0}>Tất cả file</option>
+                <option value={5}>5 file ngẫu nhiên</option>
+                <option value={10}>10 file</option>
+                <option value={20}>20 file</option>
+                <option value={50}>50 file</option>
+                <option value={100}>100 file</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-3 flex gap-2">
+              {isServerScanning ? (
+                <button
+                  onClick={stopServerScan}
+                  className="flex-1 py-2.5 bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Square size={15} />
+                  <span>Dừng Quét</span>
+                </button>
+              ) : (batchStatus === 'paused' || batchStatus === 'cancelled') && activeBatchId && processedCount > 0 && processedCount < totalFilesCount ? (
+                <div className="flex-1 flex gap-1.5">
+                  <button
+                    onClick={() => startServerScan(true)}
+                    className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1 cursor-pointer"
+                    title={`Tiếp tục quét từ file ${processedCount + 1}`}
+                  >
+                    <Play size={14} />
+                    <span>Tiếp tục ({processedCount + 1}/{totalFilesCount})</span>
+                  </button>
+                  <button
+                    onClick={() => startServerScan(false)}
+                    className="px-2.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center justify-center border border-slate-200 cursor-pointer"
+                    title="Quét lại từ đầu"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => startServerScan(false)}
+                  disabled={!projectId || isRunning || !serverPath.trim()}
+                  className="flex-1 py-2.5 bg-gov-800 hover:bg-gov-900 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <Play size={15} />
+                  <span>Bắt Đầu Quét</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CHẾ ĐỘ 3: QUÉT HỒ SƠ HSQ VILG ── */}
+      {scanMode === 'hsq_vilg' && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="w-5 h-5 rounded-full bg-gov-900 text-amber-400 text-xs font-bold flex items-center justify-center">2</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-gov-950">Quét Hồ Sơ HSQ VILG</span>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-xs text-emerald-950 leading-relaxed">
+            Mỗi thư mục hồ sơ chỉ quét một GCN: ưu tiên <b>b/Bìa/GCN/G.pdf</b>; nếu không có,
+            hệ thống nhận diện hai trang A3 ngang đầu file scan gộp. Các file biên lai và đơn A4
+            được bỏ qua. Tờ, Thửa, Chủ trong đường dẫn chỉ dùng để đối soát hoặc bổ sung trường trống.
+          </div>
+
             {!projectId && (
               <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 flex items-start gap-3 shadow-xs">
                 <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
-                <div className="flex-1">
-                  <h4 className="text-xs font-bold text-amber-900 mb-0.5">
-                    Yêu cầu chọn dự án trước khi quét thư mục máy chủ
-                  </h4>
-                  <p className="text-xs text-amber-700 leading-relaxed">
-                    {can('project.create') ? (
-                      <>
-                        Bạn chưa chọn hoặc chưa có dự án để lưu trữ kết quả đợt quét. Vui lòng chọn dự án ở phía trên, hoặc{' '}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (onNavigateToProjects) onNavigateToProjects();
-                            else window.dispatchEvent(new CustomEvent('app:navigate', { detail: 'projects' }));
-                          }}
-                          className="font-bold underline text-indigo-700 hover:text-indigo-900 cursor-pointer inline"
-                        >
-                          tạo dự án mới tại Quản lý dự án
-                        </button>.
-                      </>
-                    ) : (
-                      'Tài khoản của bạn chưa được phân quyền vào bất kỳ dự án nào. Vui lòng liên hệ Trưởng phòng hoặc Quản trị viên để được thêm vào dự án trước khi quét.'
-                    )}
-                  </p>
-                </div>
+                <p className="text-xs leading-relaxed">Vui lòng chọn dự án trước khi xem trước hoặc quét hồ sơ HSQ VILG.</p>
               </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
               <div className="md:col-span-7">
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Đường dẫn thư mục chứa hồ sơ trên máy chủ:
+                  Thư mục gốc xã/phường hoặc thư mục một hồ sơ:
                 </label>
                 <input
                   type="text"
-                  value={serverPath}
-                  onChange={e => setServerPath(e.target.value)}
+                  value={hsqServerPath}
+                  onChange={e => setHsqServerPath(e.target.value)}
                   disabled={isRunning}
-                  placeholder="Nhập đường dẫn thư mục trên máy chủ"
-                  className="w-full text-sm font-mono bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-indigo-500"
+                  placeholder="D:\\HSQ ...\\HoNam sau VILG hoặc ...\\Tờ 01\\thửa 9\\Bùi Thị Du"
+                  className="w-full text-sm font-mono bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-emerald-500"
                 />
               </div>
-
               <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Số lượng mẫu:</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Số hồ sơ mẫu:</label>
                 <select
-                  value={sampleCount}
-                  onChange={e => setSampleCount(parseInt(e.target.value))}
+                  value={hsqSampleCount}
+                  onChange={e => setHsqSampleCount(parseInt(e.target.value))}
                   disabled={isRunning}
-                  className="w-full text-sm bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-800 focus:outline-indigo-500"
+                  className="w-full text-sm bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-800 focus:outline-emerald-500"
                 >
-                  <option value={0}>Tất cả file</option>
-                  <option value={5}>5 file ngẫu nhiên</option>
-                  <option value={10}>10 file</option>
-                  <option value={20}>20 file</option>
-                  <option value={50}>50 file</option>
-                  <option value={100}>100 file</option>
+                  <option value={0}>Tất cả hồ sơ</option>
+                  <option value={5}>5 hồ sơ</option>
+                  <option value={10}>10 hồ sơ</option>
+                  <option value={20}>20 hồ sơ</option>
+                  <option value={50}>50 hồ sơ</option>
                 </select>
               </div>
-
               <div className="md:col-span-3 flex gap-2">
+                <button
+                  onClick={previewHSQDossiers}
+                  disabled={!projectId || isRunning || !hsqServerPath.trim()}
+                  className="flex-1 py-2.5 bg-white hover:bg-emerald-50 disabled:bg-slate-100 border border-emerald-300 text-emerald-800 disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5"
+                >
+                  {isPreviewingHSQ ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+                  <span>Xem trước</span>
+                </button>
                 {isServerScanning ? (
                   <button
                     onClick={stopServerScan}
                     className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
                   >
                     <Square size={15} />
-                    <span>Dừng Quét</span>
+                    <span>Dừng quét</span>
                   </button>
-                ) : (batchStatus === 'paused' || batchStatus === 'cancelled') && activeBatchId && processedCount > 0 && processedCount < totalFilesCount ? (
-                  <div className="flex-1 flex gap-1.5">
-                    <button
-                      onClick={() => startServerScan(true)}
-                      className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1"
-                      title={`Tiếp tục quét từ file ${processedCount + 1}`}
-                    >
-                      <Play size={14} />
-                      <span>Tiếp tục ({processedCount + 1}/{totalFilesCount})</span>
-                    </button>
-                    <button
-                      onClick={() => startServerScan(false)}
-                      className="px-2.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center justify-center border border-slate-200"
-                      title="Quét lại từ đầu"
-                    >
-                      <RotateCcw size={14} />
-                    </button>
-                  </div>
-                ) : (
+                ) : (batchStatus === 'paused' || batchStatus === 'cancelled') && isHSQBatch && activeBatchId && processedCount > 0 && processedCount < totalFilesCount ? (
                   <button
-                    onClick={() => startServerScan(false)}
-                    disabled={!projectId || isRunning || !serverPath.trim()}
-                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
+                    onClick={() => startHSQScan(true)}
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
                   >
                     <Play size={15} />
-                    <span>Bắt Đầu Quét</span>
+                    <span>Tiếp tục</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => startHSQScan(false)}
+                    disabled={!projectId || isRunning || !hsqServerPath.trim()}
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
+                  >
+                    <Play size={15} />
+                    <span>Bắt đầu quét</span>
                   </button>
                 )}
               </div>
             </div>
 
+            {hsqPreviewData && (
+              <div className="rounded-xl border border-emerald-200 bg-white overflow-hidden">
+                <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-emerald-100">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
+                    <span><b className="text-emerald-700">{hsqPreviewData.total_dossiers}</b> hồ sơ</span>
+                    <span><b className="text-emerald-700">{hsqPreviewData.ready_count}</b> sẵn sàng</span>
+                    <span><b className="text-sky-700">{hsqPreviewData.named_gcn_count}</b> file GCN riêng</span>
+                    <span><b className="text-gov-800">{hsqPreviewData.geometry_gcn_count}</b> nhận diện A3</span>
+                    <span><b className="text-amber-700">{hsqPreviewData.skipped_count}</b> bỏ qua</span>
+                  </div>
+                  <button
+                    onClick={() => setShowHSQPreview(!showHSQPreview)}
+                    className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline inline-flex items-center gap-1"
+                  >
+                    <Eye size={13} />
+                    <span>{showHSQPreview ? 'Ẩn danh sách' : 'Xem danh sách'}</span>
+                  </button>
+                </div>
+                {showHSQPreview && (
+                  <div className="max-h-80 overflow-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="sticky top-0 bg-emerald-50 text-emerald-950 border-b border-emerald-100">
+                        <tr>
+                          <th className="px-3 py-2">Hồ sơ</th>
+                          <th className="px-3 py-2">GCN được chọn</th>
+                          <th className="px-3 py-2">Nguồn chọn</th>
+                          <th className="px-3 py-2">Ground-truth đường dẫn</th>
+                          <th className="px-3 py-2">Trạng thái</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {hsqPreviewData.dossiers.map((dossier, index) => (
+                          <tr key={`${dossier.dossier_path}-${index}`}>
+                            <td className="px-3 py-2 font-mono max-w-[260px] truncate" title={dossier.dossier_path}>{dossier.dossier_path}</td>
+                            <td className="px-3 py-2 font-semibold">{dossier.gcn_file || '-'}</td>
+                            <td className="px-3 py-2">{dossier.selection_method === 'named_gcn' ? 'Tên file GCN' : dossier.selection_method === 'geometry_a3_pair' ? '2 trang A3' : '-'}</td>
+                            <td className="px-3 py-2">Tờ {dossier.ground_truth.to_ban_do || '?'} · Thửa {dossier.ground_truth.so_thua || '?'} · {dossier.ground_truth.ten_chu || '?'}</td>
+                            <td className={`px-3 py-2 font-semibold ${dossier.status === 'ready' ? 'text-emerald-700' : 'text-amber-700'}`} title={dossier.skipped_reason || ''}>
+                              {dossier.status === 'ready' ? 'Sẵn sàng' : 'Bỏ qua'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── CHẾ ĐỘ 3: QUÉT GHÉP CẶP GCN & GT (CCCD) [MỚI] ── */}
-        {scanMode === 'pair_scan' && (
-          <div className="mt-6 pt-6 border-t border-slate-100 space-y-4">
+      {/* ── CHẾ ĐỘ 4: QUÉT GHÉP CẶP GCN & GT (CCCD) [MỚI] ── */}
+      {scanMode === 'pair_scan' && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
               <div className="md:col-span-6">
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -1156,7 +1477,6 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
             )}
           </div>
         )}
-      </div>
 
       {/* ── THÔNG BÁO LỖI NẾU CÓ ── */}
       {errorMessage && (
@@ -1225,13 +1545,13 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
               </div>
             </div>
 
-            <div className="bg-indigo-50/60 rounded-xl p-3.5 border border-indigo-200/80 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+            <div className="bg-gov-50/60 rounded-xl p-3.5 border border-gov-200/80 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gov-100 text-gov-800 flex items-center justify-center">
                 <Clock size={20} />
               </div>
               <div>
-                <p className="text-[11px] font-semibold text-indigo-700">Thời gian chạy</p>
-                <p className="text-lg font-bold text-indigo-800">{pairElapsedSeconds}s</p>
+                <p className="text-[11px] font-semibold text-gov-800">Thời gian chạy</p>
+                <p className="text-lg font-bold text-gov-950">{pairElapsedSeconds}s</p>
               </div>
             </div>
 
@@ -1376,7 +1696,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
             <div className="flex items-center gap-2">
               <span className={`w-3 h-3 rounded-full ${
                 isRunning
-                  ? 'bg-indigo-500 animate-pulse'
+                  ? 'bg-gov-800 animate-pulse'
                   : batchStatus === 'completed'
                   ? 'bg-emerald-500'
                   : batchStatus === 'paused' || batchStatus === 'cancelled'
@@ -1394,7 +1714,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
               </h3>
             </div>
             <div className="text-xs font-bold text-slate-500">
-              Tiến độ: <span className="text-indigo-600 text-sm">{processedCount}</span> / {totalFilesCount} hồ sơ
+              Tiến độ: <span className="text-gov-800 text-sm font-bold">{processedCount}</span> / {totalFilesCount} hồ sơ
             </div>
           </div>
 
@@ -1408,11 +1728,11 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
                   ? `Tạm dừng sau file thứ ${processedCount}. Bạn có thể bấm Tiếp tục để chạy tiếp.`
                   : currentFileName}
               </span>
-              <span className="font-bold text-indigo-600">{progressPercent}%</span>
+              <span className="font-bold text-gov-800">{progressPercent}%</span>
             </div>
             <div className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden p-0.5 border border-slate-200">
               <div
-                className="bg-gradient-to-r from-indigo-500 via-emerald-500 to-emerald-600 h-full rounded-full transition-all duration-300"
+                className="bg-gradient-to-r from-gov-800 via-emerald-600 to-emerald-700 h-full rounded-full transition-all duration-300"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
@@ -1450,13 +1770,13 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
               </div>
             </div>
 
-            <div className="bg-indigo-50/60 rounded-xl p-3.5 border border-indigo-200/80 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+            <div className="bg-gov-50/60 rounded-xl p-3.5 border border-gov-200/80 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gov-100 text-gov-800 flex items-center justify-center">
                 <Clock size={20} />
               </div>
               <div>
-                <p className="text-[11px] font-semibold text-indigo-700">Thời gian TB / file</p>
-                <p className="text-lg font-bold text-indigo-800">{avgTimePerFile}s</p>
+                <p className="text-[11px] font-semibold text-gov-800">Thời gian TB / file</p>
+                <p className="text-lg font-bold text-gov-950">{avgTimePerFile}s</p>
               </div>
             </div>
           </div>
@@ -1489,7 +1809,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
                 <button
                   onClick={handleView129Table}
                   disabled={results.length === 0 && chuyenDoiRows.length === 0}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+                  className="px-4 py-2 bg-gov-800 hover:bg-gov-900 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer disabled:cursor-not-allowed"
                 >
                   <span>Xem Trên Bảng 129 Cột</span>
                   <ArrowRight size={14} />
@@ -1505,7 +1825,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <FileText size={16} className="text-indigo-600" />
+              <FileText size={16} className="text-gov-800" />
               <span>Danh Sách Hồ Sơ Đã Xử Lý ({results.length})</span>
             </h4>
             <span className="text-xs text-slate-400">
@@ -1609,7 +1929,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
                               content: md || '# Không tìm thấy dữ liệu thô Markdown cho hồ sơ này.'
                             });
                           }}
-                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 transition"
+                          className="px-2.5 py-1 bg-gov-50 hover:bg-gov-100 text-gov-800 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 transition"
                           title="Xem văn bản OCR thô dạng Markdown"
                         >
                           <FileCode size={12} />
@@ -1631,7 +1951,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
           <div className="bg-white rounded-2xl max-w-4xl w-full h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm">
+                <div className="w-9 h-9 rounded-lg bg-gov-900 flex items-center justify-center text-amber-400 shadow-sm">
                   <FileCode size={18} />
                 </div>
                 <div>
@@ -1647,7 +1967,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
                     setCopiedMd(true);
                     setTimeout(() => setCopiedMd(false), 2000);
                   }}
-                  className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
                   {copiedMd ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
                   <span>{copiedMd ? 'Đã sao chép!' : 'Sao chép'}</span>
@@ -1664,7 +1984,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
                     a.click();
                     URL.revokeObjectURL(url);
                   }}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+                  className="px-3 py-1.5 bg-gov-800 hover:bg-gov-900 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
                   <Download size={14} />
                   <span>Tải .md</span>
@@ -1672,14 +1992,14 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
 
                 <button
                   onClick={() => setViewingMarkdownItem(null)}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition ml-1"
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition ml-1 cursor-pointer"
                 >
                   <X size={18} />
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 p-6 overflow-y-auto bg-slate-950 text-slate-200 font-mono text-xs leading-relaxed selection:bg-indigo-600 selection:text-white">
+            <div className="flex-1 p-6 overflow-y-auto bg-slate-950 text-slate-200 font-mono text-xs leading-relaxed selection:bg-gov-800 selection:text-white">
               <pre className="whitespace-pre-wrap break-words font-mono">
                 {viewingMarkdownItem.content}
               </pre>

@@ -145,6 +145,8 @@ class DmnVnNormalizer:
     _province_data: List[Dict] = []
 
     # Index tìm nhanh theo mã
+    _province_by_code: Dict[str, Dict] = {}
+    _district_by_code: Dict[str, Dict] = {}
     _district_by_province: Dict[str, List[Dict]] = {}  # province_code → [district, ...]
     _commune_by_district: Dict[str, List[Dict]] = {}   # district_code → [ward, ...]
 
@@ -206,13 +208,46 @@ class DmnVnNormalizer:
         all_districts: List[Dict] = []
         for province in raw:
             p_code = str(province["code"])
+            DmnVnNormalizer._province_by_code[p_code] = province
             districts = province.get("districts", [])
             DmnVnNormalizer._district_by_province[p_code] = districts
 
             for district in districts:
                 d_code = str(district["code"])
-                DmnVnNormalizer._commune_by_district[d_code] = district.get("wards", [])
+                district["province_code"] = p_code
+                DmnVnNormalizer._district_by_code[d_code] = district
+                wards = district.get("wards", [])
+                for w in wards:
+                    w["district_code"] = d_code
+                DmnVnNormalizer._commune_by_district[d_code] = list(wards)
                 all_districts.append(district)
+
+        # Nạp bổ sung các đơn vị hành chính lịch sử (ví dụ: các phường/xã cũ đã sáp nhập)
+        hist_file = Path(data_path).parent / "historical_administrative_units.json"
+        if hist_file.exists():
+            try:
+                with open(hist_file, encoding="utf-8") as hf:
+                    hist_data = json.load(hf)
+                for hw in hist_data.get("wards", []):
+                    w_name = hw.get("name")
+                    d_name_raw = _strip_prefix(hw.get("district_name", "")).lower()
+                    target_d = None
+                    for d in all_districts:
+                        if _strip_prefix(d["name"]).lower() == d_name_raw:
+                            target_d = d
+                            break
+                    if target_d:
+                        td_code = str(target_d["code"])
+                        fake_ward = {
+                            "name": w_name,
+                            "code": f"hist_{td_code}_{len(DmnVnNormalizer._commune_by_district.get(td_code, []))}",
+                            "division_type": "phường" if "phường" in w_name.lower() else "xã",
+                            "district_code": td_code
+                        }
+                        DmnVnNormalizer._commune_by_district[td_code].append(fake_ward)
+                logger.info("DmnVnNormalizer: Đã nạp thành công các đơn vị hành chính lịch sử từ %s", hist_file.name)
+            except Exception as e:
+                logger.warning("Không thể nạp historical_administrative_units.json: %s", e)
 
         DmnVnNormalizer._all_districts = all_districts
         DmnVnNormalizer._all_district_names = [
@@ -428,3 +463,95 @@ class DmnVnNormalizer:
             results["xa"] = r
 
         return results
+
+    @classmethod
+    def get_province_by_code(cls, code: str) -> Optional[Dict]:
+        """Lấy thông tin tỉnh/thành phố theo mã đơn vị hành chính."""
+        return cls._province_by_code.get(str(code))
+
+    @classmethod
+    def get_district_by_code(cls, code: str) -> Optional[Dict]:
+        """Lấy thông tin quận/huyện theo mã đơn vị hành chính."""
+        return cls._district_by_code.get(str(code))
+
+    def infer_hierarchy(
+        self,
+        province: Optional[str] = None,
+        district: Optional[str] = None,
+        commune: Optional[str] = None,
+    ) -> Tuple[str, str, str]:
+        """
+        Suy diễn phân cấp địa danh hành chính 2 chiều (Top-down & Bottom-up)
+        dựa trên Danh mục hành chính quốc gia (DMN-VN) và danh bạ lịch sử.
+
+        Quy tắc:
+        1. Top-down: Nếu có Tỉnh -> match Huyện trong Tỉnh -> match Xã trong Huyện.
+        2. Bottom-up từ Huyện: Nếu thiếu Tỉnh nhưng có Huyện:
+           - Match Huyện trên toàn bộ 696 huyện toàn quốc.
+           - Từ parent_code của Huyện -> suy diễn chính xác Tỉnh tương ứng!
+        3. Bottom-up từ Xã: Nếu thiếu cả Tỉnh lẫn Huyện:
+           - Match Xã trên toàn quốc / danh mục lịch sử.
+           - Từ parent_code của Xã -> suy diễn Huyện -> suy diễn Tỉnh!
+        4. Chuẩn hóa tên trả về: bỏ tiền tố thừa, trả về tên hành chính chuẩn.
+
+        Returns:
+            Tuple (clean_province, clean_district, clean_commune)
+        """
+        prov_in = str(province or "").strip()
+        dist_in = str(district or "").strip()
+        comm_in = str(commune or "").strip()
+
+        norm_p: Optional[MatchResult] = None
+        norm_d: Optional[MatchResult] = None
+        norm_c: Optional[MatchResult] = None
+
+        # 1. Thử match Province nếu có
+        if prov_in:
+            norm_p = self.match_province(prov_in)
+
+        # 2. Match District (ưu tiên trong tỉnh nếu province đã match)
+        if dist_in:
+            norm_d = self.match_district(dist_in, province_code=norm_p.code if norm_p else None)
+
+        # 3. Match Commune (ưu tiên trong huyện nếu district đã match)
+        if comm_in:
+            norm_c = self.match_commune(comm_in, district_code=norm_d.code if norm_d else None)
+
+        # 4. Bottom-up từ District lên Province (nếu chưa có Province nhưng Huyện đã match)
+        if not norm_p and norm_d and norm_d.parent_code:
+            p_dict = self.get_province_by_code(norm_d.parent_code)
+            if p_dict:
+                norm_p = MatchResult(
+                    name=p_dict["name"],
+                    code=str(p_dict["code"]),
+                    division_type=p_dict.get("division_type", "tỉnh"),
+                    score=norm_d.score,
+                )
+
+        # 5. Bottom-up từ Commune lên District và Province (nếu chưa có cả 2 hoặc chưa có District)
+        if not norm_d and norm_c and norm_c.parent_code:
+            d_dict = self.get_district_by_code(norm_c.parent_code)
+            if d_dict:
+                norm_d = MatchResult(
+                    name=d_dict["name"],
+                    code=str(d_dict["code"]),
+                    division_type=d_dict.get("division_type", "huyện"),
+                    score=norm_c.score,
+                    parent_code=str(d_dict.get("province_code", ""))
+                )
+                if not norm_p and norm_d.parent_code:
+                    p_dict = self.get_province_by_code(norm_d.parent_code)
+                    if p_dict:
+                        norm_p = MatchResult(
+                            name=p_dict["name"],
+                            code=str(p_dict["code"]),
+                            division_type=p_dict.get("division_type", "tỉnh"),
+                            score=norm_c.score,
+                        )
+
+        # Giá trị đầu ra: nếu match được dùng clean_name, ngược lại giữ nguyên input đã strip prefix
+        res_p = norm_p.clean_name if norm_p else _strip_prefix(prov_in)
+        res_d = norm_d.clean_name if norm_d else _strip_prefix(dist_in)
+        res_c = norm_c.clean_name if norm_c else _strip_prefix(comm_in)
+
+        return res_p, res_d, res_c

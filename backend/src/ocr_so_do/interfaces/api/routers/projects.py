@@ -31,6 +31,7 @@ INITIAL_ADMIN_USERNAME = os.getenv("OCR_INITIAL_ADMIN_USERNAME", "admin").strip(
 class CreateProjectRequest(BaseModel):
     project_name: str = Field(..., min_length=1, max_length=255, description="Tên dự án")
     description: Optional[str] = Field(None, max_length=1000, description="Mô tả dự án")
+    region: Optional[str] = Field(None, max_length=100, description="Khu vực dự án (tùy chọn hoặc do Admin chỉ định)")
     member_ids: Optional[List[str]] = Field(default_factory=list, description="Danh sách Keycloak user ID thành viên thêm vào dự án")
 
 
@@ -63,13 +64,14 @@ async def create_project(
     store = get_postgres_store()
     project_id = f"proj_{uuid.uuid4().hex[:10]}"
     caller_region = store.get_user_region(principal.subject) if hasattr(store, "get_user_region") else None
+    target_region = (payload.region or "").strip() or caller_region or None
 
     saved = store.save_project(
         project_id=project_id,
         project_name=project_name,
         description=(payload.description or "").strip() or None,
         created_by=principal.subject,
-        region=caller_region,
+        region=target_region,
     )
     if not saved:
         raise HTTPException(
@@ -140,7 +142,7 @@ async def create_project(
             "project_name": project_name,
             "description": payload.description,
             "created_by": principal.subject,
-            "region": caller_region,
+            "region": target_region,
             "message": f"Dự án '{project_name}' đã được tạo thành công.",
         },
     )
@@ -149,18 +151,24 @@ async def create_project(
 @router.get("", summary="Danh sách dự án theo quyền")
 async def list_projects(
     limit: int = Query(100, ge=1, le=500),
+    region: Optional[str] = Query(None, description="Lọc theo khu vực (Admin tổng)"),
     principal: Principal = Depends(get_current_principal),
 ):
     """
-    - admin gốc (INITIAL_ADMIN_USERNAME): thấy tất cả dự án toàn quốc
+    - admin gốc (INITIAL_ADMIN_USERNAME): thấy tất cả dự án toàn quốc, có thể lọc theo region
     - quản trị viên khu vực (ocr-admin khác): chỉ thấy dự án thuộc khu vực của mình
     - truong_phong: chỉ thấy dự án mình tham gia
     - member: chỉ thấy dự án được giao
     """
     store = get_postgres_store()
 
+    cleaned_region = region.strip() if (region and isinstance(region, str) and region.strip() and region.strip() != 'all') else None
+
     if principal.username == INITIAL_ADMIN_USERNAME:
-        projects = store.list_all_projects(limit=limit)
+        if cleaned_region:
+            projects = store.list_projects_by_region(region=cleaned_region, limit=limit)
+        else:
+            projects = store.list_all_projects(limit=limit)
     elif principal.is_admin():
         caller_region = store.get_user_region(principal.subject) if hasattr(store, "get_user_region") else None
         if caller_region:

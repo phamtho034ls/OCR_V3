@@ -23,8 +23,9 @@ if (_project_root / ".env").exists():
 
 from ocr_so_do.interfaces.api.app import app  # noqa: F401
 from ocr_so_do.infrastructure.imaging.opencv_cropper import PaddingPolicy, OpenCVCropper
+from ocr_so_do.domain.rules.raw_markdown.generator import generate_raw_ocr_markdown
 
 _resolve_crop_padding = PaddingPolicy.resolve_padding
 get_perspective_crop = OpenCVCropper.crop_polygon
 
-__all__ = ["app", "_resolve_crop_padding", "get_perspective_crop"]
+__all__ = ["app", "_resolve_crop_padding", "get_perspective_crop", "generate_raw_ocr_markdown"]

@@ -3,6 +3,8 @@ import axios from 'axios';
 import {
   AlertTriangle,
   Check,
+  CheckCheck,
+  Edit3,
   Eye,
   Image as ImageIcon,
   Loader2,
@@ -247,6 +249,104 @@ export const QuickReviewPanel: React.FC<QuickReviewPanelProps> = ({ documentId, 
     }
   };
 
+  // Trạng thái Chế độ sửa tất cả (Bulk Edit Mode)
+  const [isBulkMode, setIsBulkMode] = useState<boolean>(false);
+  const [bulkValues, setBulkValues] = useState<Record<string, string>>({});
+  const [bulkNotes, setBulkNotes] = useState<Record<string, string>>({});
+  const [bulkSaving, setBulkSaving] = useState<boolean>(false);
+  const [bulkSuccessMsg, setBulkSuccessMsg] = useState<string | null>(null);
+
+  const handleToggleBulkMode = () => {
+    if (!isBulkMode) {
+      const initialVals: Record<string, string> = {};
+      const initialNotes: Record<string, string> = {};
+      data?.fields.forEach((f) => {
+        initialVals[f.key] = f.review?.corrected_value ?? f.value ?? '';
+        initialNotes[f.key] = f.review?.note ?? '';
+      });
+      setBulkValues(initialVals);
+      setBulkNotes(initialNotes);
+      setIsBulkMode(true);
+    } else {
+      setIsBulkMode(false);
+    }
+  };
+
+  const modifiedCount = useMemo(() => {
+    if (!isBulkMode || !data) return 0;
+    let count = 0;
+    data.fields.forEach((f) => {
+      const cur = (bulkValues[f.key] ?? '').trim();
+      const orig = (f.review?.corrected_value ?? f.value ?? '').trim();
+      if (cur !== orig) count++;
+    });
+    return count;
+  }, [isBulkMode, data, bulkValues]);
+
+  const handleSaveBulkChanges = async (alsoConfirmUnedited: boolean = false) => {
+    if (!data || bulkSaving || !can('record.review')) return;
+    setBulkSaving(true);
+    setError(null);
+    try {
+      const items: any[] = [];
+      data.fields.forEach((field) => {
+        const cur = (bulkValues[field.key] ?? '').trim();
+        const orig = (field.review?.corrected_value ?? field.value ?? '').trim();
+        const isModified = cur !== orig;
+
+        if (isModified) {
+          items.push({
+            field_key: field.key,
+            review_status: 'corrected',
+            corrected_value: bulkValues[field.key],
+            note: bulkNotes[field.key]?.trim() || undefined,
+          });
+        } else if (alsoConfirmUnedited && effectiveStatus(field) !== 'confirmed') {
+          items.push({
+            field_key: field.key,
+            review_status: 'confirmed',
+            corrected_value: field.review?.corrected_value || field.value || undefined,
+            note: bulkNotes[field.key]?.trim() || field.review?.note || undefined,
+          });
+        }
+      });
+
+      if (items.length === 0) {
+        setBulkSuccessMsg('Không có trường nào thay đổi để lưu.');
+        setTimeout(() => setBulkSuccessMsg(null), 3000);
+        setBulkSaving(false);
+        return;
+      }
+
+      const res = await axios.post(
+        `/api/v1/pg/records/${encodeURIComponent(documentId)}/reviews/bulk`,
+        { items },
+      );
+
+      const returnedReviews: OcrFieldReview[] = res.data?.reviews || [];
+      const reviewMap = new Map(returnedReviews.map((r) => [r.field_key, r]));
+
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          fields: prev.fields.map((field) => {
+            const updated = reviewMap.get(field.key);
+            return updated ? { ...field, review: updated } : field;
+          }),
+        };
+      });
+
+      setBulkSuccessMsg(`Đã lưu thành công ${returnedReviews.length} trường!`);
+      setTimeout(() => setBulkSuccessMsg(null), 4000);
+      setIsBulkMode(false);
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.detail || 'Không thể lưu danh sách tra soát.');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/65 p-3 backdrop-blur-sm sm:p-6">
       <section
@@ -416,8 +516,42 @@ export const QuickReviewPanel: React.FC<QuickReviewPanelProps> = ({ documentId, 
               </div>
             </div>
 
-            <aside className="min-h-0 overflow-y-auto border-t border-slate-200 bg-white lg:border-l lg:border-t-0">
-              <div className="space-y-4 p-4">
+            <aside className="min-h-0 flex flex-col overflow-hidden border-t border-slate-200 bg-white lg:border-l lg:border-t-0">
+              {/* Toolbar tiêu đề của bảng tra soát */}
+              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-4 py-2.5 shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-800">
+                    {isBulkMode ? '✏️ Chế độ sửa tất cả' : '📋 Danh sách trường OCR'}
+                  </span>
+                  {isBulkMode && (
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-800">
+                      Đã sửa {modifiedCount} trường
+                    </span>
+                  )}
+                </div>
+                {can('record.review') && (
+                  <button
+                    type="button"
+                    onClick={handleToggleBulkMode}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                      isBulkMode
+                        ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+                        : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
+                    }`}
+                  >
+                    <Edit3 size={13} />
+                    {isBulkMode ? 'Thoát sửa tất cả' : 'Sửa tất cả & lưu 1 lần'}
+                  </button>
+                )}
+              </div>
+
+              {/* Danh sách trường có thể scroll */}
+              <div className="min-h-0 flex-1 overflow-y-auto space-y-4 p-4">
+                {bulkSuccessMsg && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-bold text-emerald-800 shadow-2xs">
+                    {bulkSuccessMsg}
+                  </div>
+                )}
                 {groupedFields.map(([group, fields]) => (
                   <section key={group} aria-label={group}>
                     <h3 className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">{group}</h3>
@@ -426,31 +560,69 @@ export const QuickReviewPanel: React.FC<QuickReviewPanelProps> = ({ documentId, 
                         const isSelected = field.key === selectedFieldKey;
                         const status = effectiveStatus(field);
                         const config = STATUS_CONFIG[status];
+                        const isFieldModified = isBulkMode && (bulkValues[field.key] ?? '').trim() !== (field.review?.corrected_value ?? field.value ?? '').trim();
+
                         return (
-                          <button
+                          <div
                             key={field.key}
-                            type="button"
                             onClick={() => selectField(field)}
-                            className={`block w-full border-b border-slate-100 px-3 py-2.5 text-left last:border-b-0 ${
-                              isSelected ? 'bg-emerald-50 ring-1 ring-inset ring-emerald-300' : 'hover:bg-slate-50'
+                            className={`block w-full border-b border-slate-100 px-3 py-2.5 text-left transition cursor-pointer last:border-b-0 ${
+                              isSelected ? 'bg-emerald-50/70 ring-1 ring-inset ring-emerald-300' : isFieldModified ? 'bg-indigo-50/40' : 'hover:bg-slate-50'
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
                               <span className="text-[11px] font-semibold text-slate-600">{field.label}</span>
-                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${config.className}`}>
-                                {config.label}
-                              </span>
+                              <div className="flex items-center gap-1">
+                                {isFieldModified && (
+                                  <span className="shrink-0 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-800">
+                                    Đã sửa
+                                  </span>
+                                )}
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${config.className}`}>
+                                  {config.label}
+                                </span>
+                              </div>
                             </div>
-                            <div className="mt-0.5 flex items-center justify-between gap-2">
-                              <span className="truncate text-sm font-bold text-slate-900">{correctedOrOriginal(field)}</span>
-                              {field.confidence !== null && field.confidence !== undefined && (
-                                <span className="shrink-0 font-mono text-[10px] text-slate-500">{Math.round(field.confidence * 100)}%</span>
-                              )}
-                            </div>
-                            {field.review?.review_status === 'corrected' && (
-                              <span className="mt-0.5 block truncate text-[10px] text-slate-500">OCR: {field.value || '—'}</span>
+
+                            {isBulkMode ? (
+                              <div className="mt-1.5 space-y-1" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="text"
+                                  value={bulkValues[field.key] ?? ''}
+                                  onChange={(e) => {
+                                    setBulkValues((prev) => ({ ...prev, [field.key]: e.target.value }));
+                                  }}
+                                  onFocus={() => {
+                                    if (selectedFieldKey !== field.key) selectField(field);
+                                  }}
+                                  placeholder="Nhập giá trị chuẩn..."
+                                  className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-bold outline-none transition ${
+                                    isFieldModified
+                                      ? 'border-indigo-500 bg-white text-indigo-950 ring-2 ring-indigo-500/20 shadow-2xs'
+                                      : 'border-slate-300 bg-white text-slate-900 focus:border-indigo-500'
+                                  }`}
+                                />
+                                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                  <span className="truncate max-w-[200px]" title={field.value || ''}>OCR: {field.value || '—'}</span>
+                                  {field.confidence !== null && field.confidence !== undefined && (
+                                    <span className="font-mono shrink-0">{Math.round(field.confidence * 100)}%</span>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="mt-0.5 flex items-center justify-between gap-2">
+                                  <span className="truncate text-sm font-bold text-slate-900">{correctedOrOriginal(field)}</span>
+                                  {field.confidence !== null && field.confidence !== undefined && (
+                                    <span className="shrink-0 font-mono text-[10px] text-slate-500">{Math.round(field.confidence * 100)}%</span>
+                                  )}
+                                </div>
+                                {field.review?.review_status === 'corrected' && (
+                                  <span className="mt-0.5 block truncate text-[10px] text-slate-500">OCR: {field.value || '—'}</span>
+                                )}
+                              </>
                             )}
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -494,7 +666,7 @@ export const QuickReviewPanel: React.FC<QuickReviewPanelProps> = ({ documentId, 
 
                     <div className="mt-3 border-t border-slate-200 pt-3">
                       {!can('record.review') && <p className="text-[11px] text-slate-500">Bạn chỉ có quyền xem bằng chứng OCR của hồ sơ này.</p>}
-                      {can('record.review') && (
+                      {can('record.review') && !isBulkMode && (
                         <>
                       {!editing ? (
                         <div className="flex flex-wrap gap-2">
@@ -565,6 +737,49 @@ export const QuickReviewPanel: React.FC<QuickReviewPanelProps> = ({ documentId, 
                 )}
                 {error && <p role="alert" className="text-xs font-medium text-rose-700">{error}</p>}
               </div>
+
+              {/* Sticky footer action bar for bulk editing */}
+              {isBulkMode && can('record.review') && (
+                <div className="border-t border-slate-200 bg-white/95 p-3.5 backdrop-blur-sm shadow-xl shrink-0 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600 font-medium">
+                      Đã sửa: <strong className="text-indigo-600 font-bold">{modifiedCount}</strong> trường
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Lưu tất cả thay đổi cùng lúc
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveBulkChanges(false)}
+                      disabled={bulkSaving || modifiedCount === 0}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-40 transition cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {bulkSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                      <span>Lưu tất cả ({modifiedCount})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveBulkChanges(true)}
+                      disabled={bulkSaving}
+                      title="Lưu tất cả trường đã sửa và xác nhận đúng các trường còn lại"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-40 transition cursor-pointer"
+                    >
+                      <CheckCheck size={14} />
+                      <span>Xác nhận tất cả</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsBulkMode(false)}
+                      disabled={bulkSaving}
+                      className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+                    >
+                      Hủy
+                    </button>
+                  </div>
+                </div>
+              )}
             </aside>
           </div>
         )}

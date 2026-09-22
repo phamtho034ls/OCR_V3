@@ -8,6 +8,10 @@ from pathlib import Path
 import numpy as np
 import cv2
 import pytest
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 # Thêm project root vào path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -89,3 +93,35 @@ class TestIngestion:
             f.write("not an image")
         with pytest.raises((ValueError, Exception)):
             self.ingestion.load(txt_path)
+
+    def test_vilg_geometry_selects_two_a3_and_narrow_supplements(self, tmp_path):
+        """Textless VILG scans must never fall back to unrelated A4 forms."""
+        pdf_path = tmp_path / "vilg.pdf"
+        document = fitz.open()
+        document.new_page(width=1090, height=750)
+        document.new_page(width=1090, height=750)
+        document.new_page(width=543, height=750)
+        document.new_page(width=544, height=751)
+        document.new_page(width=602, height=840)  # A4 đơn đăng ký: bỏ qua
+        document.save(pdf_path)
+        document.close()
+
+        document = fitz.open(pdf_path)
+        try:
+            assert self.ingestion._find_gcn_page_indices(document) == [0, 1, 2, 3]
+        finally:
+            document.close()
+
+    def test_textless_a4_bundle_is_not_treated_as_gcn(self, tmp_path):
+        pdf_path = tmp_path / "a4_forms.pdf"
+        document = fitz.open()
+        for _ in range(6):
+            document.new_page(width=602, height=840)
+        document.save(pdf_path)
+        document.close()
+
+        document = fitz.open(pdf_path)
+        try:
+            assert self.ingestion._find_gcn_page_indices(document) == []
+        finally:
+            document.close()

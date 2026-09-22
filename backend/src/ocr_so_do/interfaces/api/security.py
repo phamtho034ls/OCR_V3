@@ -382,7 +382,11 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
         return Permission.BATCH_READ
 
     if path.startswith("/api/v1/batch"):
-        if method == "POST" and path.endswith("/scan-directory"):
+        if method == "POST" and (
+            path.endswith("/scan-directory")
+            or path.endswith("/scan-hsq-dossiers")
+            or path.endswith("/hsq/preview")
+        ):
             return Permission.BATCH_CREATE
         if method == "POST" and path.endswith("/cancel"):
             return Permission.BATCH_READ
@@ -417,8 +421,9 @@ def permitted_source_directory(raw_path: str) -> Path:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Chưa cấu hình OCR_ALLOWED_SOURCE_ROOTS cho chức năng quét thư mục máy chủ.",
         )
+    translated_path = _translate_source_path_alias(raw_path)
     try:
-        directory = Path(raw_path).expanduser().resolve(strict=True)
+        directory = Path(translated_path).expanduser().resolve(strict=True)
     except (OSError, RuntimeError):
         raise HTTPException(status_code=400, detail="Thư mục nguồn không tồn tại hoặc không thể truy cập.")
     if not directory.is_dir():
@@ -435,3 +440,37 @@ def permitted_source_directory(raw_path: str) -> Path:
         except (OSError, RuntimeError, ValueError):
             continue
     raise HTTPException(status_code=403, detail="Thư mục nguồn không nằm trong phạm vi được cấp phép.")
+
+
+def _translate_source_path_alias(raw_path: str) -> str:
+    """Translate an approved host path to its Docker bind-mount path.
+
+    Operators often paste the Windows path displayed in Explorer while the API
+    runs inside Docker.  ``OCR_SOURCE_PATH_ALIASES`` accepts comma-separated
+    ``host_path=>container_path`` entries and is applied before the strict
+    allowlist check.  No alias means the original local path is used.
+    """
+    supplied = (raw_path or "").strip()
+    aliases = os.getenv("OCR_SOURCE_PATH_ALIASES", "").strip()
+    if not supplied or not aliases:
+        return supplied
+
+    supplied_normalized = supplied.replace("\\", "/").rstrip("/")
+    for item in aliases.split(","):
+        if "=>" not in item:
+            continue
+        host_root, container_root = (part.strip() for part in item.split("=>", 1))
+        host_normalized = host_root.replace("\\", "/").rstrip("/")
+        if not host_normalized:
+            continue
+        if supplied_normalized.casefold() == host_normalized.casefold():
+            return container_root
+        prefix = f"{host_normalized}/"
+        if supplied_normalized.casefold().startswith(prefix.casefold()):
+            suffix = supplied_normalized[len(prefix):]
+            # Do not use ``pathlib.Path`` to join here: unit tests and local
+            # development can run on Windows, where it would rewrite the
+            # Docker path with backslashes.  The alias target is explicitly a
+            # container path, so retain POSIX separators.
+            return f"{container_root.rstrip('/')}/{suffix}"
+    return supplied

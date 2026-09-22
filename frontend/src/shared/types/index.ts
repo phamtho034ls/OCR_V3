@@ -264,6 +264,7 @@ export interface OcrFieldReview {
   note?: string;
   reviewer?: string;
   reviewed_at?: string;
+  field_key?: string;
 }
 
 export interface OcrReviewField {

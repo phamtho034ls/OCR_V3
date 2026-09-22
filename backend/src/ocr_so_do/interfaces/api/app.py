@@ -21,6 +21,7 @@ from .security import (
     can_access_project_data,
     required_permission_for_request,
 )
+from .keycloak_setup import setup_keycloak_in_background
 
 
 def _allowed_origins() -> list[str]:
@@ -132,6 +133,12 @@ project_root = Path(__file__).resolve().parents[5]
 output_dir = project_root / "output"
 output_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/output", StaticFiles(directory=str(output_dir)), name="output")
+
+
+@app.on_event("startup")
+async def on_startup():
+    """Chạy Keycloak auto-setup trong background khi server khởi động."""
+    setup_keycloak_in_background()
 
 
 @app.get("/health", tags=["System"])

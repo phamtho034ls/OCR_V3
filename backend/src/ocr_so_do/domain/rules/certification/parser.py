@@ -111,11 +111,15 @@ class CertificationParser:
                 # Look below for signee name
                 for nxt in all_lines[idx + 1:min(idx + 8, len(all_lines))]:
                     nxt_s = nxt.strip()
-                    if not re.search(NGUOI_KY_BLACKLIST, nxt_s, re.IGNORECASE):
-                        name_match = re.match(r"^([A-ZÀ-ỸĐ][A-ZÀ-ỸĐa-zà-ỹđ\s]+)$", nxt_s)
-                        if name_match and len(nxt_s.split()) >= 2 and len(nxt_s) > 5:
-                            result["nguoi_ky_qd"] = nxt_s
-                            break
+                    if re.search(NGUOI_KY_BLACKLIST, nxt_s, re.IGNORECASE):
+                        continue
+                    if re.search(r"\b(?:ch[uủũùúụ]\s*t[iịìíĩ][cch]|gi[aáàãảạ]m\s*đ[oóòõỏọ][cch]|ph[oóòõỏọ]\s*ch[uủũùúụ]|ubnd|ủy\s*ban)\b", nxt_s, re.IGNORECASE):
+                        continue
+                    from ..validation.validators import GCNValidators
+                    cand = GCNValidators.normalize_signer_name(nxt_s)
+                    if cand and len(cand.split()) >= 2:
+                        result["nguoi_ky_qd"] = cand
+                        break
                 if result["nguoi_ky_qd"]:
                     break
 

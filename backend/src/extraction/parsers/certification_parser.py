@@ -99,6 +99,12 @@ class CertificationParser:
         return candidates[0]["value"]
 
     @staticmethod
+    def _normalise_signer_candidate(raw: str) -> Optional[str]:
+        """Validate a signature name using GCNValidators.normalize_signer_name."""
+        norm = GCNValidators.normalize_signer_name(raw)
+        return norm if norm else None
+
+    @staticmethod
     def parse(ocr_boxes: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = {
             "so_phat_hanh": None,
@@ -150,6 +156,15 @@ class CertificationParser:
         other_authority_candidates = []
         for line in all_lines:
             line_s = line.strip()
+            if any(k in line_s.lower() for k in [
+                "thế chấp", "the chap", "xoá", "xóa", "xoa", "chuyển nhượng", "chuyen nhuong",
+                "bất động sản", "bat dong san", "dân cư", "dlqg", "quy định", "quy dinh",
+                "giá do", "gia do", "xác nhận", "xac nhan", "tuổi thị tích", "tuoi thi tich",
+                "đăng ký quyền", "nội dung", "chứng nhận", "khai báo", "khai bao", "hư hỏng",
+                "hu hong", "sửa chữa", "sua chua", "người được cấp", "khi bị mất", "sau khi cấp"
+            ]):
+                continue
+
             if re.search(r"(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UBND|UY\s*BAN\s*NHAN\s*DAN)", line_s, re.IGNORECASE):
                 val = line_s
                 val = re.sub(r'^(?:TM\s*\.?\s*|Kính\s*g[ửữ]i\s*[:\.]?\s*)+', '', val, flags=re.IGNORECASE)
@@ -167,15 +182,34 @@ class CertificationParser:
                     flags=re.IGNORECASE,
                 )
                 other_authority_candidates.append(normalized_other.strip(" .:-,"))
+
         if authority_candidates:
-            # Ưu tiên tên cơ quan đầy đủ, tránh lấy dòng OCR cụt.
-            raw_auth = max(
-                authority_candidates,
-                key=lambda s: (bool(re.search(r"(?:huyện|quận|thành phố|tỉnh|sở)", s, re.IGNORECASE)), len(s))
-            )
-            result["noi_cap"] = GCNValidators.normalize_authority_name(raw_auth)
+            valid_auths = []
+            for cand in authority_candidates:
+                ok, norm, _ = GCNValidators.validate_issuing_authority(cand)
+                if ok and norm:
+                    valid_auths.append(norm)
+            if valid_auths:
+                result["noi_cap"] = max(
+                    valid_auths,
+                    key=lambda s: (bool(re.search(r"(?:huyện|quận|thành phố|tỉnh|sở)", s, re.IGNORECASE)), len(s))
+                )
+            else:
+                raw_auth = max(
+                    authority_candidates,
+                    key=lambda s: (bool(re.search(r"(?:huyện|quận|thành phố|tỉnh|sở)", s, re.IGNORECASE)), len(s))
+                )
+                result["noi_cap"] = GCNValidators.normalize_authority_name(raw_auth)
         elif other_authority_candidates:
-            result["noi_cap"] = GCNValidators.normalize_authority_name(max(other_authority_candidates, key=len))
+            valid_other = []
+            for cand in other_authority_candidates:
+                ok, norm, _ = GCNValidators.validate_issuing_authority(cand)
+                if ok and norm:
+                    valid_other.append(norm)
+            if valid_other:
+                result["noi_cap"] = max(valid_other, key=len)
+            else:
+                result["noi_cap"] = GCNValidators.normalize_authority_name(max(other_authority_candidates, key=len))
 
         # 4. Người ký quyết định & Chức vụ
         for idx, line in enumerate(all_lines):
@@ -192,27 +226,32 @@ class CertificationParser:
                     else:
                         result["chuc_vu_nguoi_ky"] = "Chủ tịch"
 
-                # Look below for signee name
-                for nxt in all_lines[idx + 1:min(idx + 8, len(all_lines))]:
-                    nxt_s = nxt.strip()
-                    if not re.search(NGUOI_KY_BLACKLIST, nxt_s, re.IGNORECASE):
-                        name_match = re.match(r"^([A-ZÀ-ỸĐ][A-ZÀ-ỸĐa-zà-ỹđ\s]+)$", nxt_s)
-                        if name_match and len(nxt_s.split()) >= 2 and len(nxt_s) > 5:
-                            v_ok, _, _ = GCNValidators.validate_person_name(nxt_s)
-                            if v_ok:
-                                result["nguoi_ky_qd"] = nxt_s
-                                break
+                # Look below for the full signer name.  OCR may split a name
+                # over two lines, so inspect both the line and a compact join.
+                for next_idx in range(idx + 1, min(idx + 8, len(all_lines))):
+                    nxt_s = all_lines[next_idx].strip()
+                    candidates = [nxt_s]
+                    if next_idx + 1 < len(all_lines):
+                        candidates.append(f"{nxt_s} {all_lines[next_idx + 1].strip()}")
+                    for candidate in candidates:
+                        signer = CertificationParser._normalise_signer_candidate(candidate)
+                        if signer:
+                            result["nguoi_ky_qd"] = signer
+                            break
+                    if result["nguoi_ky_qd"]:
+                        break
                 if result["nguoi_ky_qd"]:
                     break
 
-        # Chuẩn hóa tên người ký nếu là biến thể Nguyễn Văn Đông
+        # Chuẩn hóa nhẹ khi OCR đã thực sự đọc được đúng tên, không suy diễn
+        # từ các mảnh rời như "Viên Ca" hay chức vụ.
         if result.get("nguoi_ky_qd"):
             s_low = result["nguoi_ky_qd"].lower()
-            if any(v in s_low for v in ["nguyễn văn đông", "nguyen van dong", "viên ca", "yên ca", "bên ca", "uyên c", "en cao", "ten ca", "phó chủ tịch"]):
+            if any(v in s_low for v in ["nguyễn văn đông", "nguyen van dong"]):
                 result["nguoi_ky_qd"] = "Nguyễn Văn Đông"
-        elif result.get("chuc_vu_nguoi_ky"):
-            if "cao lộc" in (result.get("noi_cap") or "").lower():
-                result["nguoi_ky_qd"] = "Nguyễn Văn Đông"
+        # Do not infer a signer merely from the authority or the role.  It is
+        # safer to leave the field empty and mark it for review than to output
+        # a real person's name without evidence.
 
         # 5. Ngày cấp GCN & Nơi cấp fallback từ dòng ngày
         def _parse_vn_date(s: str) -> Optional[str]:

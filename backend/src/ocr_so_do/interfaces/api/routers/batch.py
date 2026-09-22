@@ -29,6 +29,7 @@ from ....infrastructure.persistence.postgres_store import get_postgres_store as 
 from ....bootstrap import DEFAULT_OUTPUT_DIR, get_container
 from ....infrastructure.memory import cleanup_memory
 from ....infrastructure.persistence.postgres_store import get_postgres_store
+from ....infrastructure.hsq_dossier_scanner import HSQDossierScanner
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +306,15 @@ class ScanDirectoryRequest(BaseModel):
     resume_batch_id: Optional[str] = Field(None, description="Batch ID trước đó để tiếp tục cập nhật và giữ lại kết quả")
 
 
+class HSQDossierPreviewRequest(BaseModel):
+    directory_path: str = Field(..., description="Thư mục gốc xã/phường hoặc một thư mục hồ sơ HSQ VILG")
+    project_id: str = Field(..., min_length=1, max_length=100, description="ID dự án OCR")
+
+
+class ScanHSQDossiersRequest(ScanDirectoryRequest):
+    """Request riêng cho hồ sơ VILG, vẫn hỗ trợ checkpoint/resume như batch thường."""
+
+
 def _run_batch_worker_chunk(
     batch_id: str,
     work_items: List[tuple],
@@ -319,28 +329,48 @@ def _run_batch_worker_chunk(
         uc = container.process_document_uc
         output_dir = Path(output_dir_str)
 
-        for idx, file_path_str in work_items:
+        for work_item in work_items:
+            # Batch thường dùng (stt, path); HSQ thêm metadata thư mục để
+            # lưu hint tờ/thửa/chủ và hiển thị đúng tên hồ sơ trên UI.
+            idx, file_path_str = work_item[0], work_item[1]
+            hsq_context = work_item[2] if len(work_item) > 2 else None
             f_path = Path(file_path_str)
-            result_queue.put({"type": "started", "stt": idx, "file_name": f_path.name})
+            display_name = (hsq_context or {}).get("display_name") or f_path.name
+            result_queue.put({"type": "started", "stt": idx, "file_name": display_name})
             t_file = time.time()
             try:
                 doc_id = f"batch_{batch_id}_{idx}_{f_path.stem}"
-                res = uc.execute(
-                    document_path=str(f_path),
-                    document_id=doc_id,
-                    split_a3=split_a3,
-                    smart_gcn_filter=smart_gcn_filter,
-                    stt=idx,
-                    batch_id=batch_id,
-                    folder_result=batch_id,
+                # A deliberately named GCN/Bìa file is an authoritative
+                # source even when an older export saved every page as A4.
+                # In that narrow case, do not discard its textless pages via
+                # the VILG A3 geometry filter. Geometry-selected dossiers
+                # keep the strict filter and can never pull in A4 receipts.
+                effective_smart_filter = smart_gcn_filter and (
+                    not hsq_context
+                    or hsq_context.get("selection_method") != "named_gcn"
                 )
+                execute_kwargs = {
+                    "document_path": str(f_path),
+                    "document_id": doc_id,
+                    "split_a3": split_a3,
+                    "smart_gcn_filter": effective_smart_filter,
+                    "stt": idx,
+                    "batch_id": batch_id,
+                    "folder_result": batch_id,
+                }
+                if hsq_context:
+                    execute_kwargs["file_name"] = display_name
+                    execute_kwargs["hsq_ground_truth"] = hsq_context.get("ground_truth", {})
+                    execute_kwargs["project_id"] = hsq_context.get("project_id")
+                    execute_kwargs["created_by"] = hsq_context.get("created_by")
+                res = uc.execute(**execute_kwargs)
                 m_data = res.get("merged", {})
                 result_path = _persist_result(output_dir, batch_id, idx, res)
                 owner = m_data.get("nguoi_su_dung", {})
                 parcel = m_data.get("thua_dat", {})
                 summary = {
                     "stt": idx,
-                    "file_name": f_path.name,
+                    "file_name": display_name,
                     "status": "success",
                     "elapsed_seconds": round(time.time() - t_file, 2),
                     "mau": m_data.get("mau", "unknown"),
@@ -356,6 +386,13 @@ def _run_batch_worker_chunk(
                     "document_id": doc_id,
                     "result_path": result_path,
                 }
+                if hsq_context:
+                    summary["hsq"] = {
+                        "dossier_path": hsq_context.get("dossier_path", ""),
+                        "selection_method": hsq_context.get("selection_method", ""),
+                        "ground_truth": hsq_context.get("ground_truth", {}),
+                        "cross_check": m_data.get("hsq_cross_check", {}),
+                    }
                 result_queue.put({"type": "result", "summary": summary})
                 del res, m_data, owner, parcel
             except Exception as file_error:
@@ -364,7 +401,7 @@ def _run_batch_worker_chunk(
                     "type": "result",
                     "summary": {
                         "stt": idx,
-                        "file_name": f_path.name,
+                        "file_name": display_name,
                         "status": "error",
                         "error": str(file_error),
                         "elapsed_seconds": round(time.time() - t_file, 2),
@@ -442,7 +479,7 @@ def _save_batch_checkpoint(
 
 def _run_batch_scan_job(
     batch_id: str,
-    target_files: List[Path],
+    target_files: List[Any],
     split_a3: bool,
     smart_gcn_filter: bool,
     start_index: int = 0
@@ -470,7 +507,13 @@ def _run_batch_scan_job(
 
         ctx = mp.get_context("spawn")
         files_to_scan = target_files[start_index:]
-        indexed_files = [(start_index + index, str(path)) for index, path in enumerate(files_to_scan, 1)]
+        indexed_files = []
+        for index, target in enumerate(files_to_scan, 1):
+            if isinstance(target, tuple):
+                path, context = target
+                indexed_files.append((start_index + index, str(path), context))
+            else:
+                indexed_files.append((start_index + index, str(target)))
 
         for chunk_start in range(0, len(indexed_files), BATCH_WORKER_MAX_FILES):
             if batch_jobs[batch_id].get("cancel_requested"):
@@ -558,11 +601,13 @@ def _run_batch_scan_job(
             if worker.exitcode not in (0, None) or fatal_error:
                 reason = fatal_error or f"Worker OCR kết thúc với exit code {worker.exitcode}"
                 logger.error("[Batch %s] %s", batch_id, reason)
-                for idx, file_path_str in chunk:
+                for work_item in chunk:
+                    idx, file_path_str = work_item[0], work_item[1]
+                    hsq_context = work_item[2] if len(work_item) > 2 else None
                     if idx not in completed_indices:
                         results.append({
                             "stt": idx,
-                            "file_name": Path(file_path_str).name,
+                            "file_name": (hsq_context or {}).get("display_name") or Path(file_path_str).name,
                             "status": "error",
                             "error": reason,
                             "elapsed_seconds": 0.0,
@@ -726,6 +771,147 @@ async def scan_directory(
     })
 
 
+@router.post("/hsq/preview", summary="Xem trước hồ sơ HSQ VILG và file GCN được chọn")
+async def preview_hsq_dossiers(
+    req: HSQDossierPreviewRequest,
+    principal: Principal = Depends(get_current_principal),
+):
+    """Group leaf folders and expose the exact GCN selection before OCR starts."""
+    project_id = (req.project_id or "").strip()
+    if not project_id:
+        raise HTTPException(status_code=422, detail="Vui lòng chọn dự án hợp lệ trước khi phân tích hồ sơ HSQ.")
+    dir_p = permitted_source_directory(req.directory_path)
+    if not principal.is_admin():
+        store = _get_pg_store()
+        if not store.is_project_member(project_id, principal.subject):
+            raise HTTPException(status_code=403, detail=f"Bạn không phải thành viên của dự án '{project_id}'.")
+
+    dossiers = HSQDossierScanner().scan(dir_p)
+    if not dossiers:
+        raise HTTPException(status_code=404, detail="Không tìm thấy PDF hoặc ảnh nào trong thư mục HSQ.")
+    ready = [dossier for dossier in dossiers if dossier.is_ready]
+    named = sum(dossier.selection_method == "named_gcn" for dossier in ready)
+    geometry = sum(dossier.selection_method == "geometry_a3_pair" for dossier in ready)
+    return JSONResponse(content={
+        "directory_path": str(dir_p),
+        "project_id": project_id,
+        "total_dossiers": len(dossiers),
+        "ready_count": len(ready),
+        "skipped_count": len(dossiers) - len(ready),
+        "named_gcn_count": named,
+        "geometry_gcn_count": geometry,
+        "dossiers": [dossier.preview_dict() for dossier in dossiers],
+    })
+
+
+@router.post("/scan-hsq-dossiers", summary="Quét mỗi hồ sơ HSQ VILG đúng một file GCN")
+async def scan_hsq_dossiers(
+    req: ScanHSQDossiersRequest,
+    background_tasks: BackgroundTasks,
+    principal: Principal = Depends(get_current_principal),
+):
+    """Start/restart a VILG dossier batch without OCR-ing receipts or forms."""
+    req.project_id = (req.project_id or "").strip()
+    if not req.project_id:
+        raise HTTPException(status_code=422, detail="Vui lòng chọn dự án hợp lệ trước khi quét hồ sơ HSQ.")
+    dir_p = permitted_source_directory(req.directory_path)
+    if not principal.is_admin():
+        store = _get_pg_store()
+        if not store.is_project_member(req.project_id, principal.subject):
+            raise HTTPException(status_code=403, detail=f"Bạn không phải thành viên của dự án '{req.project_id}'.")
+
+    dossiers = HSQDossierScanner().scan(dir_p)
+    ready_dossiers = [dossier for dossier in dossiers if dossier.is_ready]
+    if req.sample_count > 0:
+        ready_dossiers = ready_dossiers[:req.sample_count]
+    if not ready_dossiers:
+        raise HTTPException(
+            status_code=404,
+            detail="Không có hồ sơ nào có file GCN hợp lệ (tên b/Bìa/GCN/G hoặc 2 trang A3 đầu).",
+        )
+
+    start_idx = max(0, req.start_index)
+    if start_idx >= len(ready_dossiers):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Vị trí bắt đầu ({start_idx}) đã vượt quá tổng số hồ sơ GCN ({len(ready_dossiers)}).",
+        )
+    is_resuming = bool(req.resume_batch_id and req.resume_batch_id in batch_jobs and start_idx > 0)
+    batch_id = req.resume_batch_id if is_resuming else f"hsq_{uuid.uuid4().hex[:8]}"
+    if is_resuming:
+        resumed_job = _require_batch_access(batch_id, principal, manage=True)
+        if resumed_job.get("project_id") != req.project_id:
+            raise HTTPException(status_code=422, detail="Không thể tiếp tục batch HSQ bằng một dự án khác.")
+    _trim_batch_jobs()
+
+    pg_store = get_postgres_store()
+    if not pg_store.is_connected():
+        reason = pg_store.unavailable_reason or "Không thể kết nối đến PostgreSQL"
+        raise HTTPException(status_code=503, detail=f"Quét HSQ yêu cầu PostgreSQL đang chạy ({reason}).")
+
+    work_items = []
+    for dossier in ready_dossiers:
+        context = dossier.worker_context()
+        context["project_id"] = req.project_id
+        context["created_by"] = principal.subject
+        work_items.append((dossier.gcn_file, context))
+    if is_resuming:
+        batch_jobs[batch_id]["cancel_requested"] = False
+        batch_jobs[batch_id]["status"] = "processing"
+        batch_jobs[batch_id]["current_file"] = f"Đang tiếp tục HSQ từ hồ sơ {start_idx + 1}..."
+    else:
+        if not pg_store.save_batch(
+            batch_id=batch_id,
+            folder_name=f"HSQ VILG - {dir_p.name}",
+            source_path=str(dir_p.resolve()),
+            output_dir=str(DEFAULT_OUTPUT_DIR / "batches" / batch_id),
+            total_files=len(work_items),
+            status="running",
+            project_id=req.project_id,
+            created_by=principal.subject,
+        ):
+            raise HTTPException(status_code=500, detail="Không thể tạo bản ghi đợt quét HSQ trong PostgreSQL.")
+        batch_jobs[batch_id] = {
+            "batch_id": batch_id,
+            "project_id": req.project_id,
+            "created_by": principal.subject,
+            "status": "processing",
+            "batch_type": "hsq_vilg",
+            "directory_path": str(dir_p),
+            "total_files": len(work_items),
+            "total_dossiers": len(dossiers),
+            "skipped_dossiers": len(dossiers) - len(work_items),
+            "processed_count": 0,
+            "current_file": "Đang khởi tạo quét HSQ VILG...",
+            "elapsed_seconds": 0.0,
+            "results": [],
+            "chuyen_doi_rows": [],
+            "worker_rss_mb": 0.0,
+            "worker_private_mb": 0.0,
+            "worker_uss_mb": 0.0,
+            "peak_worker_private_mb": 0.0,
+            "cancel_requested": False,
+        }
+
+    background_tasks.add_task(
+        _run_batch_scan_job,
+        batch_id,
+        work_items,
+        req.split_a3,
+        req.smart_gcn_filter,
+        start_idx,
+    )
+    return JSONResponse(content={
+        "batch_id": batch_id,
+        "status": "processing",
+        "total_files": len(work_items),
+        "total_dossiers": len(dossiers),
+        "skipped_dossiers": len(dossiers) - len(work_items),
+        "message": f"Bắt đầu quét {len(work_items)} hồ sơ HSQ; đã bỏ qua {len(dossiers) - len(work_items)} hồ sơ không xác định được GCN.",
+        "project_id": req.project_id,
+    })
+
+
 @router.get("/{batch_id}", summary="Lấy tiến trình và kết quả batch job")
 async def get_batch_progress(batch_id: str, principal: Principal = Depends(get_current_principal)):
     """Truy vấn tiến trình real-time của tác vụ quét thư mục."""
@@ -739,7 +925,10 @@ async def get_batch_progress(batch_id: str, principal: Principal = Depends(get_c
     return JSONResponse(content={
         "batch_id": batch_id,
         "status": bj.get("status", "unknown"),
+        "batch_type": bj.get("batch_type", "directory"),
         "total_files": total,
+        "total_dossiers": bj.get("total_dossiers", total),
+        "skipped_dossiers": bj.get("skipped_dossiers", 0),
         "processed_count": proc,
         "progress_percent": pct,
         "current_file": bj.get("current_file", ""),

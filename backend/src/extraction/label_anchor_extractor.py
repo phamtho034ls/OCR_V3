@@ -156,8 +156,14 @@ class LabelAnchorExtractor:
         is_diagram_table_page = self._is_diagram_table_page(sorted_ocr)
 
         def set_val(field: str, val: Any, conf: float = 0.95):
-            if val is not None and str(val).strip():
-                clean_v = str(val).strip()
+            if val is not None:
+                if isinstance(val, (list, dict)):
+                    clean_v = val
+                else:
+                    s_val = str(val).strip()
+                    if not s_val:
+                        return
+                    clean_v = s_val
                 results[field] = {
                     "value": clean_v,
                     "confidence": conf,

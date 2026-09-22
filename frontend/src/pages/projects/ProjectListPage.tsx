@@ -16,7 +16,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import React, { FormEvent, useCallback, useEffect, useState } from 'react';
+import React, { FormEvent, useCallback, useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../../shared/auth/AuthProvider';
 import { extractErrorMessage } from '../../shared/lib/errorHelper';
 
@@ -27,6 +27,7 @@ interface Project {
   created_by: string;
   status: string;
   created_at: string;
+  region?: string;
 }
 
 interface Member {
@@ -41,16 +42,21 @@ export const ProjectListPage: React.FC = () => {
   const { can, user } = useAuth();
   const canCreate = can('project.create');
   const canManage = can('project.manage');
+  const isAdmin = user?.roles.includes('ocr-admin') || false;
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Region filtering (cho Admin tổng)
+  const [selectedRegionFilter, setSelectedRegionFilter] = useState<string>('all');
+
   // Create project form
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
+  const [createRegion, setCreateRegion] = useState<string>('TP. Hải Phòng');
   const [creating, setCreating] = useState(false);
   const [creationCandidates, setCreationCandidates] = useState<any[]>([]);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
@@ -83,10 +89,26 @@ export const ProjectListPage: React.FC = () => {
 
   useEffect(() => { void loadProjects(); }, [loadProjects]);
 
+  const availableRegions = useMemo(() => {
+    const setReg = new Set<string>();
+    projects.forEach((p) => {
+      if (p.region && p.region.trim() && p.region !== 'Chưa phân khu vực') {
+        setReg.add(p.region.trim());
+      }
+    });
+    return Array.from(setReg);
+  }, [projects]);
+
+  const filteredProjects = useMemo(() => {
+    if (selectedRegionFilter === 'all') return projects;
+    return projects.filter((p) => (p.region || 'Chưa phân khu vực') === selectedRegionFilter);
+  }, [projects, selectedRegionFilter]);
+
   const openCreateModal = async () => {
     setShowCreate(true);
     setCreateName('');
     setCreateDesc('');
+    setCreateRegion(user?.region || 'TP. Hải Phòng');
     setSelectedCandidateIds([]);
     setCreateNameError(null);
     setCandidateSearch('');
@@ -114,6 +136,7 @@ export const ProjectListPage: React.FC = () => {
       await axios.post('/api/v1/projects', {
         project_name: trimmedName,
         description: createDesc.trim() || null,
+        region: createRegion.trim() || undefined,
         member_ids: selectedCandidateIds,
       });
       const memberCountMsg = selectedCandidateIds.length > 0 ? ` cùng ${selectedCandidateIds.length} thành viên` : '';
@@ -122,6 +145,7 @@ export const ProjectListPage: React.FC = () => {
       setCreateDesc('');
       setSelectedCandidateIds([]);
       setShowCreate(false);
+      window.dispatchEvent(new CustomEvent('project:changed'));
       await loadProjects();
     } catch (e: any) {
       setError(await extractErrorMessage(e));
@@ -156,10 +180,12 @@ export const ProjectListPage: React.FC = () => {
   });
 
   const handleDeleteProject = async (p: Project) => {
-    if (!window.confirm(`Xóa dự án '${p.project_name}'? Dữ liệu liên quan sẽ bị xóa.`)) return;
+    const confirmMsg = `XÁC NHẬN XÓA TOÀN BỘ DỰ ÁN '${p.project_name}'?\n\nCẢNH BÁO NGUY HIỂM:\nHệ thống sẽ xóa vĩnh viễn dữ liệu dự án trong CSDL và XÓA SẠCH TOÀN BỘ ẢNH CROP, PREVIEWS, VÀ THƯ MỤC DỮ LIỆU LIÊN QUAN TRÊN Ổ ĐĨA.\n\nThao tác này không thể phục hồi. Bạn có chắc chắn muốn xóa?`;
+    if (!window.confirm(confirmMsg)) return;
     try {
       await axios.delete(`/api/v1/projects/${p.project_id}`);
-      setNotice(`Đã xóa dự án '${p.project_name}'.`);
+      setNotice(`Đã xóa vĩnh viễn dự án '${p.project_name}' cùng toàn bộ dữ liệu CSDL và ảnh crop trên đĩa.`);
+      window.dispatchEvent(new CustomEvent('project:changed'));
       await loadProjects();
     } catch (e: any) {
       setError(await extractErrorMessage(e));
@@ -266,7 +292,7 @@ export const ProjectListPage: React.FC = () => {
             <button
               type="button"
               onClick={() => void openCreateModal()}
-              className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 transition cursor-pointer"
+              className="flex items-center gap-1.5 rounded-lg bg-gov-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-gov-900 transition cursor-pointer shadow-xs"
             >
               <Plus size={13} /> Tạo dự án
             </button>
@@ -297,7 +323,7 @@ export const ProjectListPage: React.FC = () => {
         <form onSubmit={(e) => void handleCreateProject(e)} className="rounded-xl border border-slate-200 bg-white p-5 space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-              <FolderPlus size={16} className="text-indigo-600" /> Tạo dự án mới
+              <FolderPlus size={16} className="text-gov-800" /> Tạo dự án mới
             </h3>
             <button type="button" onClick={() => setShowCreate(false)} className="text-slate-400 hover:text-slate-600">
               <X size={15} />
@@ -322,10 +348,45 @@ export const ProjectListPage: React.FC = () => {
               placeholder="Ví dụ: Dự án Số Hóa Tân An Q1"
               className={`block w-full rounded-lg border ${
                 createNameError ? 'border-rose-400 ring-1 ring-rose-400' : 'border-slate-300'
-              } px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500`}
+              } px-3 py-2 text-sm focus:border-gov-800 focus:outline-none focus:ring-1 focus:ring-gov-800`}
             />
             {createNameError && (
               <p className="mt-1 text-xs text-rose-600 font-medium">{createNameError}</p>
+            )}
+          </div>
+
+          {/* Chọn khu vực áp dụng cho dự án */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Khu vực địa bàn {isAdmin && <span className="text-gov-800 font-bold">(Admin tổng chỉ định)</span>}
+            </label>
+            {isAdmin ? (
+              <div className="space-y-1.5">
+                <input
+                  type="text"
+                  value={createRegion}
+                  onChange={(e) => setCreateRegion(e.target.value)}
+                  placeholder="Ví dụ: TP. Hải Phòng, Tỉnh Lạng Sơn, Tỉnh Ninh Bình..."
+                  className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-gov-800 focus:outline-none focus:ring-1 focus:ring-gov-800"
+                />
+                <div className="flex flex-wrap gap-1.5 text-[11px]">
+                  <span className="text-slate-400">Gợi ý nhanh:</span>
+                  {['TP. Hải Phòng', 'Tỉnh Lạng Sơn', 'Tỉnh Ninh Bình', 'TP. Hà Nội'].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setCreateRegion(r)}
+                      className="px-2 py-0.5 rounded bg-slate-100 hover:bg-gov-100 hover:text-gov-900 text-slate-600 transition cursor-pointer"
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+                📍 {user?.region || 'Khu vực quản lý của tài khoản'}
+              </div>
             )}
           </div>
 
@@ -337,7 +398,7 @@ export const ProjectListPage: React.FC = () => {
               rows={2}
               maxLength={1000}
               placeholder="Ghi chú ngắn về mục tiêu hoặc phạm vi của dự án..."
-              className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+              className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-gov-800 focus:outline-none"
             />
           </div>
 
@@ -351,7 +412,7 @@ export const ProjectListPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={toggleSelectAllCandidates}
-                  className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
+                  className="text-[11px] text-gov-800 hover:text-gov-950 font-medium cursor-pointer"
                 >
                   {filteredCandidates.every((c) => selectedCandidateIds.includes(c.id))
                     ? 'Bỏ chọn tất cả'
@@ -376,7 +437,7 @@ export const ProjectListPage: React.FC = () => {
                     placeholder="Tìm tên, tài khoản..."
                     value={candidateSearch}
                     onChange={(e) => setCandidateSearch(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs outline-none focus:border-indigo-500 focus:bg-white"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs outline-none focus:border-gov-800 focus:bg-white"
                   />
                 )}
                 <div className="max-h-40 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50/50 p-1">
@@ -392,7 +453,7 @@ export const ProjectListPage: React.FC = () => {
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => toggleCandidate(cand.id)}
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                            className="rounded border-slate-300 text-gov-800 focus:ring-gov-800 h-3.5 w-3.5"
                           />
                           <span className="font-medium text-slate-700">
                             {cand.display_name || cand.username}
@@ -425,7 +486,7 @@ export const ProjectListPage: React.FC = () => {
             <button
               type="submit"
               disabled={creating || !createName.trim()}
-              className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-indigo-700 cursor-pointer"
+              className="flex items-center gap-1.5 rounded-lg bg-gov-800 px-4 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-gov-900 cursor-pointer shadow-xs"
             >
               {creating ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Tạo dự án
             </button>
@@ -433,33 +494,98 @@ export const ProjectListPage: React.FC = () => {
         </form>
       )}
 
+      {/* Admin Tổng: Thanh Lọc & Phân Vùng Khu Vực */}
+      {isAdmin && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-gov-800 animate-pulse"></span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                Phân vùng khu vực toàn quốc
+              </span>
+              <span className="text-[10px] font-bold text-gov-900 bg-gov-50 border border-gov-200 px-2 py-0.5 rounded">
+                Admin Tổng
+              </span>
+            </div>
+            <div className="text-xs text-slate-500">
+              Tổng số: <strong className="text-slate-800">{projects.length}</strong> dự án trên <strong className="text-slate-800">{availableRegions.length}</strong> khu vực
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setSelectedRegionFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                selectedRegionFilter === 'all'
+                  ? 'bg-gov-800 text-white shadow-2xs font-bold'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+              }`}
+            >
+              <span>🏢 Tất cả khu vực</span>
+              <span className={`px-1.5 py-0.2 text-[10px] rounded-full ${selectedRegionFilter === 'all' ? 'bg-gov-950 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                {projects.length}
+              </span>
+            </button>
+
+            {availableRegions.map((reg) => {
+              const count = projects.filter((p) => (p.region || 'Chưa phân khu vực') === reg).length;
+              const isSelected = selectedRegionFilter === reg;
+              return (
+                <button
+                  key={reg}
+                  type="button"
+                  onClick={() => setSelectedRegionFilter(reg)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-gov-800 text-white shadow-2xs font-bold'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                  }`}
+                >
+                  <span>📍 {reg}</span>
+                  <span className={`px-1.5 py-0.2 text-[10px] rounded-full ${isSelected ? 'bg-gov-950 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Projects table */}
       {loading ? (
         <div className="flex items-center justify-center py-12 text-slate-400">
           <Loader2 size={20} className="animate-spin mr-2" /> Đang tải...
         </div>
-      ) : projects.length === 0 ? (
+      ) : filteredProjects.length === 0 ? (
         <div className="text-center py-12 text-slate-400 text-sm">
-          Chưa có dự án nào. {canCreate && 'Nhấn "Tạo dự án" để bắt đầu.'}
+          Chưa có dự án nào{selectedRegionFilter !== 'all' ? ` thuộc khu vực "${selectedRegionFilter}"` : ''}. {canCreate && 'Nhấn "Tạo dự án" để bắt đầu.'}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-600">
+            <thead className="bg-slate-50 text-xs text-slate-600 border-b border-slate-200">
               <tr>
                 <th className="text-left px-4 py-3 font-semibold">Tên dự án</th>
+                <th className="text-left px-4 py-3 font-semibold">Khu vực</th>
                 <th className="text-left px-4 py-3 font-semibold hidden sm:table-cell">Mô tả</th>
                 <th className="text-left px-4 py-3 font-semibold hidden md:table-cell">Ngày tạo</th>
                 <th className="text-center px-4 py-3 font-semibold">Thành viên</th>
-                {projects.some(canDeleteProject) && <th className="text-right px-4 py-3 font-semibold">Thao tác</th>}
+                {filteredProjects.some(canDeleteProject) && <th className="text-right px-4 py-3 font-semibold">Thao tác</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {projects.map((p) => (
-                <tr key={p.project_id} className="hover:bg-slate-50 transition">
+              {filteredProjects.map((p) => (
+                <tr key={p.project_id} className="hover:bg-gov-50/40 transition">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-800">{p.project_name}</div>
+                    <div className="font-bold text-slate-900">{p.project_name}</div>
                     <div className="text-[11px] text-slate-400 font-mono">{p.project_id}</div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gov-50 text-gov-900 border border-gov-200">
+                      📍 {p.region || 'Chưa phân khu vực'}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-slate-500 hidden sm:table-cell max-w-[200px] truncate">
                     {p.description || '—'}
@@ -472,7 +598,7 @@ export const ProjectListPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => void openMemberPanel(p, false)}
-                        className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs bg-slate-100 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition cursor-pointer"
+                        className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs bg-slate-100 text-slate-700 hover:bg-gov-50 hover:text-gov-800 transition cursor-pointer"
                         title="Xem danh sách thành viên"
                       >
                         <Users size={12} /> Xem
@@ -481,7 +607,7 @@ export const ProjectListPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => void openMemberPanel(p, true)}
-                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition font-medium cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs bg-gov-50 text-gov-800 hover:bg-gov-100 transition font-medium cursor-pointer"
                           title="Thêm thành viên vào dự án"
                         >
                           <UserPlus size={12} /> + Thêm
@@ -494,8 +620,8 @@ export const ProjectListPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => void handleDeleteProject(p)}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
-                        title="Xóa dự án"
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition cursor-pointer"
+                        title="Xóa vĩnh viễn dự án và toàn bộ ảnh crop trên đĩa"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -563,7 +689,7 @@ export const ProjectListPage: React.FC = () => {
                         </h4>
                         {managerRegion && (
                           <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                            Khu vực: <strong className="text-indigo-600">{managerRegion}</strong>
+                            Khu vực: <strong className="text-gov-800">{managerRegion}</strong>
                           </span>
                         )}
                       </div>
@@ -573,7 +699,7 @@ export const ProjectListPage: React.FC = () => {
                           value={addUserId}
                           onChange={(e) => setAddUserId(e.target.value)}
                           required
-                          className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                          className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-gov-800 focus:outline-none"
                         >
                           <option value="">-- Chọn người dùng --</option>
                           {allUsers
@@ -590,7 +716,7 @@ export const ProjectListPage: React.FC = () => {
                       </div>
                       <button
                         type="submit" disabled={addingMember || !addUserId}
-                        className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white disabled:opacity-50 hover:bg-indigo-700 cursor-pointer"
+                        className="flex items-center gap-1.5 rounded-lg bg-gov-800 px-3 py-1.5 text-xs text-white disabled:opacity-50 hover:bg-gov-900 cursor-pointer shadow-xs"
                       >
                         {addingMember ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Thêm
                       </button>

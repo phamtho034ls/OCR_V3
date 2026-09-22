@@ -130,7 +130,7 @@ class RawMarkdownGenerator:
 
         for p_idx, p in enumerate(page_results):
             p_f_name = p.get("file_name", f"{file_name}_p{p_idx + 1}.png")
-            ocr_boxes = p.get("ocr_results", [])
+            ocr_boxes = p.get("ocr_results", []) or p.get("ocr_boxes", [])
             page_md = RawMarkdownGenerator.generate_page_raw_markdown(
                 ocr_boxes=ocr_boxes,
                 page_index=p_idx,
@@ -140,3 +140,22 @@ class RawMarkdownGenerator:
             lines.append("")
 
         return "\n".join(lines)
+
+
+def generate_raw_ocr_markdown(result: Dict[str, Any], page_boxes_list: Optional[Any] = None) -> str:
+    """Hàm tương thích cũ cho generate_raw_ocr_markdown."""
+    p_results = []
+    if page_boxes_list:
+        if isinstance(page_boxes_list, list) and len(page_boxes_list) > 0 and isinstance(page_boxes_list[0], dict):
+            p_results = page_boxes_list
+        else:
+            p_results = [{"ocr_boxes": b} for b in page_boxes_list]
+    elif "pages" in result:
+        p_results = result["pages"]
+    return RawMarkdownGenerator.generate_document_raw_markdown(
+        document_id=result.get("job_id", ""),
+        file_name=result.get("file_name", ""),
+        template=result.get("mau", ""),
+        page_results=p_results,
+        merged_data=result.get("merged") or result
+    )

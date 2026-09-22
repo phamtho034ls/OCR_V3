@@ -10,6 +10,7 @@ Hỗ trợ:
 """
 import os
 import json
+import re
 from datetime import datetime
 from typing import Literal, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Body
@@ -60,6 +61,25 @@ class SaveFieldReviewRequest(BaseModel):
     note: Optional[str] = Field(None, max_length=4000, description="Ghi chú tra soát")
 
 
+class BulkFieldReviewItem(BaseModel):
+    field_key: str = Field(..., min_length=1, max_length=100, description="Mã trường nghiệp vụ")
+    review_status: Literal["confirmed", "corrected", "needs_review"] = Field(
+        "corrected", description="Kết quả tra soát"
+    )
+    corrected_value: Optional[str] = Field(
+        None, max_length=4000, description="Giá trị đã sửa"
+    )
+    note: Optional[str] = Field(None, max_length=4000, description="Ghi chú tra soát")
+
+
+class BulkSaveFieldReviewRequest(BaseModel):
+    reviews: Optional[List[BulkFieldReviewItem]] = Field(None, description="Danh sách các trường cần cập nhật tra soát")
+    items: Optional[List[BulkFieldReviewItem]] = Field(None, description="Danh sách các trường cần cập nhật tra soát (alias)")
+
+    def get_items(self) -> List[BulkFieldReviewItem]:
+        return self.items or self.reviews or []
+
+
 @router.get("/health", summary="Kiểm tra kết nối PostgreSQL")
 async def check_pg_health():
     store = get_postgres_store()
@@ -76,9 +96,12 @@ async def check_pg_health():
 
 
 @router.get("/stats", summary="Thống kê tổng quan cơ sở dữ liệu PostgreSQL")
-async def get_pg_stats(principal: Principal = Depends(get_current_principal)):
+async def get_pg_stats(
+    project_id: Optional[str] = Query(None, description="Lọc theo mã dự án"),
+    principal: Principal = Depends(get_current_principal),
+):
     store = get_postgres_store()
-    stats = store.get_stats(access_scope=_access_scope(store, principal))
+    stats = store.get_stats(access_scope=_access_scope(store, principal), project_id=project_id)
     return JSONResponse(content=stats)
 
 
@@ -99,11 +122,12 @@ async def list_pg_batches(
     return JSONResponse(content={"total": len(batches), "batches": batches})
 
 
-@router.get("/records", summary="Tra cứu danh sách hồ sơ với bộ lọc thư mục và số lượng file")
+@router.get("/records", summary="Tra cứu danh sách hồ sơ với bộ lọc thư mục, dự án và số lượng file")
 async def list_pg_records(
     principal: Principal = Depends(get_current_principal),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    project_id: Optional[str] = Query(None, description="Lọc theo mã dự án"),
     folder_result: Optional[str] = Query(None, description="Lọc theo thư mục kết quả"),
     source_path: Optional[str] = Query(None, description="Lọc theo đường dẫn máy"),
     batch_id: Optional[str] = Query(None, description="Lọc theo mã đợt quét"),
@@ -125,6 +149,7 @@ async def list_pg_records(
         max_files=max_files,
         search=search,
         access_scope=permission_filter,
+        project_id=project_id,
     )
     return JSONResponse(content={
         "total": total,
@@ -185,6 +210,46 @@ async def save_pg_record_review(
     return JSONResponse(content={"field_key": payload.field_key, "review": saved})
 
 
+@router.post("/records/{doc_id}/reviews/bulk", summary="Lưu quyết định tra soát hàng loạt các trường OCR")
+async def save_pg_record_review_bulk(
+    doc_id: str,
+    payload: BulkSaveFieldReviewRequest,
+    principal: Principal = Depends(get_current_principal),
+):
+    """Lưu nhiều quyết định tra soát cùng một lần gửi (Bulk Edit Mode)."""
+    store = get_postgres_store()
+    record = _accessible_record(store, principal, doc_id)
+    review_view = build_document_review(record=record)
+    fields_map = {item["key"]: item for item in review_view["fields"]}
+
+    reviewer = principal.display_name or principal.username
+    saved_reviews = {}
+
+    for item in payload.get_items():
+        field = fields_map.get(item.field_key)
+        if not field:
+            continue
+        if item.review_status == "corrected" and not (item.corrected_value or "").strip():
+            continue
+        saved = store.save_field_review(
+            document_id=doc_id,
+            field_key=item.field_key,
+            review_status=item.review_status,
+            source_value=field.get("value") or "",
+            corrected_value=(item.corrected_value or "").strip() or None,
+            note=(item.note or "").strip() or None,
+            reviewer=reviewer,
+        )
+        if saved:
+            saved_reviews[item.field_key] = saved
+
+    return JSONResponse(content={
+        "doc_id": doc_id,
+        "updated_count": len(saved_reviews),
+        "reviews": [dict(r, field_key=k) for k, r in saved_reviews.items()],
+    })
+
+
 @router.get("/records/{doc_id}/download-md", summary="Tải về file văn bản Markdown thô của hồ sơ")
 async def download_pg_record_markdown(doc_id: str, principal: Principal = Depends(get_current_principal)):
     store = get_postgres_store()
@@ -213,11 +278,12 @@ async def preview_pg_record_excel(doc_id: str, principal: Principal = Depends(ge
     return JSONResponse(content=preview_data)
 
 
-@router.get("/129-rows", summary="Trích xuất các dòng 129 cột đã lưu theo folder/mẻ quét")
+@router.get("/129-rows", summary="Trích xuất các dòng 129 cột đã lưu theo folder/mẻ quét/dự án")
 async def get_pg_129_rows(
     folder_result: Optional[str] = Query(None, description="Lọc theo thư mục kết quả"),
     source_path: Optional[str] = Query(None, description="Lọc theo link máy"),
     batch_id: Optional[str] = Query(None, description="Lọc theo đợt quét"),
+    project_id: Optional[str] = Query(None, description="Lọc theo mã dự án"),
     limit: int = Query(5000, ge=1, le=10000),
     principal: Principal = Depends(get_current_principal),
 ):
@@ -228,20 +294,23 @@ async def get_pg_129_rows(
         batch_id=batch_id,
         limit=limit,
         access_scope=_access_scope(store, principal),
+        project_id=project_id,
     )
     return JSONResponse(content={
         "total": len(rows),
         "folder_result": folder_result,
         "source_path": source_path,
+        "project_id": project_id,
         "rows": rows
     })
 
 
-@router.post("/export-129-excel", summary="Xuất file Excel 129 cột theo bộ lọc hoặc mẻ quét")
+@router.post("/export-129-excel", summary="Xuất file Excel 129 cột theo bộ lọc, mẻ quét hoặc dự án")
 async def export_pg_129_excel(
     folder_result: Optional[str] = Query(None),
     source_path: Optional[str] = Query(None),
     batch_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None, description="Lọc theo mã dự án"),
     principal: Principal = Depends(get_current_principal),
 ):
     from ....infrastructure.exporters.excel_129_exporter import Excel129Exporter
@@ -255,6 +324,7 @@ async def export_pg_129_excel(
         batch_id=batch_id,
         limit=10000,
         access_scope=_access_scope(store, principal),
+        project_id=project_id,
     )
     if not rows:
         raise HTTPException(status_code=400, detail="Không có dữ liệu 129 cột thỏa mãn điều kiện lọc")
@@ -273,7 +343,7 @@ async def export_pg_129_excel(
             except Exception:
                 pass
 
-    filename_part = folder_result or batch_id or "KetQua_Loc"
+    filename_part = project_id or folder_result or batch_id or "KetQua_Loc"
     filename = f"KetQua_129Cot_{filename_part}.xlsx"
 
     return Response(
@@ -290,6 +360,7 @@ async def export_pg_raw_db(
     folder_result: Optional[str] = Query(None),
     source_path: Optional[str] = Query(None),
     batch_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None, description="Lọc theo mã dự án"),
     search: Optional[str] = Query(None),
     ids: Optional[str] = Query(None, description="Danh sách ID hồ sơ cách nhau bởi dấu phẩy"),
     principal: Principal = Depends(get_current_principal),
@@ -301,6 +372,7 @@ async def export_pg_raw_db(
     folder_res = folder_result if isinstance(folder_result, str) else None
     src_path = source_path if isinstance(source_path, str) else None
     b_id = batch_id if isinstance(batch_id, str) else None
+    p_id = project_id if isinstance(project_id, str) else None
     q_search = search if isinstance(search, str) else None
     id_list = [i.strip() for i in ids.split(",") if i.strip()] if (ids and isinstance(ids, str)) else None
 
@@ -313,12 +385,14 @@ async def export_pg_raw_db(
         ids=id_list,
         limit=10000,
         access_scope=_access_scope(store, principal),
+        project_id=p_id,
     )
     if not records:
         raise HTTPException(status_code=400, detail="Không có dữ liệu thô thỏa mãn điều kiện lọc")
 
-    filename_part = folder_res or b_id or "KhoDuLieu"
-    filename = f"CSDL_DuLieuTho_{filename_part}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filename_part = p_id or folder_res or b_id or "KhoDuLieu"
+    clean_fn = re.sub(r'[\\/*?:"<>|]', "_", str(filename_part))
+    filename = f"CSDL_DuLieuTho_{clean_fn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
 
     export_payload = {
         "export_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -347,6 +421,7 @@ async def export_pg_raw_markdown(
     folder_result: Optional[str] = Query(None),
     source_path: Optional[str] = Query(None),
     batch_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None, description="Lọc theo mã dự án"),
     search: Optional[str] = Query(None),
     ids: Optional[str] = Query(None, description="Danh sách ID hồ sơ cách nhau bởi dấu phẩy"),
     principal: Principal = Depends(get_current_principal),
@@ -362,6 +437,7 @@ async def export_pg_raw_markdown(
     folder_res = folder_result if isinstance(folder_result, str) else None
     src_path = source_path if isinstance(source_path, str) else None
     b_id = batch_id if isinstance(batch_id, str) else None
+    p_id = project_id if isinstance(project_id, str) else None
     q_search = search if isinstance(search, str) else None
     id_list = [i.strip() for i in ids.split(",") if i.strip()] if (ids and isinstance(ids, str)) else None
 
@@ -374,29 +450,28 @@ async def export_pg_raw_markdown(
         ids=id_list,
         limit=10000,
         access_scope=_access_scope(store, principal),
+        project_id=p_id,
     )
     if not records:
-        raise HTTPException(status_code=400, detail="Không có dữ liệu Markdown thô thỏa mãn điều kiện")
+        raise HTTPException(status_code=400, detail="Không có dữ liệu thô thỏa mãn điều kiện lọc")
 
     zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         combined_lines = [
-            "# TỔNG HỢP VĂN BẢN MARKDOWN THÔ TỪ KHO HỒ SƠ",
-            f"- Thời gian xuất: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"- Tổng số hồ sơ: {len(records)}",
-            "",
-            "---",
+            f"# TỔNG HỢP DỮ LIỆU OCR THÔ ({len(records)} HỒ SƠ)",
+            f"Thời gian xuất: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"Bộ lọc: folder={folder_res or 'Tất cả'}, source={src_path or 'Tất cả'}",
+            "=" * 80,
             ""
         ]
 
         for idx, rec in enumerate(records, start=1):
-            file_name = rec.get("file_name") or f"ho_so_{idx}"
-            doc_id = rec.get("id") or str(idx)
-            raw_md = rec.get("raw_markdown") or "(Không có nội dung markdown)"
-
-            base_name = os.path.splitext(file_name)[0]
-            clean_name = re.sub(r'[\\/*?:"<>|]', "_", base_name).strip() or f"ho_so_{idx}"
-            short_id = doc_id[:8] if len(doc_id) >= 8 else doc_id
+            file_name = rec.get("file_name", f"record_{idx}")
+            base_name = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
+            clean_name = re.sub(r'[\\/*?:"<>|]', "_", base_name)[:50]
+            raw_md = rec.get("raw_markdown", "") or ""
+            doc_id_val = str(rec.get("id", ""))
+            short_id = doc_id_val[:8] if doc_id_val else str(idx)
             entry_name = f"{idx:03d}_{clean_name}_{short_id}.md"
 
             zf.writestr(entry_name, raw_md.encode("utf-8"))
@@ -412,8 +487,8 @@ async def export_pg_raw_markdown(
 
         zf.writestr("00_TONG_HOP_TOAN_BO.md", "\n".join(combined_lines).encode("utf-8"))
 
-    filename_part = folder_result or batch_id or "KhoDuLieu"
-    clean_fn = re.sub(r'[\\/*?:"<>|]', "_", filename_part)
+    filename_part = p_id or folder_res or b_id or "KhoDuLieu"
+    clean_fn = re.sub(r'[\\/*?:"<>|]', "_", str(filename_part))
     filename = f"GoiMarkdown_DuLieuTho_{clean_fn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
 
     return Response(
@@ -430,6 +505,7 @@ async def export_pg_raw_excel(
     folder_result: Optional[str] = Query(None),
     source_path: Optional[str] = Query(None),
     batch_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None, description="Lọc theo mã dự án"),
     search: Optional[str] = Query(None),
     principal: Principal = Depends(get_current_principal),
 ):
@@ -442,12 +518,13 @@ async def export_pg_raw_excel(
         search=search,
         limit=10000,
         access_scope=_access_scope(store, principal),
+        project_id=project_id,
     )
     if not records:
         raise HTTPException(status_code=400, detail="Không có dữ liệu thô thỏa mãn điều kiện lọc")
 
     excel_bytes = RawMarkdownExcelExporter.export_table_summary_to_excel(records)
-    filename_part = folder_result or batch_id or "KhoDuLieu"
+    filename_part = project_id or folder_result or batch_id or "KhoDuLieu"
     filename = f"BangTongHop_DuLieuTho_{filename_part}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
     return Response(
@@ -460,6 +537,28 @@ async def export_pg_raw_excel(
 
 
 # ─── CÁC ENDPOINT XÓA CÓ CHỌN LỌC (SELECTIVE DELETION) ─────────────────────────
+
+@router.delete("/by-project", summary="Xóa có chọn lọc toàn bộ hồ sơ và file ảnh crop thuộc dự án")
+async def delete_pg_records_by_project(
+    project_id: str = Query(..., description="Mã dự án cần xóa toàn bộ hồ sơ"),
+    principal: Principal = Depends(get_current_principal),
+):
+    store = get_postgres_store()
+    project = store.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy dự án: {project_id}")
+
+    if not is_project_manager(store, principal, project_id):
+        raise HTTPException(status_code=403, detail="Bạn không có quyền quản lý để xóa dữ liệu của dự án này.")
+
+    count = store.delete_records_by_project(project_id)
+    return JSONResponse(content={
+        "status": "success",
+        "deleted_count": count,
+        "project_id": project_id,
+        "message": f"Đã xóa thành công {count} hồ sơ và file ảnh crop thuộc dự án '{project.get('project_name', project_id)}'"
+    })
+
 
 @router.delete("/records", summary="Xóa có chọn lọc danh sách hồ sơ theo ID")
 async def delete_pg_records_by_ids(

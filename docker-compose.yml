@@ -109,7 +109,11 @@ services:
       - OCR_KEYCLOAK_CLIENT_ID=${OCR_KEYCLOAK_CLIENT_ID:-ocr-so-do-web}
       - OCR_KEYCLOAK_ADMIN_CLIENT_ID=${OCR_KEYCLOAK_ADMIN_CLIENT_ID:-ocr-so-do-admin-api}
       - OCR_KEYCLOAK_ADMIN_CLIENT_SECRET=${OCR_KEYCLOAK_ADMIN_CLIENT_SECRET:?Set OCR_KEYCLOAK_ADMIN_CLIENT_SECRET in .env}
-      - OCR_ALLOWED_SOURCE_ROOTS=${OCR_ALLOWED_SOURCE_ROOTS:-}
+      - KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME=${KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME:-kc-bootstrap-admin}
+      - KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD:?Set KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD in .env}
+      # Bind mount HSQ source read-only; the API only accepts this container path.
+      - OCR_ALLOWED_SOURCE_ROOTS=/data/hsq-vilg
+      - OCR_SOURCE_PATH_ALIASES=${OCR_SOURCE_PATH_ALIASES:-}
     # CHÚ Ý: Không mount thư mục mã nguồn máy chủ (src) vào container để việc
     # sửa code trên máy không ảnh hưởng đến Docker đang chạy.
     # Chỉ khi nào chạy "docker compose build" thì code mới được cập nhật vào image.
@@ -117,6 +121,10 @@ services:
       - ocr_outputs:/app/output
       - ocr_cache:/app/.cache
       - ocr_paddle_cache:/root/.paddleocr
+      - type: bind
+        source: ${OCR_HSQ_VILG_SOURCE_PATH:?Set OCR_HSQ_VILG_SOURCE_PATH in .env}
+        target: /data/hsq-vilg
+        read_only: true
     depends_on:
       postgres:
         condition: service_healthy

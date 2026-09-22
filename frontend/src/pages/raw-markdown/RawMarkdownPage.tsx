@@ -60,6 +60,39 @@ interface ExcelPreviewPayload {
   total_ocr_lines: number;
 }
 
+interface ProjectOption {
+  project_id: string;
+  project_name: string;
+  description?: string;
+  status?: string;
+  region?: string;
+}
+
+export const formatVietnamDateTime = (dateStr?: string | null): string => {
+  if (!dateStr) return '—';
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStr)) {
+    const [dPart, tPart] = dateStr.split(' ');
+    const [y, m, d] = dPart.split('-');
+    return `${d}/${m}/${y} ${tPart}`;
+  }
+  try {
+    const d = new Date(dateStr.includes('T') || dateStr.endsWith('Z') ? dateStr : `${dateStr.replace(' ', 'T')}+00:00`);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
 export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table, isActive }) => {
   const { can } = useAuth();
   // Dữ liệu hồ sơ
@@ -68,13 +101,9 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   const [loading, setLoading] = useState<boolean>(false);
   const [stats, setStats] = useState<PgStats | null>(null);
 
-  // Danh mục bộ lọc
-  const [folderOptions, setFolderOptions] = useState<PgFolderOption[]>([]);
-  const [sourceOptions, setSourceOptions] = useState<PgSourceOption[]>([]);
-
-  // Trạng thái bộ lọc
-  const [selectedFolder, setSelectedFolder] = useState<string>('all');
-  const [selectedSource, setSelectedSource] = useState<string>('all');
+  // Danh mục dự án & bộ lọc (Tối ưu hóa: chỉ còn Dự án & Tìm kiếm từ khóa)
+  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>('all');
   const [search, setSearch] = useState<string>('');
   const [limit, setLimit] = useState<number>(50);
   const [page, setPage] = useState<number>(1);
@@ -89,8 +118,9 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   // Modal xác nhận xóa
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean;
-    type: 'single' | 'folder' | 'source';
+    type: 'single' | 'folder' | 'source' | 'project';
     targetName: string;
+    targetTitle?: string;
     targetIds?: string[];
   } | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
@@ -109,22 +139,30 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   const [activeExcelTab, setActiveExcelTab] = useState<'summary' | 'ocr_lines' | 'cadastral_129'>('summary');
   const [excelFilterText, setExcelFilterText] = useState<string>('');
 
-  // Nạp danh mục filter và stats
-  const fetchFilterOptionsAndStats = useCallback(async () => {
+  // Nạp danh mục dự án
+  const fetchProjects = useCallback(async () => {
     try {
-      const [filterRes, statsRes] = await Promise.all([
-        axios.get('/api/v1/pg/filters'),
-        axios.get('/api/v1/pg/stats')
-      ]);
-      setFolderOptions(filterRes.data?.folders || []);
-      setSourceOptions(filterRes.data?.sources || []);
-      setStats(statsRes.data || null);
+      const res = await axios.get('/api/v1/projects?limit=200');
+      const list: ProjectOption[] = res.data?.projects ?? [];
+      setProjectOptions(list.filter((p) => p.status === 'active'));
     } catch (err) {
-      console.error('Lỗi nạp danh mục filter/stats PostgreSQL:', err);
+      console.error('Lỗi nạp danh mục dự án trong Kho hồ sơ:', err);
     }
   }, []);
 
-  // Nạp danh sách bản ghi theo filter
+  // Nạp thống kê theo dự án đã chọn
+  const fetchStats = useCallback(async () => {
+    try {
+      const statsRes = await axios.get('/api/v1/pg/stats', {
+        params: { project_id: selectedProject !== 'all' ? selectedProject : undefined }
+      });
+      setStats(statsRes.data || null);
+    } catch (err) {
+      console.error('Lỗi nạp stats PostgreSQL:', err);
+    }
+  }, [selectedProject]);
+
+  // Nạp danh sách bản ghi theo filter dự án và tìm kiếm từ khóa
   const fetchRecords = useCallback(async () => {
     setLoading(true);
     try {
@@ -133,8 +171,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
         params: {
           limit,
           offset,
-          folder_result: selectedFolder !== 'all' ? selectedFolder : undefined,
-          source_path: selectedSource !== 'all' ? selectedSource : undefined,
+          project_id: selectedProject !== 'all' ? selectedProject : undefined,
           search: search.trim() || undefined
         }
       });
@@ -145,11 +182,24 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
     } finally {
       setLoading(false);
     }
-  }, [limit, page, selectedFolder, selectedSource, search]);
+  }, [limit, page, selectedProject, search]);
 
   useEffect(() => {
-    fetchFilterOptionsAndStats();
-  }, [fetchFilterOptionsAndStats]);
+    fetchProjects();
+  }, [fetchProjects]);
+
+  // Lắng nghe sự kiện đồng bộ dự án khi người dùng tạo dự án mới
+  useEffect(() => {
+    const handler = () => {
+      fetchProjects();
+    };
+    window.addEventListener('project:changed', handler);
+    return () => window.removeEventListener('project:changed', handler);
+  }, [fetchProjects]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   useEffect(() => {
     fetchRecords();
@@ -158,10 +208,11 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   // Tự động làm mới khi người dùng chuyển sang tab Kho hồ sơ
   useEffect(() => {
     if (isActive) {
+      fetchProjects();
       fetchRecords();
-      fetchFilterOptionsAndStats();
+      fetchStats();
     }
-  }, [isActive, fetchRecords, fetchFilterOptionsAndStats]);
+  }, [isActive, fetchProjects, fetchRecords, fetchStats]);
 
 
 
@@ -222,8 +273,8 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   const handleViewIn129Table = async () => {
     try {
       const params: any = { limit: 5000 };
-      if (selectedFolder !== 'all') params.folder_result = selectedFolder;
-      if (selectedSource !== 'all') params.source_path = selectedSource;
+      if (selectedProject !== 'all') params.project_id = selectedProject;
+      if (search.trim()) params.search = search.trim();
 
       const res = await axios.get('/api/v1/pg/129-rows', { params });
       const rows = res.data?.rows || [];
@@ -246,8 +297,8 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
     setExportingExcel(true);
     try {
       const params: any = {};
-      if (selectedFolder !== 'all') params.folder_result = selectedFolder;
-      if (selectedSource !== 'all') params.source_path = selectedSource;
+      if (selectedProject !== 'all') params.project_id = selectedProject;
+      if (search.trim()) params.search = search.trim();
 
       const res = await axios.post('/api/v1/pg/export-129-excel', {}, {
         params,
@@ -256,7 +307,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      const fn = selectedFolder !== 'all' ? selectedFolder : 'KhoDuLieu_PG';
+      const fn = selectedProject !== 'all' ? `DuAn_${selectedProject}` : 'KhoDuLieu_PG';
       link.setAttribute('download', `KetQua_129Cot_${fn}_${new Date().toISOString().slice(0, 10)}.xlsx`);
       document.body.appendChild(link);
       link.click();
@@ -274,8 +325,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
     setDownloadingRawDb(true);
     try {
       const params: any = {};
-      if (selectedFolder !== 'all') params.folder_result = selectedFolder;
-      if (selectedSource !== 'all') params.source_path = selectedSource;
+      if (selectedProject !== 'all') params.project_id = selectedProject;
       if (search.trim()) params.search = search.trim();
 
       const res = await axios.get('/api/v1/pg/export-raw-db', {
@@ -285,7 +335,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/json' }));
       const link = document.createElement('a');
       link.href = url;
-      const fn = selectedFolder !== 'all' ? selectedFolder : 'KhoDuLieu_PG';
+      const fn = selectedProject !== 'all' ? `DuAn_${selectedProject}` : 'KhoDuLieu_PG';
       link.setAttribute('download', `CSDL_DuLieuTho_${fn}_${new Date().toISOString().slice(0, 10)}.json`);
       document.body.appendChild(link);
       link.click();
@@ -303,8 +353,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
     setDownloadingRawMarkdown(true);
     try {
       const params: any = {};
-      if (selectedFolder !== 'all') params.folder_result = selectedFolder;
-      if (selectedSource !== 'all') params.source_path = selectedSource;
+      if (selectedProject !== 'all') params.project_id = selectedProject;
       if (search.trim()) params.search = search.trim();
 
       const res = await axios.get('/api/v1/pg/export-raw-markdown', {
@@ -314,7 +363,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }));
       const link = document.createElement('a');
       link.href = url;
-      const fn = selectedFolder !== 'all' ? selectedFolder : 'KhoDuLieu_PG';
+      const fn = selectedProject !== 'all' ? `DuAn_${selectedProject}` : 'KhoDuLieu_PG';
       link.setAttribute('download', `GoiMarkdown_DuLieuTho_${fn}_${new Date().toISOString().slice(0, 10)}.zip`);
       document.body.appendChild(link);
       link.click();
@@ -332,8 +381,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
     setDownloadingRawExcel(true);
     try {
       const params: any = {};
-      if (selectedFolder !== 'all') params.folder_result = selectedFolder;
-      if (selectedSource !== 'all') params.source_path = selectedSource;
+      if (selectedProject !== 'all') params.project_id = selectedProject;
       if (search.trim()) params.search = search.trim();
 
       const res = await axios.get('/api/v1/pg/export-raw-excel', {
@@ -343,7 +391,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      const fn = selectedFolder !== 'all' ? selectedFolder : 'KhoDuLieu_PG';
+      const fn = selectedProject !== 'all' ? `DuAn_${selectedProject}` : 'KhoDuLieu_PG';
       link.setAttribute('download', `BangTongHop_DuLieuTho_${fn}_${new Date().toISOString().slice(0, 10)}.xlsx`);
       document.body.appendChild(link);
       link.click();
@@ -370,19 +418,14 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
         await axios.delete('/api/v1/pg/records', {
           data: { ids: deleteConfirm.targetIds }
         });
-      } else if (deleteConfirm.type === 'folder') {
-        await axios.delete('/api/v1/pg/by-folder', {
-          params: { folder_result: deleteConfirm.targetName }
+      } else if (deleteConfirm.type === 'project') {
+        await axios.delete('/api/v1/pg/by-project', {
+          params: { project_id: deleteConfirm.targetName }
         });
-        setSelectedFolder('all');
-      } else if (deleteConfirm.type === 'source') {
-        await axios.delete('/api/v1/pg/by-source', {
-          params: { source_path: deleteConfirm.targetName }
-        });
-        setSelectedSource('all');
+        setSelectedProject('all');
       }
       // Nạp lại dữ liệu
-      await Promise.all([fetchRecords(), fetchFilterOptionsAndStats()]);
+      await Promise.all([fetchRecords(), fetchStats()]);
       setDeleteConfirm(null);
     } catch (err: any) {
       const msg = await extractErrorMessage(err, 'Lỗi khi thực hiện xóa dữ liệu');
@@ -419,79 +462,78 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
 
   return (
     <div className="space-y-6">
-      {/* ── HEADER & THỐNG KÊ ── */}
-      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-sm relative overflow-hidden">
-        {/* Subtle decorative glow */}
-        <div className="absolute -top-24 -right-24 w-80 h-80 bg-gradient-to-br from-indigo-100/40 via-purple-50/20 to-transparent rounded-full blur-3xl pointer-events-none" />
-
+      {/* ── HEADER & THỐNG KÊ (CHUẨN HÀNH CHÍNH NHÀ NƯỚC) ── */}
+      <div className="bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-xs relative overflow-hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
           {/* Title & Subtitle */}
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-600 to-indigo-800 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 ring-4 ring-indigo-50 shrink-0">
+            <div className="w-12 h-12 rounded-xl bg-gov-900 border border-gov-800 flex items-center justify-center text-amber-400 shadow-sm shrink-0">
               <Database size={24} />
             </div>
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h2 className="text-xl font-bold tracking-tight text-slate-900 leading-tight">
-                  Kho hồ sơ
+                <h2 className="text-xl font-bold tracking-tight text-slate-950 uppercase leading-tight">
+                  Kho hồ sơ địa chính
                 </h2>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
                   </span>
-                  Sẵn sàng
+                  Trực tuyến
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed max-w-xl">
-                Tự động lưu trữ bền vững sau mỗi lần quét. Tra cứu, lọc theo thư mục kết quả, link máy và quản lý dữ liệu bóc tách.
+                Cơ sở dữ liệu lưu trữ bền vững. Quản lý, tra cứu theo dự án phân cấp và từ khóa nghiệp vụ.
               </p>
             </div>
           </div>
 
-          {/* KPI Stat Cards */}
+          {/* KPI Stat Cards Chuẩn Hành Chính */}
           <div className="flex flex-wrap items-center gap-2.5 text-xs">
-            {/* Thư mục */}
-            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-slate-50 hover:bg-slate-100/70 border border-slate-200/70 rounded-xl transition-all shadow-2xs">
-              <div className="w-8 h-8 rounded-lg bg-white border border-slate-200/70 flex items-center justify-center text-slate-600 shadow-2xs shrink-0">
-                <Folder size={15} />
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider leading-tight">Thư mục</span>
-                <span className="text-sm font-bold text-slate-800 leading-tight">{stats?.total_folders ?? folderOptions.length}</span>
-              </div>
-            </div>
-
             {/* Tổng hồ sơ */}
-            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-indigo-50/70 hover:bg-indigo-50 border border-indigo-100/80 rounded-xl transition-all shadow-2xs">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-gov-50 border border-gov-200 rounded-lg shadow-2xs">
+              <div className="w-8 h-8 rounded-lg bg-gov-900 text-amber-300 flex items-center justify-center shadow-2xs shrink-0 font-bold">
                 <Layers size={15} />
               </div>
               <div>
-                <span className="text-indigo-600/90 block text-[10px] font-semibold uppercase tracking-wider leading-tight">Tổng số hồ sơ</span>
-                <span className="text-sm font-bold text-indigo-950 leading-tight">{stats?.total_records ?? totalRecords}</span>
+                <span className="text-gov-800 block text-[10px] font-bold uppercase tracking-wider leading-tight">Tổng số hồ sơ</span>
+                <span className="text-sm font-bold text-gov-950 leading-tight">{stats?.total_records ?? totalRecords}</span>
               </div>
             </div>
 
             {/* Trích xuất hợp lệ */}
-            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-emerald-50/70 hover:bg-emerald-50 border border-emerald-100/80 rounded-xl transition-all shadow-2xs">
-              <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-lg shadow-2xs">
+              <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center shadow-2xs shrink-0">
                 <CheckCircle2 size={15} />
               </div>
               <div>
-                <span className="text-emerald-700/90 block text-[10px] font-semibold uppercase tracking-wider leading-tight">Trích xuất hợp lệ</span>
+                <span className="text-emerald-800 block text-[10px] font-bold uppercase tracking-wider leading-tight">Trích xuất hợp lệ</span>
                 <span className="text-sm font-bold text-emerald-950 leading-tight">{stats?.success_records ?? 0}</span>
+              </div>
+            </div>
+
+            {/* Dự án hiện tại */}
+            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-amber-50 border border-amber-200 rounded-lg shadow-2xs">
+              <div className="w-8 h-8 rounded-lg bg-amber-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                <Folder size={15} />
+              </div>
+              <div>
+                <span className="text-amber-800 block text-[10px] font-bold uppercase tracking-wider leading-tight">Dự án chọn lọc</span>
+                <span className="text-sm font-bold text-amber-950 leading-tight">
+                  {selectedProject === 'all' ? 'Toàn bộ' : (projectOptions.find(p => p.project_id === selectedProject)?.project_name || '1 dự án')}
+                </span>
               </div>
             </div>
 
             {/* Lỗi nhận dạng (nếu có) */}
             {stats && stats.error_records! > 0 && (
-              <div className="flex items-center gap-2.5 px-3.5 py-2 bg-rose-50/70 hover:bg-rose-50 border border-rose-100/80 rounded-xl transition-all shadow-2xs">
-                <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+              <div className="flex items-center gap-2.5 px-3.5 py-2 bg-rose-50 border border-rose-200 rounded-lg shadow-2xs">
+                <div className="w-8 h-8 rounded-lg bg-rose-700 text-white flex items-center justify-center shadow-2xs shrink-0">
                   <AlertTriangle size={15} />
                 </div>
                 <div>
-                  <span className="text-rose-700/90 block text-[10px] font-semibold uppercase tracking-wider leading-tight">Lỗi nhận dạng</span>
+                  <span className="text-rose-800 block text-[10px] font-bold uppercase tracking-wider leading-tight">Cần tra soát</span>
                   <span className="text-sm font-bold text-rose-950 leading-tight">{stats.error_records}</span>
                 </div>
               </div>
@@ -499,84 +541,56 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
 
             {/* Nút Làm mới */}
             <button
-              onClick={() => { fetchRecords(); fetchFilterOptionsAndStats(); }}
+              onClick={() => { fetchRecords(); fetchStats(); }}
               disabled={loading}
-              className="p-2.5 bg-slate-50 hover:bg-slate-100 active:scale-95 text-slate-600 hover:text-indigo-600 border border-slate-200/80 rounded-xl transition-all shadow-2xs cursor-pointer ml-0.5"
+              className="p-2.5 bg-slate-50 hover:bg-slate-100 active:scale-95 text-slate-700 hover:text-gov-900 border border-slate-300 rounded-lg transition-all shadow-2xs cursor-pointer ml-0.5"
               title="Làm mới dữ liệu kho"
             >
-              <RefreshCw size={15} className={loading ? 'animate-spin text-indigo-600' : ''} />
+              <RefreshCw size={15} className={loading ? 'animate-spin text-gov-800' : ''} />
             </button>
           </div>
         </div>
 
-        {/* ── BỘ LỌC THÔNG MINH (SMART FILTERS) ── */}
-        <div className="mt-5 pt-5 border-t border-slate-100/80 relative z-10">
+        {/* ── BỘ LỌC TINH GIẢN: CHỈ CÒN DỰ ÁN & TÌM TỪ KHÓA ── */}
+        <div className="mt-5 pt-5 border-t border-slate-200 relative z-10">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
-            {/* Lọc theo Thư Mục Kết Quả (Folder) */}
+            {/* Lọc theo Dự Án Lưu Trữ (Project) - Kèm Khu Vực */}
             <div className="md:col-span-5">
               <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
-                  <Folder size={14} className="text-indigo-600" />
-                  <span>Thư mục kết quả đã lưu</span>
+                  <Layers size={14} className="text-gov-800" />
+                  <span>Dự án lưu trữ</span>
                 </span>
-                {selectedFolder !== 'all' && (
-                  <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-md">
-                    Đã lọc
+                {selectedProject !== 'all' && (
+                  <span className="text-[10px] font-bold text-gov-800 bg-gov-100 border border-gov-200 px-2 py-0.5 rounded">
+                    Đã chọn dự án
                   </span>
                 )}
               </label>
               <div className="relative">
                 <select
-                  value={selectedFolder}
-                  onChange={e => { setSelectedFolder(e.target.value); setPage(1); }}
-                  className="w-full appearance-none bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl pl-3.5 pr-9 py-2.5 text-xs font-semibold text-slate-800 transition-all cursor-pointer shadow-2xs"
+                  value={selectedProject}
+                  onChange={e => { setSelectedProject(e.target.value); setPage(1); }}
+                  className="w-full appearance-none bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-300 hover:border-slate-400 focus:border-gov-800 focus:ring-2 focus:ring-gov-800/10 rounded-lg pl-3.5 pr-9 py-2.5 text-xs font-semibold text-slate-800 transition-all cursor-pointer shadow-2xs"
                 >
-                  <option value="all">🌟 Tất cả thư mục kết quả ({totalRecords} hồ sơ)</option>
-                  {folderOptions.map(f => (
-                    <option key={f.name} value={f.name}>
-                      📁 {f.name} ({f.count} hồ sơ) {f.date ? `• ${f.date}` : ''}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              </div>
-            </div>
-
-            {/* Lọc theo Đường Dẫn Máy (Source Path) */}
-            <div className="md:col-span-4">
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <HardDrive size={14} className="text-violet-600" />
-                  <span>Đường dẫn trên máy</span>
-                </span>
-                {selectedSource !== 'all' && (
-                  <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 border border-violet-100 px-1.5 py-0.5 rounded-md">
-                    Đã lọc
-                  </span>
-                )}
-              </label>
-              <div className="relative">
-                <select
-                  value={selectedSource}
-                  onChange={e => { setSelectedSource(e.target.value); setPage(1); }}
-                  className="w-full appearance-none bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl pl-3.5 pr-9 py-2.5 text-xs font-semibold text-slate-800 transition-all cursor-pointer truncate shadow-2xs"
-                  title={selectedSource !== 'all' ? selectedSource : 'Tất cả đường dẫn trên máy'}
-                >
-                  <option value="all">💻 Tất cả link trên máy</option>
-                  {sourceOptions.map(s => (
-                    <option key={s.path} value={s.path} title={s.path}>
-                      💻 {s.path} ({s.count} file)
-                    </option>
-                  ))}
+                  <option value="all">🏢 Tất cả dự án ({totalRecords} hồ sơ)</option>
+                  {projectOptions.map(p => {
+                    const regSuffix = p.region && p.region !== 'Chưa phân khu vực' ? ` [${p.region}]` : '';
+                    return (
+                      <option key={p.project_id} value={p.project_id}>
+                        📁 {p.project_name}{regSuffix}
+                      </option>
+                    );
+                  })}
                 </select>
                 <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
               </div>
             </div>
 
             {/* Ô Tìm Kiếm Từ Khóa */}
-            <div className="md:col-span-3">
+            <div className="md:col-span-7">
               <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                <Search size={14} className="text-slate-500" />
+                <Search size={14} className="text-gov-800" />
                 <span>Tìm từ khóa</span>
               </label>
               <div className="relative">
@@ -585,14 +599,14 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                   type="text"
                   value={search}
                   onChange={e => { setSearch(e.target.value); setPage(1); }}
-                  placeholder="Tên file, tên chủ, số phát hành..."
-                  className="w-full pl-9 pr-8 py-2.5 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 transition-all shadow-2xs"
+                  placeholder="Tìm theo tên file, tên chủ sử dụng, số phát hành, số vào sổ, thửa đất..."
+                  className="w-full pl-9 pr-8 py-2.5 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-300 hover:border-slate-400 focus:border-gov-800 focus:ring-2 focus:ring-gov-800/10 rounded-lg text-xs font-medium text-slate-800 placeholder:text-slate-400 transition-all shadow-2xs"
                 />
                 {search && (
                   <button
                     type="button"
                     onClick={() => { setSearch(''); setPage(1); }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/60 transition cursor-pointer"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200 transition cursor-pointer"
                     title="Xóa từ khóa tìm kiếm"
                   >
                     <X size={12} />
@@ -603,39 +617,28 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
           </div>
 
           {/* Active Filter Chips & Reset */}
-          {(selectedFolder !== 'all' || selectedSource !== 'all' || search) && (
+          {(selectedProject !== 'all' || search) && (
             <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
-              <div className="inline-flex items-center gap-1.5 text-slate-500 font-semibold text-[11px] bg-slate-100/90 px-2.5 py-1 rounded-lg">
+              <div className="inline-flex items-center gap-1.5 text-slate-600 font-semibold text-[11px] bg-slate-100 px-2.5 py-1 rounded-md">
                 <Filter size={12} className="text-slate-600" />
                 <span>Đang lọc:</span>
               </div>
 
-              {selectedFolder !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-medium text-xs shadow-2xs">
-                  <Folder size={12} className="text-indigo-500 shrink-0" />
-                  <span className="truncate max-w-[200px]" title={selectedFolder}>
-                    Folder: <strong className="font-semibold">{selectedFolder}</strong>
+              {selectedProject !== 'all' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gov-100 text-gov-900 border border-gov-200 font-medium text-xs shadow-2xs">
+                  <Layers size={12} className="text-gov-800 shrink-0" />
+                  <span className="truncate max-w-[280px]" title={selectedProject}>
+                    Dự án: <strong className="font-semibold">{projectOptions.find(p => p.project_id === selectedProject)?.project_name || selectedProject}</strong>
+                    {projectOptions.find(p => p.project_id === selectedProject)?.region && (
+                      <span className="text-[11px] text-gov-700 ml-1">
+                        ({projectOptions.find(p => p.project_id === selectedProject)?.region})
+                      </span>
+                    )}
                   </span>
                   <button
-                    onClick={() => { setSelectedFolder('all'); setPage(1); }}
-                    className="p-0.5 hover:bg-indigo-200/60 rounded text-indigo-500 hover:text-indigo-800 transition cursor-pointer"
-                    title="Bỏ lọc thư mục này"
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              )}
-
-              {selectedSource !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-200/80 font-medium text-xs shadow-2xs max-w-sm">
-                  <HardDrive size={12} className="text-violet-500 shrink-0" />
-                  <span className="truncate" title={selectedSource}>
-                    Link: <strong className="font-semibold">{selectedSource}</strong>
-                  </span>
-                  <button
-                    onClick={() => { setSelectedSource('all'); setPage(1); }}
-                    className="p-0.5 hover:bg-violet-200/60 rounded text-violet-500 hover:text-violet-800 transition shrink-0 cursor-pointer"
-                    title="Bỏ lọc link máy này"
+                    onClick={() => { setSelectedProject('all'); setPage(1); }}
+                    className="p-0.5 hover:bg-gov-200 rounded text-gov-700 hover:text-gov-950 transition cursor-pointer"
+                    title="Bỏ lọc dự án này"
                   >
                     <X size={12} />
                   </button>
@@ -643,14 +646,14 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
               )}
 
               {search && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 border border-sky-200/80 font-medium text-xs shadow-2xs">
-                  <Search size={12} className="text-sky-500 shrink-0" />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-sky-50 text-sky-800 border border-sky-200 font-medium text-xs shadow-2xs">
+                  <Search size={12} className="text-sky-600 shrink-0" />
                   <span>
                     Từ khóa: <strong className="font-semibold">"{search}"</strong>
                   </span>
                   <button
                     onClick={() => { setSearch(''); setPage(1); }}
-                    className="p-0.5 hover:bg-sky-200/60 rounded text-sky-500 hover:text-sky-800 transition cursor-pointer"
+                    className="p-0.5 hover:bg-sky-200 rounded text-sky-600 hover:text-sky-900 transition cursor-pointer"
                     title="Bỏ từ khóa tìm kiếm"
                   >
                     <X size={12} />
@@ -660,12 +663,11 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
 
               <button
                 onClick={() => {
-                  setSelectedFolder('all');
-                  setSelectedSource('all');
+                  setSelectedProject('all');
                   setSearch('');
                   setPage(1);
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-600 hover:text-rose-700 border border-rose-200/80 font-semibold text-xs transition-all cursor-pointer ml-auto sm:ml-2 shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 font-semibold text-xs transition-all cursor-pointer ml-auto sm:ml-2 shadow-2xs"
                 title="Xóa toàn bộ bộ lọc đang chọn"
               >
                 <RotateCcw size={12} />
@@ -680,33 +682,22 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-wrap items-center justify-between gap-3">
         {/* Nhóm Thông Tin & Xóa Theo Bộ Lọc */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {can('record.delete') && selectedFolder !== 'all' && (
+          {can('record.delete') && selectedProject !== 'all' && (
             <button
-              onClick={() => setDeleteConfirm({
-                open: true,
-                type: 'folder',
-                targetName: selectedFolder
-              })}
+              onClick={() => {
+                const pName = projectOptions.find(p => p.project_id === selectedProject)?.project_name || selectedProject;
+                setDeleteConfirm({
+                  open: true,
+                  type: 'project',
+                  targetName: selectedProject,
+                  targetTitle: pName
+                });
+              }}
               className="px-3 py-2 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-              title={`Xóa toàn bộ hồ sơ thuộc thư mục kết quả "${selectedFolder}"`}
+              title={`Xóa toàn bộ hồ sơ và ảnh crop thuộc dự án "${projectOptions.find(p => p.project_id === selectedProject)?.project_name || selectedProject}"`}
             >
               <Trash2 size={14} />
-              <span>Xóa cả thư mục "{selectedFolder}"</span>
-            </button>
-          )}
-
-          {can('record.delete') && selectedSource !== 'all' && (
-            <button
-              onClick={() => setDeleteConfirm({
-                open: true,
-                type: 'source',
-                targetName: selectedSource
-              })}
-              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 max-w-xs truncate shadow-2xs cursor-pointer"
-              title={`Xóa toàn bộ hồ sơ có đường dẫn trên máy thuộc "${selectedSource}"`}
-            >
-              <Trash2 size={14} />
-              <span>Xóa theo link máy này</span>
+              <span>Xóa dữ liệu dự án này</span>
             </button>
           )}
 
@@ -794,7 +785,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
           <button
             onClick={handleViewIn129Table}
             disabled={records.length === 0}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-semibold rounded-xl transition flex items-center gap-2 shadow-sm shadow-indigo-600/20 cursor-pointer disabled:cursor-not-allowed"
+            className="px-4 py-2.5 bg-gov-800 hover:bg-gov-900 active:scale-95 disabled:bg-slate-200 text-white disabled:text-slate-400 text-xs font-semibold rounded-xl transition flex items-center gap-2 shadow-sm shadow-gov-800/20 cursor-pointer disabled:cursor-not-allowed"
             title="Nạp toàn bộ dữ liệu đang lọc vào giao diện Bảng 129 Cột"
           >
             <span>Xem Trên Bảng 129 Cột</span>
@@ -810,8 +801,8 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
             <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
               <tr>
                 <th className="py-3 px-3 w-12 text-center">STT</th>
-                <th className="py-3 px-3 min-w-[200px]">Tên tệp & Link máy</th>
-                <th className="py-3 px-3 min-w-[140px]">Thư mục kết quả</th>
+                <th className="py-3 px-3 min-w-[200px]">Tên tệp hồ sơ</th>
+                <th className="py-3 px-3 min-w-[140px]">Dự án / Đợt quét</th>
                 <th className="py-3 px-3 w-20 text-center">Mẫu</th>
                 <th className="py-3 px-3 min-w-[120px]">Số phát hành</th>
                 <th className="py-3 px-3 min-w-[160px]">Họ tên chủ</th>
@@ -825,7 +816,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
               {loading && records.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-16 text-center text-slate-400">
-                    <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-indigo-500" />
+                    <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-gov-800" />
                     <span>Đang tải dữ liệu từ PostgreSQL...</span>
                   </td>
                 </tr>
@@ -841,7 +832,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                 records.map((r, idx) => {
                   const sttNumber = (page - 1) * limit + idx + 1;
                   return (
-                    <tr key={r.id} className="hover:bg-indigo-50/40 transition">
+                    <tr key={r.id} className="hover:bg-gov-50/40 transition">
                       <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
                         {sttNumber}
                       </td>
@@ -861,7 +852,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                         )}
                       </td>
                       <td className="py-3 px-3">
-                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-indigo-700 border border-slate-200">
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-gov-50 text-gov-900 border border-gov-200">
                           {r.folder_result || r.batch_id || 'Khác'}
                         </span>
                       </td>
@@ -887,7 +878,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                         {r.so_thua ? `${r.so_thua} / ${r.to_ban_do || '?'}` : '-'}
                       </td>
                       <td className="py-3 px-3 text-slate-500 text-[11px] font-mono">
-                        {r.created_at}
+                        {formatVietnamDateTime(r.created_at)}
                       </td>
                       <td className="py-3 px-3 text-center">
                         {r.status === 'success' ? (
@@ -913,7 +904,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                           )}
                           <button
                             onClick={() => handleViewDetail(r.id)}
-                            className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition"
+                            className="p-1.5 bg-gov-50 hover:bg-gov-100 text-gov-800 rounded-lg transition"
                             title="Xem văn bản Markdown thô"
                           >
                             <FileCode size={13} />
@@ -990,20 +981,17 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
               <AlertTriangle size={24} />
             </div>
             <div className="text-center">
-              <h3 className="text-base font-bold text-slate-900">Xác Nhận Xóa Dữ Liệu Trong PostgreSQL</h3>
+              <h3 className="text-base font-bold text-slate-900">Xác Nhận Xóa Dữ Liệu & Ảnh Crop</h3>
               <p className="text-xs text-slate-500 mt-2 leading-relaxed">
                 {deleteConfirm.type === 'single' && (
-                  <>Bạn có chắc chắn muốn xóa hồ sơ <b>"{deleteConfirm.targetName}"</b> khỏi PostgreSQL?</>
+                  <>Bạn có chắc chắn muốn xóa hồ sơ <b>"{deleteConfirm.targetName}"</b> khỏi CSDL và xóa toàn bộ ảnh crop, preview liên quan trên ổ đĩa?</>
                 )}
-                {deleteConfirm.type === 'folder' && (
-                  <>Bạn có chắc chắn muốn xóa toàn bộ hồ sơ thuộc thư mục kết quả <b>"{deleteConfirm.targetName}"</b> khỏi PostgreSQL?</>
-                )}
-                {deleteConfirm.type === 'source' && (
-                  <>Bạn có chắc chắn muốn xóa toàn bộ hồ sơ có link trên máy thuộc <b>"{deleteConfirm.targetName}"</b> khỏi PostgreSQL?</>
+                {deleteConfirm.type === 'project' && (
+                  <>Bạn có chắc chắn muốn xóa toàn bộ hồ sơ, dữ liệu bóc tách và tất cả ảnh crop/preview thuộc dự án <b>"{deleteConfirm.targetTitle || deleteConfirm.targetName}"</b> khỏi CSDL và ổ đĩa?</>
                 )}
               </p>
               <p className="text-[11px] text-rose-600 font-semibold mt-1">
-                Thao tác này sẽ xóa các bản ghi được chỉ định.
+                Thao tác này sẽ xóa vĩnh viễn cả bản ghi trong CSDL và các tệp ảnh crop trên ổ cứng, không thể phục hồi!
               </p>
             </div>
 
@@ -1034,7 +1022,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
           <div className="bg-white rounded-2xl max-w-4xl w-full h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm">
+                <div className="w-9 h-9 rounded-lg bg-gov-900 flex items-center justify-center text-amber-400 shadow-sm">
                   <FileCode size={18} />
                 </div>
                 <div>

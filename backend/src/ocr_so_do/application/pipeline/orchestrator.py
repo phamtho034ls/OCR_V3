@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 import re
 import time
+from difflib import SequenceMatcher
 from typing import Dict, Any, List, Optional
 import cv2
 import numpy as np
@@ -55,6 +56,125 @@ class PipelineOrchestrator:
         self.diagram_extractor = DiagramExtractor()
         self.address_normalizer = AddressNormalizer()
 
+    @staticmethod
+    def _ocr_comparable_text(text: Any) -> str:
+        """Normalize a candidate solely for OCR-engine comparison.
+
+        The actual selected value keeps its accents and punctuation.  Removing
+        diacritics here makes ``Nguyen Van A`` comparable with ``Nguyễn Văn A``
+        so that a useful VietOCR reading is not discarded just because Paddle
+        returns unaccented Vietnamese.
+        """
+        value = str(text or "").lower()
+        value = value.replace("đ", "d")
+        value = "".join(
+            ch for ch in __import__("unicodedata").normalize("NFD", value)
+            if not __import__("unicodedata").combining(ch)
+        )
+        return re.sub(r"[^a-z0-9]", "", value)
+
+    @classmethod
+    def _select_ocr_candidate(
+        cls,
+        paddle_text: Any,
+        paddle_conf: Any,
+        viet_text: Any,
+        viet_conf: Any,
+        rotated_viet_text: Any = "",
+        rotated_viet_conf: Any = 0.0,
+        is_barcode: bool = False,
+    ) -> tuple[str, float, str, str]:
+        """Choose a recognizer output without blindly overwriting Paddle.
+
+        VietOCR is deliberately preferred for Vietnamese names, addresses and
+        prose when it agrees with Paddle after accent-insensitive comparison.
+        A high-confidence, materially different Paddle reading wins when
+        VietOCR is weak/garbled.  This fixes the former ``>= 0.25`` overwrite
+        rule which corrupted many upside-down crops.
+        """
+        p_text = str(paddle_text or "").strip()
+        p_conf = float(paddle_conf or 0.0)
+        candidates = [
+            ("vietocr", str(viet_text or "").strip(), float(viet_conf or 0.0)),
+            ("vietocr_180", str(rotated_viet_text or "").strip(), float(rotated_viet_conf or 0.0)),
+        ]
+        candidates = [item for item in candidates if item[1]]
+        v_source, v_text, v_conf = max(candidates, key=lambda item: item[2], default=("", "", 0.0))
+
+        decimal_re = re.compile(r"^\s*\d{1,7}[\.,]\d{1,4}\s*$")
+        p_decimal = bool(decimal_re.match(p_text))
+        v_decimal = bool(decimal_re.match(v_text))
+        if not is_barcode and (p_decimal or v_decimal):
+            if p_decimal and (not v_decimal or p_conf >= v_conf):
+                return p_text, p_conf, "paddle", "numeric_highest_confidence"
+            return v_text, v_conf, v_source, "numeric_highest_confidence"
+
+        p_digits = re.sub(r"\D", "", p_text)
+        v_digits = re.sub(r"\D", "", v_text)
+        if is_barcode:
+            if len(v_digits) in (13, 14, 15) and v_conf >= 0.60:
+                return v_text, v_conf, v_source, "barcode_vietocr"
+            return p_text, p_conf, "paddle", "barcode_paddle"
+
+        # Identity numbers and serials should not be reconstructed by VietOCR.
+        has_paddle_identity = bool(
+            re.search(r"\b\d{9,15}\b", p_text)
+            or re.search(r"(cccd|cmnd|nam sinh|sinh nam)", p_text.lower())
+            or re.search(r"^[A-Z]{2}\s*\d{6,8}$", p_text)
+        )
+        has_viet_identity = bool(
+            re.search(r"\b\d{9,15}\b", v_text)
+            or re.search(r"^[A-Z]{2}\s*\d{6,8}$", v_text)
+        )
+        if has_paddle_identity and not has_viet_identity and p_conf >= 0.75:
+            return p_text, p_conf, "paddle", "identity_paddle_only"
+
+        if not p_text:
+            return v_text, v_conf, v_source, "vietocr_only"
+        if not v_text or v_conf < 0.50:
+            return p_text, p_conf, "paddle", "vietocr_low_confidence"
+
+        p_cmp = cls._ocr_comparable_text(p_text)
+        v_cmp = cls._ocr_comparable_text(v_text)
+        similarity = SequenceMatcher(None, p_cmp, v_cmp).ratio() if p_cmp and v_cmp else 0.0
+
+        # Kiểm tra xem có phải văn bản thuần chữ (tên, địa chỉ, cơ quan...) không có số
+        is_pure_text = not bool(re.search(r"\d", p_text)) and not bool(re.search(r"\d", v_text))
+
+        # When both engines agree or text is mostly pure Vietnamese letters, VietOCR
+        # preserves accents and diacritics far better than PaddleOCR.
+        if similarity >= 0.70 and v_conf >= 0.50:
+            return v_text, v_conf, v_source, "vietocr_text_agrees_with_paddle"
+        if is_pure_text and similarity >= 0.58 and v_conf >= 0.48:
+            return v_text, v_conf, v_source, "vietocr_pure_text_priority"
+        if v_conf >= 0.70 and v_conf + 0.12 >= p_conf:
+            return v_text, v_conf, v_source, "vietocr_strong_text"
+        if p_conf >= v_conf + 0.18 and similarity < 0.55:
+            return p_text, p_conf, "paddle", "paddle_stronger_disagreement"
+        if v_conf >= 0.58 and similarity >= 0.55:
+            return v_text, v_conf, v_source, "vietocr_text_priority"
+        return p_text, p_conf, "paddle", "paddle_fallback"
+
+    @classmethod
+    def _should_try_vietocr_180(
+        cls,
+        paddle_text: Any,
+        paddle_conf: Any,
+        viet_text: Any,
+        viet_conf: Any,
+    ) -> bool:
+        """Run the expensive crop-level 180° retry only on conflict cases."""
+        p_text = str(paddle_text or "").strip()
+        v_text = str(viet_text or "").strip()
+        p_conf = float(paddle_conf or 0.0)
+        v_conf = float(viet_conf or 0.0)
+        if not p_text or p_conf < 0.75 or v_conf >= 0.75:
+            return False
+        similarity = SequenceMatcher(
+            None, cls._ocr_comparable_text(p_text), cls._ocr_comparable_text(v_text)
+        ).ratio() if v_text else 0.0
+        return not v_text or (p_conf >= v_conf + 0.12 and similarity < 0.58)
+
     def process_page(
         self,
         image: np.ndarray,
@@ -76,8 +196,16 @@ class PipelineOrchestrator:
         # Giữ nguyên theo yêu cầu: Không sửa thứ tự gọi PaddleOCR
         quick_ocr = self.detector.detect(deskewed)
 
-        rot_angle = 0
-        if page_index == 0:
+        # Correct the whole page *before* making crops.  The old implementation
+        # only applied a narrow page-1 rule, leaving owner/address crops on the
+        # other pages upside down for VietOCR.
+        deskewed, rot_angle = OrientationCorrector.correct(deskewed, quick_ocr, detector=self.detector)
+        if rot_angle:
+            logger.info(f"[{job_id}] Xoay {rot_angle}° trang {page_index + 1} theo Paddle orientation")
+            quick_ocr = self.detector.detect(deskewed)
+
+        # Keep the specialised front-cover barcode guard as a second signal.
+        if page_index == 0 and not rot_angle:
             needs_180, reason = OrientationCorrector.check_trang_1_needs_180(deskewed, quick_ocr)
             if needs_180:
                 logger.warning(f"[{job_id}] Xoay 180° trang 1 (lý do: {reason})")
@@ -225,58 +353,66 @@ class PipelineOrchestrator:
                 # Cắt trực tiếp trong RAM (In-memory Cropping)
                 crop_np = OpenCVCropper.crop_polygon(deskewed, bbox, pad=None, box_type="default")
                 if crop_np is not None and crop_np.size > 0:
+                    # Nếu crop là dạng đứng (chiều cao > 1.3 * chiều rộng), xoay 90 độ sang ngang để VietOCR đọc được
+                    h_c, w_c = crop_np.shape[:2]
+                    if h_c > w_c * 1.3:
+                        crop_np = cv2.rotate(crop_np, cv2.ROTATE_90_CLOCKWISE)
                     crops_in_memory.append(crop_np)
                     crop_indices.append(idx)
 
         # Batch recognition qua VietOCR
         if crops_in_memory:
             batch_preds = self.recognizer.recognize_batch(crops_in_memory)
-            min_conf_viet = 0.25
+
+            # A page-level correction catches the common case.  For the small
+            # set where Paddle and VietOCR strongly disagree, retry that crop
+            # at 180°; this is essential for text inside an otherwise upright
+            # scan or an incorrectly oriented source crop.
+            rotated_local_indices: List[int] = []
+            rotated_crops: List[np.ndarray] = []
+            for local_i, orig_idx in enumerate(crop_indices):
+                viet_text, viet_conf = batch_preds[local_i]
+                item = ocr_results[orig_idx]
+                if self._should_try_vietocr_180(
+                    item.get("text", ""), item.get("confidence", 0.0), viet_text, viet_conf
+                ):
+                    rotated_local_indices.append(local_i)
+                    rotated_crops.append(cv2.rotate(crops_in_memory[local_i], cv2.ROTATE_180))
+            rotated_predictions = self.recognizer.recognize_batch(rotated_crops) if rotated_crops else []
+            rotated_by_local = {
+                local_i: prediction
+                for local_i, prediction in zip(rotated_local_indices, rotated_predictions)
+            }
 
             for local_i, (orig_idx, crop_img) in enumerate(zip(crop_indices, crops_in_memory)):
                 viet_text, viet_conf = batch_preds[local_i]
                 paddle_t = ocr_results[orig_idx].get("text", "")
                 paddle_c = ocr_results[orig_idx].get("confidence", 0.0)
 
-                # Chống ảo giác VietOCR trên số
-                has_digits_paddle = bool(
-                    re.search(r'\b\d{9,15}\b', paddle_t) or
-                    re.search(r'(cccd|cmnd|nam sinh|sinh nam)', paddle_t.lower()) or
-                    re.search(r'^[A-Z]{2}\s*\d{6,8}$', paddle_t.strip())
+                rotated_text, rotated_conf = rotated_by_local.get(local_i, ("", 0.0))
+                is_barcode_item = (
+                    ocr_results[orig_idx].get("is_barcode_box", False)
+                    or len(re.sub(r'\D', '', str(viet_text))) in [13, 14, 15]
                 )
-                has_digits_viet = bool(
-                    re.search(r'\b\d{9,15}\b', viet_text) or
-                    re.search(r'^[A-Z]{2}\s*\d{6,8}$', viet_text.strip())
+                selected_text, selected_conf, selected_engine, selected_reason = self._select_ocr_candidate(
+                    paddle_t, paddle_c, viet_text, viet_conf,
+                    rotated_text, rotated_conf, is_barcode=is_barcode_item,
                 )
+                ocr_results[orig_idx]["text"] = selected_text
+                ocr_results[orig_idx]["confidence"] = selected_conf
+                ocr_results[orig_idx]["ocr_candidates"] = {
+                    "paddle": {"text": paddle_t, "confidence": float(paddle_c or 0.0)},
+                    "vietocr": {"text": str(viet_text or "").strip(), "confidence": float(viet_conf or 0.0)},
+                    "vietocr_180": {"text": str(rotated_text or "").strip(), "confidence": float(rotated_conf or 0.0)},
+                }
+                ocr_results[orig_idx]["selected_engine"] = selected_engine
+                ocr_results[orig_idx]["selection_reason"] = selected_reason
 
-                is_barcode_item = ocr_results[orig_idx].get("is_barcode_box", False) or len(re.sub(r'\D', '', viet_text)) in [13, 14, 15]
-
-                # Với ô số (đặc biệt diện tích), không chọn VietOCR chỉ vì
-                # confidence tối thiểu.  Nhiều trường hợp VietOCR biến ``207.9``
-                # thành ``2019``. Giữ candidate có dạng số và confidence cao hơn.
-                decimal_re = re.compile(r"^\s*\d{1,7}[\.,]\d{1,4}\s*$")
-                numeric_candidates = []
-                if decimal_re.match(str(paddle_t)):
-                    numeric_candidates.append((float(paddle_c or 0.0), str(paddle_t).strip(), float(paddle_c or 0.0)))
-                if decimal_re.match(str(viet_text)):
-                    numeric_candidates.append((float(viet_conf or 0.0), str(viet_text).strip(), float(viet_conf or 0.0)))
-                numeric_override = bool(numeric_candidates and not is_barcode_item)
-                if numeric_override:
-                    _, selected_text, selected_conf = max(numeric_candidates, key=lambda item: item[0])
-                    ocr_results[orig_idx]["text"] = selected_text
-                    ocr_results[orig_idx]["confidence"] = selected_conf
-                    ocr_results[orig_idx]["ocr_candidates"] = {
-                        "paddle": {"text": paddle_t, "confidence": paddle_c},
-                        "vietocr": {"text": viet_text, "confidence": viet_conf},
-                    }
-                if not numeric_override and is_barcode_item and len(re.sub(r'\D', '', viet_text)) >= 12 and viet_conf >= min_conf_viet:
-                    ocr_results[orig_idx]["text"] = viet_text.strip()
-                    ocr_results[orig_idx]["confidence"] = float(viet_conf)
-                elif not numeric_override and has_digits_paddle and not has_digits_viet and paddle_c >= 0.80:
-                    pass
-                elif not numeric_override and viet_text and viet_conf >= min_conf_viet:
-                    ocr_results[orig_idx]["text"] = viet_text.strip()
-                    ocr_results[orig_idx]["confidence"] = float(viet_conf)
+                saved_crop_img = (
+                    rotated_crops[rotated_local_indices.index(local_i)]
+                    if selected_engine == "vietocr_180" and local_i in rotated_local_indices
+                    else crop_img
+                )
 
                 final_text = ocr_results[orig_idx].get("text", "")
                 final_conf = ocr_results[orig_idx].get("confidence", 0.0)
@@ -298,7 +434,7 @@ class PipelineOrchestrator:
                 crop_url = ""
                 crop_filename = f"crop_{local_i:04d}.png"
                 if self.save_crops_to_disk and self.artifact_store:
-                    crop_url = self.artifact_store.save_crop(job_id, crop_img, crop_filename)
+                    crop_url = self.artifact_store.save_crop(job_id, saved_crop_img, crop_filename)
 
                 bbox_pts = ocr_results[orig_idx].get("bbox", [])
                 xs = [pt[0] for pt in bbox_pts] if bbox_pts else []
@@ -317,7 +453,7 @@ class PipelineOrchestrator:
                     "bbox": bbox_pts,
                     "box_rect": box_rect,
                     "url": crop_url,
-                    "crop_size": [int(crop_img.shape[1]), int(crop_img.shape[0])],
+                    "crop_size": [int(saved_crop_img.shape[1]), int(saved_crop_img.shape[0])],
                     "raw_text": final_text,
                     "pruned_text": pruned["pruned_text"],
                     "removed_border_tokens": pruned["removed_tokens"],
@@ -325,8 +461,12 @@ class PipelineOrchestrator:
                     "paddle_conf": round(float(paddle_c), 3),
                     "viet_text": viet_text.strip() if viet_text else "",
                     "viet_conf": round(float(viet_conf), 3),
+                    "viet_180_text": str(rotated_text or "").strip(),
+                    "viet_180_conf": round(float(rotated_conf or 0.0), 3),
                     "final_text": final_text,
                     "final_conf": round(float(final_conf), 3),
+                    "selected_engine": selected_engine,
+                    "selection_reason": selected_reason,
                 }
 
                 if self.save_crops_to_disk and self.artifact_store:
@@ -472,7 +612,9 @@ class PipelineOrchestrator:
                 "ngay_sinh": raw_y,
                 "dia_chi_thuong_tru": get_val("dia_chi_thuong_tru"),
                 "dia_chi_thuong_tru_chu_2": get_val("dia_chi_thuong_tru_chu_2"),
-                "loai_chu": get_val("loai_chu") or ("Vợ chồng / Đồng sở hữu" if has_chu_2 else "Cá nhân")
+                "loai_chu": get_val("loai_chu") or ("Vợ chồng / Đồng sở hữu" if has_chu_2 else "Cá nhân"),
+                "nguoi_dai_dien": get_val("nguoi_dai_dien"),
+                "dong_thua_ke": extracted_fields.get("dong_thua_ke", {}).get("value") or [],
             },
             "thua_dat": {
                 "ty_le": get_val("ty_le"),

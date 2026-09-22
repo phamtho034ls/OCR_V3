@@ -88,7 +88,9 @@ class Cadastral129Mapper:
             reasons.append("invalid_area" if raw["dien_tich"] else "missing_area")
 
         purpose_raw = raw["ma_muc_dich"] or raw["muc_dich_su_dung"]
-        purpose = "" if cls._looks_like_table_noise(purpose_raw) else cls.map_muc_dich(purpose_raw)
+        purpose = "" if cls._looks_like_table_noise(purpose_raw) else cls.map_muc_dich(
+            raw["ma_muc_dich"] or raw["muc_dich_su_dung"], raw["muc_dich_su_dung"]
+        )
         if not purpose:
             reasons.append("invalid_land_use_purpose" if purpose_raw else "missing_land_use_purpose")
 
@@ -271,6 +273,19 @@ class Cadastral129Mapper:
             flags=re.IGNORECASE,
         ).strip(" -:;,.")
         s = truncate_address_after_province(s)
+        # Direct-controlled municipalities are often the last administrative
+        # unit.  When OCR glues the next person's name after it without a
+        # comma, the generic province regex cannot see the boundary.  Keep the
+        # known city name only; the name will be parsed in its own field.
+        direct_city = re.search(
+            r"\b(?:thành\s*phố|thanh\s*pho|tp\.?)\s+"
+            r"(Hải\s*Phòng|Hai\s*Phong|Hà\s*Nội|Ha\s*Noi|Đà\s*Nẵng|Da\s*Nang|"
+            r"Hồ\s*Chí\s*Minh|Ho\s*Chi\s*Minh|Cần\s*Thơ|Can\s*Tho)\b",
+            s,
+            re.IGNORECASE,
+        )
+        if direct_city:
+            s = s[:direct_city.end()].strip(" -:;,.")
         # Nếu sau khi làm sạch chuỗi chỉ còn lại tên người (không hề có cấp hành chính thôn/xã/huyện/tỉnh/đường/phố/số nhà)
         if s and not any(k in s.lower() for k in ["thôn", "thon", "xóm", "xom", "bản", "ban", "tổ", "to", "làng", "lang", "phố", "pho", "đường", "duong", "xã", "xa", "phường", "phuong", "thị trấn", "thi tran", "huyện", "huyen", "quận", "quan", "thị xã", "thi xa", "tỉnh", "tinh", "thành phố", "thanh pho", "tp", "đồng", "dong", "khu"]):
             return ""
@@ -294,8 +309,9 @@ class Cadastral129Mapper:
         addr = cls.clean_address(raw_addr)
         if not addr:
             return res
+        # The source-address field retains the cleaned string; component
+        # columns below provide the administrative decomposition.
         res["dia_chi_chi_tiet"] = addr
-
         # Tách các cấp bằng dấu phẩy
         parts = [p.strip() for p in re.split(r"[,;]\s*", addr) if p.strip()]
         if not parts:
@@ -308,7 +324,7 @@ class Cadastral129Mapper:
             if m_tinh:
                 res["ten_tinh"] = m_tinh.group(1).strip()
                 parts.pop()
-            else:
+            elif not re.search(r"^(?:huyện|huyen|quận|quan|thị\s*xã|thi\s*xa|xã|xa|phường|phuong|thị\s*trấn|thi\s*tran|thôn|thon|xóm|xom|bản|ban|tổ|to|đường|duong|số|so|phố|pho|đồng|dong)\b", last, re.IGNORECASE):
                 # Thử match với DMN tỉnh
                 try:
                     from ...domain.rules.address.dmn_vn_normalizer import DmnVnNormalizer
@@ -326,7 +342,7 @@ class Cadastral129Mapper:
             if m_huyen:
                 res["ten_huyen"] = m_huyen.group(1).strip()
                 parts.pop()
-            else:
+            elif not re.search(r"^(?:xã|xa|phường|phuong|thị\s*trấn|thi\s*tran|thôn|thon|xóm|xom|bản|ban|tổ|to|đường|duong|số|so|phố|pho|đồng|dong)\b", last, re.IGNORECASE):
                 # Thử match với DMN huyện
                 try:
                     from ...domain.rules.address.dmn_vn_normalizer import DmnVnNormalizer
@@ -350,7 +366,7 @@ class Cadastral129Mapper:
             if m_xa:
                 res["ten_xa"] = m_xa.group(1).strip()
                 parts.pop()
-            else:
+            elif not re.search(r"^(?:thôn|thon|xóm|xom|bản|ban|tổ|to|đường|duong|số|so|phố|pho|đồng|dong)\b", last, re.IGNORECASE):
                 # Thử match với DMN xã
                 try:
                     from ...domain.rules.address.dmn_vn_normalizer import DmnVnNormalizer
@@ -386,43 +402,53 @@ class Cadastral129Mapper:
             else:
                 res["ten_duong_pho"] = rem
 
-        # Chuẩn hóa giá trị các cấp sau khi decompose bằng DMN-VN cascade match
+        # Chuẩn hóa giá trị các cấp bằng DMN-VN Infer Hierarchy (Top-down & Bottom-up)
         try:
             from ...domain.rules.address.dmn_vn_normalizer import DmnVnNormalizer
             dmn = DmnVnNormalizer()
-            cas = dmn.cascade_match(res["ten_tinh"], res["ten_huyen"], res["ten_xa"])
-            if cas.get("tinh"):
-                res["ten_tinh"] = cas["tinh"].clean_name
-            if cas.get("huyen"):
-                res["ten_huyen"] = cas["huyen"].clean_name
-            if cas.get("xa"):
-                res["ten_xa"] = cas["xa"].clean_name
+            norm_tinh, norm_huyen, norm_xa = dmn.infer_hierarchy(
+                res["ten_tinh"], res["ten_huyen"], res["ten_xa"]
+            )
+            if norm_tinh:
+                res["ten_tinh"] = norm_tinh
+            if norm_huyen:
+                res["ten_huyen"] = norm_huyen
+            if norm_xa:
+                res["ten_xa"] = norm_xa
         except Exception:
             pass
-
-        # Fallback bổ sung (fast-path)
-        if res["ten_tinh"]:
-            if any(k in res["ten_tinh"].lower() for k in ["lạng sơn", "lang sm", "lans", "lược sơn", "ling sơn", "lăng sơn"]):
-                res["ten_tinh"] = "Lạng Sơn"
-        if res["ten_huyen"]:
-            if any(k in res["ten_huyen"].lower() for k in ["bình gia", "bình của", "bình cha", "bình ca", "bình chu", "bình giá"]):
-                res["ten_huyen"] = "Bình Gia"
-        if res["ten_xa"]:
-            if any(k in res["ten_xa"].lower() for k in ["vĩnh yên", "vinh yên", "vĩnh yêu"]):
-                res["ten_xa"] = "Vĩnh Yên"
 
         return res
 
     @staticmethod
-    def map_muc_dich(raw_mdsd: Optional[str]) -> str:
+    def map_muc_dich(raw_mdsd: Optional[str], purpose_context: Optional[str] = None) -> str:
+        if not raw_mdsd:
+            raw_mdsd = purpose_context or ""
         if not raw_mdsd:
             return ""
         s = str(raw_mdsd).strip()
+        context = str(purpose_context or s).strip()
+        context_low = context.lower()
+
+        # The natural-language purpose is the deciding evidence when OCR has
+        # joined adjacent codes (e.g. ONT+ODT while the certificate says only
+        # "đất ở tại đô thị").
+        if "đô thị" in context_low or "do thi" in context_low:
+            return "ODT"
+        if "nông thôn" in context_low or "nong thon" in context_low:
+            return "ONT"
         if s.upper() == "LUA":
             return "LUC"
         # 1. Nếu đã là mã loại đất hợp lệ (đơn hoặc ghép bằng '+')
         v_code, n_code, _ = GCNValidators.validate_land_code(s)
         if v_code and n_code:
+            if "ONT" in n_code and "ODT" in n_code:
+                if any(k in context_low for k in ["đô thị", "do thi", "quận", "quan", "phường", "phuong", "thị trấn"]):
+                    return "ODT"
+                elif any(k in context_low for k in ["nông thôn", "nong thon", "huyện", "xã"]):
+                    return "ONT"
+                else:
+                    return "ODT"
             return n_code
 
         # 2. Sử dụng validator chuẩn hóa mục đích sử dụng
@@ -435,7 +461,7 @@ class Cadastral129Mapper:
             return MUC_DICH_MAP[s]
 
         # 4. Tra cứu regex / từ khóa bổ sung
-        s_low = s.lower()
+        s_low = context_low
         if "đô thị" in s_low or "do thi" in s_low:
             return "ODT"
         if "nông thôn" in s_low or "nong thon" in s_low or "nhà ở" in s_low:
@@ -477,6 +503,81 @@ class Cadastral129Mapper:
         # particular, an arbitrary sentence containing "công nhận" used to be
         # exported with CN.  Invalid/ambiguous values stay blank for review.
         return "", ""
+
+    @staticmethod
+    def _clean_signer_name(raw: Any) -> str:
+        """Keep only an evidenced person's name in ``GCN_tenNguoiKy``."""
+        return GCNValidators.normalize_signer_name(raw)
+
+    @classmethod
+    def _expand_inheritance_rows(
+        cls,
+        base_rows: List[Dict[str, Any]],
+        merged: Dict[str, Any],
+        start_stt: int,
+    ) -> List[Dict[str, Any]]:
+        """Expand a represented inheritance group into one row per heir.
+
+        The 129-column template has no dedicated representative columns.  For
+        this explicitly requested workflow, the representative is therefore
+        retained in the existing ``VC_*``/``GT_VC_*`` companion columns while
+        each heir is written in ``CHU_*`` on a separate row.
+        """
+        nguoi = merged.get("nguoi_su_dung", {}) or {}
+        raw_heirs = nguoi.get("dong_thua_ke") or []
+        if not isinstance(raw_heirs, list):
+            return base_rows
+        heirs = [item for item in raw_heirs if isinstance(item, dict) and item.get("ho_ten")]
+        if not heirs:
+            return base_rows
+
+        expanded: List[Dict[str, Any]] = []
+        row_offset = 0
+        for base_row in base_rows:
+            representative = dict(base_row)
+            for heir in heirs:
+                name = cls.clean_person_name(heir.get("ho_ten"))
+                if not name:
+                    continue
+                row = dict(base_row)
+                raw_cid = str(heir.get("cmnd") or heir.get("cccd") or "").strip()
+                valid_cid, normalized_cid, _ = GCNValidators.validate_cccd(raw_cid) if raw_cid else (False, "", None)
+                raw_birth = str(heir.get("ngay_sinh") or "").strip()
+                valid_birth, normalized_birth, _ = GCNValidators.validate_birth_year(raw_birth) if raw_birth else (False, "", None)
+                gender = cls.detect_gender(str(heir.get("ho_ten") or heir.get("gioi_tinh") or ""))
+
+                # Heir becomes the subject of this row.
+                row["CHU_loaiGiayChungNhan"] = "Đồng thừa kế"
+                row["CHU_hoTen"] = name
+                row["CHU_ngaySinh"] = normalized_birth if valid_birth else ""
+                row["CHU_gioiTinh"] = gender if gender is not None else ""
+                row["GT_loaiGiayTo"] = "CCCD" if valid_cid and len(normalized_cid) == 12 else ("CMND" if valid_cid else "")
+                row["GT_soGiayTo"] = normalized_cid if valid_cid else ""
+                row["GT_ngayCap"] = ""
+                row["GT_noiCap"] = ""
+                # Kế thừa địa chỉ sạch của hồ sơ cho từng người thừa kế (tránh trống địa chỉ trong cơ sở dữ liệu địa chính)
+                is_rep = bool(name and representative.get("CHU_hoTen") and name.strip().lower() == representative.get("CHU_hoTen", "").strip().lower())
+                row["DDK_capGiayNguoiDaiDien"] = 1 if is_rep else 0
+
+                # Preserve the representative and their evidence in the
+                # companion fields requested by the user.
+                row["VC_hoTen"] = representative.get("CHU_hoTen", "")
+                row["VC_ngaySinh"] = representative.get("CHU_ngaySinh", "")
+                row["VC_gioiTinh"] = representative.get("CHU_gioiTinh", "")
+                row["VC_quocTich"] = representative.get("CHU_quocTich", "VNM")
+                for suffix in ("diaChiChiTiet", "soNha", "tenDuongPho", "tenTDP", "tenXa", "tenHuyen", "tenTinh"):
+                    row[f"VC_{suffix}"] = representative.get(f"CHU_{suffix}", "")
+                row["GT_VC_loaiGiayTo"] = representative.get("GT_loaiGiayTo", "")
+                row["GT_VC_soGiayTo"] = representative.get("GT_soGiayTo", "")
+                row["GT_VC_ngayCap"] = representative.get("GT_ngayCap", "")
+                row["GT_VC_noiCap"] = representative.get("GT_noiCap", "")
+
+                stt = start_stt + row_offset
+                row["STT"] = stt
+                row["DDK_maDon"] = f"DON_{stt}"
+                expanded.append(row)
+                row_offset += 1
+        return expanded or base_rows
 
     @classmethod
     def map_merged_to_rows(
@@ -537,7 +638,7 @@ class Cadastral129Mapper:
 
         if not danh_sach:
             row = cls.map_merged_to_row(merged, stt=start_stt, file_name=file_name)
-            return [row]
+            return cls._expand_inheritance_rows([row], merged, start_stt)
 
         # Trường hợp nhiều thửa -> tách thành N dòng
         rows = []
@@ -579,7 +680,7 @@ class Cadastral129Mapper:
 
             rows.append(row)
 
-        return rows
+        return cls._expand_inheritance_rows(rows, merged, start_stt)
 
     # Alias thuận tiện
     map_to_129_columns = map_merged_to_rows
@@ -637,12 +738,14 @@ class Cadastral129Mapper:
         is_nc_valid, norm_ngay_cap, _ = GCNValidators.validate_date(raw_ngay_cap) if raw_ngay_cap else (False, None, None)
         valid_ngay_cap = norm_ngay_cap if is_nc_valid else None
         ngay_cap = valid_ngay_cap or ""
-        ten_nguoi_ky = cap.get("nguoi_ky_qd", "") or ""
+        ten_nguoi_ky = cls._clean_signer_name(cap.get("nguoi_ky_qd", "") or "")
 
         # Priority 4: validate and clean issuing authority
         raw_noi_cap = cap.get("noi_cap", "") or ""
         is_nc_valid_auth, norm_auth, _ = GCNValidators.validate_issuing_authority(raw_noi_cap) if raw_noi_cap else (False, "", None)
-        noi_cap = norm_auth if is_nc_valid_auth else raw_noi_cap.strip()
+        # Invalid OCR fragments (often a role/date/signer tail) must not reach
+        # GCN_donViCap.  They stay blank for review instead of looking valid.
+        noi_cap = norm_auth if is_nc_valid_auth else ""
 
         # ─── 2. Chủ sử dụng 1 & Vợ/Chồng (Chủ 2) ─────────────────────────────
         raw_ten1 = nguoi.get("ho_ten_chu_1") or nguoi.get("ho_ten") or nguoi.get("ten") or folder_meta.get("ten_chu_thu_muc", "") or ""
@@ -830,14 +933,14 @@ class Cadastral129Mapper:
         td_dc = addr_thua_parts.get("dia_chi_chi_tiet", "")
         if td_dc:
             extra = []
-            # Chỉ xét nhãn cấp huyện/quận thực tế trong chuỗi. Không dùng
-            # ten_huyen đã phân rã vì parser có thể hiểu nhầm tên xã như huyện.
+            # Chỉ xét sự hiện diện thực tế của cấp huyện / tỉnh trong chuỗi hiển thị td_dc
             td_has_district = bool(
                 re.search(r"\b(?:huyện|huyen|quận|quan|thị\s*xã|thi\s*xa)\b", td_dc, re.IGNORECASE)
+                or (addr_thua_parts.get("ten_huyen") and addr_thua_parts.get("ten_huyen").lower() in td_dc.lower())
             )
             td_has_province = bool(
-                addr_thua_parts.get("ten_tinh")
-                or re.search(r"\b(?:tỉnh|tinh|tin[hg]|thành\s*phố|thanh\s*pho|tp\.?)\b", td_dc, re.IGNORECASE)
+                re.search(r"\b(?:tỉnh|tinh|tin[hg]|thành\s*phố|thanh\s*pho|tp\.?)\b", td_dc, re.IGNORECASE)
+                or (addr_thua_parts.get("ten_tinh") and addr_thua_parts.get("ten_tinh").lower() in td_dc.lower())
             )
             if addr1_parts.get("ten_huyen") and not td_has_district:
                 extra.append(f"huyện {addr1_parts['ten_huyen']}")
@@ -848,7 +951,7 @@ class Cadastral129Mapper:
                 addr_thua_parts = cls.decompose_address(td_dc)
 
         raw_mdsd = thua.get("muc_dich_su_dung") or thua.get("muc_dich_sd") or thua.get("muc_dich", "") or ""
-        ma_mdsd = (cls.map_muc_dich(thua.get("ma_muc_dich") or raw_mdsd) or "")[:15]
+        ma_mdsd = (cls.map_muc_dich(thua.get("ma_muc_dich") or raw_mdsd, raw_mdsd) or "")[:15]
 
         raw_thoi_han = thua.get("thoi_han", "") or thua.get("thoi_han_sd", "") or ""
         v_th, n_th, _ = GCNValidators.validate_land_use_term(raw_thoi_han)

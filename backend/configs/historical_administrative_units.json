@@ -1,0 +1,50 @@
+{
+  "description": "Danh mục các đơn vị hành chính cấp xã/phường/thị trấn lịch sử (đã sáp nhập, đổi tên hoặc điều chỉnh địa giới) để phục vụ tra cứu ngược hồ sơ địa chính cũ.",
+  "wards": [
+    {
+      "name": "Phường Hồ Nam",
+      "district_name": "Quận Lê Chân",
+      "province_name": "Thành phố Hải Phòng"
+    },
+    {
+      "name": "Phường Lam Sơn",
+      "district_name": "Quận Lê Chân",
+      "province_name": "Thành phố Hải Phòng"
+    },
+    {
+      "name": "Phường Cát Dài",
+      "district_name": "Quận Lê Chân",
+      "province_name": "Thành phố Hải Phòng"
+    },
+    {
+      "name": "Phường Niệm Nghĩa",
+      "district_name": "Quận Lê Chân",
+      "province_name": "Thành phố Hải Phòng"
+    },
+    {
+      "name": "Phường Nghĩa Xá",
+      "district_name": "Quận Lê Chân",
+      "province_name": "Thành phố Hải Phòng"
+    },
+    {
+      "name": "Phường Mê Linh",
+      "district_name": "Quận Lê Chân",
+      "province_name": "Thành phố Hải Phòng"
+    },
+    {
+      "name": "Phường Trại Cau",
+      "district_name": "Quận Lê Chân",
+      "province_name": "Thành phố Hải Phòng"
+    },
+    {
+      "name": "Phường Đằng Giang",
+      "district_name": "Quận Ngô Quyền",
+      "province_name": "Thành phố Hải Phòng"
+    },
+    {
+      "name": "Phường Lương Khánh Thiện",
+      "district_name": "Quận Ngô Quyền",
+      "province_name": "Thành phố Hải Phòng"
+    }
+  ]
+}

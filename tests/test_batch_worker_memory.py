@@ -82,6 +82,48 @@ def test_worker_chunk_reports_file_error_and_continues(monkeypatch, tmp_path):
     assert messages.messages[-1]["type"] == "done"
 
 
+def test_hsq_worker_passes_path_ground_truth_and_project_context(monkeypatch, tmp_path):
+    from ocr_so_do.interfaces.api.routers import batch
+
+    captured = {}
+
+    class HSQUseCase:
+        def execute(self, **kwargs):
+            captured.update(kwargs)
+            return {
+                "merged": {
+                    "mau": "mau_B",
+                    "nguoi_su_dung": {"ten": "Bùi Thị Du"},
+                    "thua_dat": {"so_thua": "9", "to_ban_do": "01"},
+                    "hsq_cross_check": {"so_thua": {"status": "matched"}},
+                },
+                "chuyen_doi_rows": [],
+            }
+
+    monkeypatch.setattr(batch, "get_container", lambda save_crops_to_disk=True: SimpleNamespace(process_document_uc=HSQUseCase()))
+    monkeypatch.setattr(batch, "cleanup_memory", lambda force_os_trim=False: None)
+    source = tmp_path / "b.pdf"
+    source.write_bytes(b"test")
+    messages = RecordingQueue()
+    context = {
+        "display_name": "Tờ 01/thửa 9/Bùi Thị Du/b.pdf",
+        "dossier_path": "Tờ 01/thửa 9/Bùi Thị Du",
+        "selection_method": "named_gcn",
+        "ground_truth": {"to_ban_do": "01", "so_thua": "9", "ten_chu": "Bùi Thị Du"},
+        "project_id": "project-hsq",
+        "created_by": "operator-hsq",
+    }
+
+    batch._run_batch_worker_chunk("hsq_batch", [(1, str(source), context)], True, True, str(tmp_path), messages)
+
+    assert captured["file_name"] == context["display_name"]
+    assert captured["hsq_ground_truth"] == context["ground_truth"]
+    assert captured["smart_gcn_filter"] is False
+    assert captured["project_id"] == "project-hsq"
+    assert captured["created_by"] == "operator-hsq"
+    assert messages.messages[1]["summary"]["hsq"]["selection_method"] == "named_gcn"
+
+
 def test_process_local_cleanup_never_recreates_detector(monkeypatch):
     from ocr_so_do.infrastructure import memory
 

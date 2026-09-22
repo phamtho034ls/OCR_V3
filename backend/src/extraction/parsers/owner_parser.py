@@ -76,6 +76,10 @@ class OwnerParser:
             "ten_to_chuc": None,
             "ma_so_thue": None,
             "nguoi_dai_dien": None,
+            # Danh sách người thừa kế khi trang 1 ghi một người đại diện.
+            # Không trộn nhóm này vào vợ/chồng: mapper 129 cột sẽ xuất mỗi
+            # người thừa kế thành một dòng và giữ đại diện ở các cột VC_*.
+            "dong_thua_ke": [],
             "chu_ho": None,
             "so_ho_khau": None,
             "owners_canonical": [],
@@ -110,10 +114,30 @@ class OwnerParser:
                 result["dong_su_dung"] = "Có"
                 result["loai_chu"] = "Vợ chồng / Đồng sở hữu" if "vợ" in full_owner.lower() else "Hộ gia đình"
 
-        # 1.1 Detect Owner Type (Multi-Owner Router)
-        owner_type = OwnerParser._detect_owner_type(all_lines, result.get("ho_ten") or "", spouse_name)
+        # 1.1 Detect Owner Type (Multi-Owner Router).  "Người đại diện của
+        # những người được thừa kế" is not a spouse/co-owner statement.
+        inheritance_heirs = OwnerParser._extract_inheritance_heirs(all_lines)
+        if inheritance_heirs:
+            # _extract_names naturally sees subsequent "Bà/Ông" lines, but
+            # in this construct they are heirs, never a spouse.  Undo that
+            # provisional pairing before extracting personal details.
+            spouse_name = ""
+            spouse_title = "Bà"
+            if primary_owner:
+                result["ho_ten"] = primary_owner
+                result["ho_ten_goc"] = primary_owner
+                result["ho_ten_chu_1"] = primary_owner
+            result["ho_ten_chu_2"] = None
+        owner_type = "DongThuaKe" if inheritance_heirs else OwnerParser._detect_owner_type(
+            all_lines, result.get("ho_ten") or "", spouse_name
+        )
         result["owner_type"] = owner_type
-        if owner_type == "HoGiaDinh":
+        if owner_type == "DongThuaKe":
+            result["dong_thua_ke"] = inheritance_heirs
+            result["nguoi_dai_dien"] = result.get("ho_ten_chu_1") or result.get("ho_ten")
+            result["dong_su_dung"] = "Có (Đồng thừa kế)"
+            result["loai_chu"] = "Đồng thừa kế"
+        elif owner_type == "HoGiaDinh":
             result["loai_chu"] = "Hộ gia đình"
             hh = OwnerParser._extract_household_details(all_lines, result.get("ho_ten") or "")
             result["chu_ho"] = hh["chu_ho"]
@@ -221,6 +245,75 @@ class OwnerParser:
             pass
 
         return result
+
+    @staticmethod
+    def _extract_inheritance_heirs(all_lines: List[str]) -> List[Dict[str, str]]:
+        """Extract heirs listed after an appointed representative on page 1.
+
+        Example source layout::
+
+            Bà A ...
+            Là người đại diện của những người được thừa kế gồm:
+            Bà B, Năm sinh: 1945, CCCD số: ...
+            Ông C, Năm sinh: 1971, CCCD số: ...
+
+        The representative must remain distinct from heirs; treating the first
+        two names as a married couple silently loses the remaining heirs.
+        """
+        marker_index = next(
+            (
+                index for index, line in enumerate(all_lines)
+                if re.search(
+                    r"l[àa]\s*người\s*đại\s*diện(?:\s*của)?\s*những\s*người(?:\s*được)?\s*thừa\s*kế",
+                    line,
+                    re.IGNORECASE,
+                )
+            ),
+            None,
+        )
+        if marker_index is None:
+            return []
+
+        heirs: List[Dict[str, str]] = []
+        for line in all_lines[marker_index + 1: marker_index + 11]:
+            # Stop at the next GCN section or an unrelated legal block.
+            if re.search(r"^(?:II|2\.|III|3\.|IV|4\.)\s*[\.\-]", line.strip(), re.IGNORECASE):
+                break
+            if re.search(r"(?:địa\s*chỉ\s*thường\s*trú|quyền\s*sử\s*dụng|thửa\s*đất)", line, re.IGNORECASE):
+                break
+
+            match = re.search(
+                r"\b(?P<title>Ông|Ong|Bà|Ba)\s*[:\.\-]?\s*"
+                r"(?P<name>[A-ZÀ-ỸĐa-zà-ỹđ][A-ZÀ-ỸĐa-zà-ỹđ\s\-\.]{2,}?)"
+                r"(?=\s*(?:,|;|Năm\s*sinh|Nam\s*sinh|Sinh\s*năm|CCCD|CMND|$))",
+                line,
+                re.IGNORECASE,
+            )
+            if not match:
+                continue
+            name = re.sub(r"[-\.]+", " ", match.group("name")).strip()
+            title = match.group("title")
+            display_name = f"{title.title()}: {name}"
+            if not OwnerParser._is_valid_person_name(display_name):
+                continue
+            name_key = re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFD", name.lower()))
+            if any(existing.get("_key") == name_key for existing in heirs):
+                continue
+            cccds = OwnerParser._extract_cccds([line])
+            birth_year = OwnerParser._extract_person_birth_year([line], cccds) or ""
+            heirs.append({
+                "ho_ten": display_name,
+                "cmnd": cccds[0] if cccds else "",
+                "ngay_sinh": birth_year,
+                "gioi_tinh": "Nam" if title.lower() in ("ông", "ong") else "Nữ",
+                "_key": name_key,
+            })
+
+        # Internal key is only for de-duplication and must never enter raw OCR
+        # artifacts or export payloads.
+        for heir in heirs:
+            heir.pop("_key", None)
+        return heirs
 
     @staticmethod
     def _detect_owner_type(all_lines: List[str], full_owner: str, spouse_name: str) -> str:
@@ -576,13 +669,24 @@ class OwnerParser:
                 # Multiline continuation
                 next_idx = idx + 1
                 while next_idx < min(idx + 4, len(all_lines)):
-                    if any(prov in val.lower() for prov in ["lạng sơn", "lang son", "tỉnh", "thành phố"]):
+                    val_strip = val.strip(" -:;,.")
+                    ends_with_prefix = bool(re.search(r"\b(?:thành\s*phố|tỉnh|tp\.?)\s*$", val_strip, re.IGNORECASE))
+                    has_completed_prov = bool(
+                        re.search(r"\b(?:tỉnh|thành\s*phố|tp\.?)\s+[A-Za-zÀ-ỸĐa-zà-ỹđ]{2,}", val_strip, re.IGNORECASE)
+                        or any(p in val_strip.lower() for p in ["lạng sơn", "lang son", "hải phòng", "hai phong", "hà nội", "ha noi", "đà nẵng", "hồ chí minh", "cần thơ"])
+                    )
+                    if has_completed_prov and not ends_with_prefix:
                         break
+
                     nxt = all_lines[next_idx].strip()
-                    if re.search(r'(?:CMND|CCCD|sinh\s*năm|năm\s*sinh|thửa\s*đất|mục\s*đích|thời\s*hạn|nguồn\s*gốc|Và\s*bà|Và\s*ông|vợ\s*là|chồng\s*là|^(?:Ông|Bà)|[A-Za-z]{1,4}\s*\d{5,}|giấy\s*ch|khai\s*báo|hư\s*hỏng|bổ\s*sung)', nxt, re.IGNORECASE):
+                    if re.search(r'(?:CMND|CCCD|sinh\s*năm|năm\s*sinh|thửa\s*đất|mục\s*đích|thời\s*hạn|nguồn\s*gốc|Và\s*bà|Và\s*ông|vợ\s*là|chồng\s*là|^(?:Ông|Bà)\b|[A-Za-z]{1,4}\s*\d{5,}|giấy\s*ch|khai\s*báo|hư\s*hỏng|bổ\s*sung)', nxt, re.IGNORECASE):
+                        if ends_with_prefix and re.match(r'^(?:Hải\s*Phòng|Hà\s*Nội|Lạng\s*Sơn|Đà\s*Nẵng|Hồ\s*Chí\s*Minh|Cần\s*Thơ)\b', nxt, re.IGNORECASE):
+                            val += ' ' + nxt.strip(' -:;,.')
+                            next_idx += 1
                         break
-                    if nxt and len(nxt) > 3 and not re.search(r'(?:hưởng quyền|nghĩa vụ|chú ý|cộng hòa|giấy chứng nhận|quyền sử dụng)', nxt, re.IGNORECASE):
-                        val += ', ' + nxt.strip(' -:;,.')
+                    if nxt and len(nxt) > 1 and not re.search(r'(?:hưởng quyền|nghĩa vụ|chú ý|cộng hòa|giấy chứng nhận|quyền sử dụng)', nxt, re.IGNORECASE):
+                        sep = ' ' if ends_with_prefix else ', '
+                        val += sep + nxt.strip(' -:;,.')
                     next_idx += 1
 
                 val = OwnerParser._clean_address_string(val)

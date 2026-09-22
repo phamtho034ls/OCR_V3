@@ -148,11 +148,31 @@ class Ingestion:
     def _find_gcn_page_indices(self, doc: fitz.Document) -> List[int]:
         """
         Định vị danh sách số thứ tự các trang thuộc Giấy chứng nhận (GCN) hoặc Trang bổ sung.
-        Sử dụng text scan nhanh từ PDF metadata / low-res text.
+        Ưu tiên hình học trang của scan VILG, sau đó mới dùng text layer nếu có.
+
+        PDF scan thực tế không có text layer nên không được fallback sang các
+        trang đầu A4. Với hồ sơ VILG, hai trang đầu A3 ngang là hai mặt phôi
+        GCN mở đôi; sau khi render chúng sẽ được cắt thành đủ bốn trang GCN.
         """
         total_pages = len(doc)
         if total_pages <= 4:
             return list(range(total_pages))
+
+        # Quy luật scan VILG: page 1 và 2 là A3 nằm ngang (xấp xỉ 1090 x
+        # 750pt). Không cần text layer để nhận diện và tuyệt đối không OCR
+        # phần đơn/biên lai A4 phía sau chúng.
+        if total_pages >= 2 and all(
+            self._is_page_a3_landscape(doc.load_page(page_number))
+            for page_number in (0, 1)
+        ):
+            indices = [0, 1]
+            # Có thể có hai trang bổ sung GCN hẹp (xấp xỉ 540 x 750pt) ngay
+            # sau phôi. Chỉ nhận diện kích thước hẹp đặc trưng, không lấy A4
+            # 600 x 840pt vốn thường là đơn đăng ký/biên lai.
+            for page_number in range(2, min(total_pages, 4)):
+                if self._is_gcn_supplement_page(doc.load_page(page_number)):
+                    indices.append(page_number)
+            return indices
 
         gcn_indices: List[int] = []
         for pno in range(total_pages):
@@ -175,10 +195,22 @@ class Ingestion:
             if is_gcn and not is_don_bienlai:
                 gcn_indices.append(pno)
 
-        if not gcn_indices:
-            return list(range(min(total_pages, 4)))
-
         return gcn_indices
+
+    @staticmethod
+    def _is_page_a3_landscape(page: fitz.Page) -> bool:
+        """Nhận diện A3 scan mở đôi bằng tỷ lệ hình học, không dùng OCR text."""
+        rect = page.rect
+        return rect.width > 0 and (rect.width / rect.height) > 1.25
+
+    @staticmethod
+    def _is_gcn_supplement_page(page: fitz.Page) -> bool:
+        """Nhận diện trang bổ sung GCN hẹp khoảng 540 x 750pt của VILG."""
+        rect = page.rect
+        if rect.width <= 0 or rect.height <= 0:
+            return False
+        ratio = rect.width / rect.height
+        return 480 <= rect.width <= 580 and 680 <= rect.height <= 810 and 0.60 <= ratio <= 0.80
 
     def _load_pdf(
         self,

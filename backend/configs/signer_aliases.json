@@ -1,0 +1,47 @@
+{
+  "description": "Tập cấu hình quy tắc chuẩn hóa và alias quang học tên người ký quyết định cấp GCN. Mở rộng địa bàn mới bằng cách bổ sung alias tại đây mà không cần sửa mã nguồn.",
+  "regex_aliases": [
+    {
+      "pattern": "^(?:Nguyễn\\s+)?Xuân\\s+Ngọc$",
+      "canonical_name": "Nguyễn Xuân Ngọc",
+      "authority_hint": "Ủy ban nhân dân quận Lê Chân"
+    },
+    {
+      "pattern": "^Nguyễn\\s+Văn\\s+Phi[eêế][t\\.]?$",
+      "canonical_name": "Nguyễn Văn Phiệt",
+      "authority_hint": "Ủy ban nhân dân quận Lê Chân"
+    },
+    {
+      "pattern": "^Phạm\\s+Ti[eêèéếềệễể][n\\.]*\\s+[DĐ]u$",
+      "canonical_name": "Phạm Tiến Du",
+      "authority_hint": "Ủy ban nhân dân quận Lê Chân"
+    },
+    {
+      "pattern": "^Nguyễn\\s+Văn\\s+Đông$",
+      "canonical_name": "Nguyễn Văn Đông",
+      "authority_hint": "Ủy ban nhân dân huyện Cao Lộc"
+    },
+    {
+      "pattern": "^Phạm\\s+Thị\\s+[XxQqTt]uy[eêế]t$",
+      "canonical_name": "Phạm Thị Tuyết"
+    },
+    {
+      "pattern": "^Ph[aạ]m\\s+Văn\\s+Tân$",
+      "canonical_name": "Phạm Văn Tân"
+    },
+    {
+      "pattern": "^Phạm\\s+Văn\\s+Sơn$",
+      "canonical_name": "Phạm Văn Sơn"
+    },
+    {
+      "pattern": "^Phạm\\s+Thị\\s+Liên$",
+      "canonical_name": "Phạm Thị Liên"
+    }
+  ],
+  "exact_aliases": {
+    "xuan ngoc": "Nguyễn Xuân Ngọc",
+    "nguyen van dong": "Nguyễn Văn Đông",
+    "nguyen van phiet": "Nguyễn Văn Phiệt",
+    "pham tien du": "Phạm Tiến Du"
+  }
+}

@@ -13,8 +13,11 @@ Schema:
 import os
 import json
 import logging
+import shutil
 import threading
 import time
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from contextlib import contextmanager
 
@@ -24,6 +27,27 @@ from psycopg2.extras import RealDictCursor, Json
 
 logger = logging.getLogger(__name__)
 
+# Múi giờ Việt Nam GMT+7
+VN_TZ = timezone(timedelta(hours=7))
+
+
+def _format_vn_datetime(dt: Any) -> str:
+    """Định dạng đối tượng thời gian sang giờ địa phương Việt Nam (GMT+7)."""
+    if not dt:
+        return ""
+    if isinstance(dt, str):
+        try:
+            clean_str = dt.strip().replace("Z", "+00:00")
+            dt = datetime.fromisoformat(clean_str)
+        except Exception:
+            return str(dt)
+    if isinstance(dt, datetime):
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    return str(dt)
+
+
 # Cấu hình kết nối PostgreSQL từ biến môi trường hoặc giá trị mặc định đã xác định
 PG_HOST = os.getenv("PG_HOST", "127.0.0.1")
 PG_PORT = int(os.getenv("PG_PORT", "5433"))
@@ -32,6 +56,79 @@ PG_PASSWORD = os.getenv("PG_PASSWORD", "")
 PG_DATABASE = os.getenv("PG_DATABASE", "ocr_so_do")
 POSTGRES_ENABLED = os.getenv("OCR_POSTGRES_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
 POSTGRES_RETRY_SECONDS = max(5, int(os.getenv("OCR_POSTGRES_RETRY_SECONDS", "60")))
+
+
+def clean_record_disk_artifacts(
+    doc_ids: List[str],
+    records: Optional[List[Dict[str, Any]]] = None,
+    base_output_dir: Optional[Path] = None,
+) -> int:
+    """
+    Xóa triệt để toàn bộ thư mục output, ảnh preview và các ảnh crop của các hồ sơ trên ổ đĩa.
+    Đảm bảo không để lại file rác hoặc rò rỉ dữ liệu sau khi xóa khỏi CSDL.
+    """
+    if not doc_ids:
+        return 0
+    cleaned_count = 0
+    try:
+        if base_output_dir is not None:
+            output_dir = Path(base_output_dir)
+        else:
+            project_root = Path(__file__).resolve().parents[5]
+            output_dir = project_root / "output"
+
+        for doc_id in doc_ids:
+            clean_id = str(doc_id).strip()
+            if not clean_id:
+                continue
+
+            # 1. Thư mục output/<doc_id> (chứa preview_p*.png, crops/, raw_ocr.md)
+            doc_folder = output_dir / clean_id
+            if doc_folder.exists() and doc_folder.is_dir():
+                try:
+                    shutil.rmtree(doc_folder, ignore_errors=True)
+                    cleaned_count += 1
+                except Exception as err:
+                    logger.warning(f"Không thể xóa thư mục doc {doc_folder}: {err}")
+
+            # 2. Thư mục output/artifacts/<doc_id> (nếu có)
+            art_folder = output_dir / "artifacts" / clean_id
+            if art_folder.exists() and art_folder.is_dir():
+                try:
+                    shutil.rmtree(art_folder, ignore_errors=True)
+                    cleaned_count += 1
+                except Exception as err:
+                    logger.warning(f"Không thể xóa thư mục artifact {art_folder}: {err}")
+
+        # 3. Quét các file crop cụ thể trong structured_data nếu được truyền vào
+        if records:
+            for rec in records:
+                sdata = rec.get("structured_data")
+                if isinstance(sdata, str):
+                    try:
+                        sdata = json.loads(sdata)
+                    except Exception:
+                        sdata = {}
+                if isinstance(sdata, dict):
+                    for page in sdata.get("pages", []):
+                        if isinstance(page, dict):
+                            for crop in page.get("crops", []):
+                                if isinstance(crop, dict):
+                                    crop_p = crop.get("crop_path") or crop.get("url")
+                                    if crop_p:
+                                        # Hỗ trợ URL dạng /output/...
+                                        if str(crop_p).startswith("/output/"):
+                                            p = output_dir / str(crop_p).replace("/output/", "")
+                                        else:
+                                            p = Path(crop_p)
+                                        if p.exists() and p.is_file():
+                                            try:
+                                                p.unlink(missing_ok=True)
+                                            except Exception:
+                                                pass
+    except Exception as e:
+        logger.error(f"Lỗi khi dọn dẹp file artifact trên đĩa: {e}")
+    return cleaned_count
 
 
 class PostgresStore:
@@ -215,10 +312,10 @@ class PostgresStore:
                                 so_vao_so       VARCHAR(100),
                                 ma_vach         VARCHAR(100),
                                 ten_chu         TEXT,
-                                cmnd            VARCHAR(50),
-                                so_thua         VARCHAR(50),
-                                to_ban_do       VARCHAR(50),
-                                dien_tich       VARCHAR(50),
+                                cmnd            VARCHAR(255),
+                                so_thua         VARCHAR(255),
+                                to_ban_do       VARCHAR(255),
+                                dien_tich       VARCHAR(255),
                                 dia_chi         TEXT,
                                 raw_markdown    TEXT NOT NULL,
                                 structured_data JSONB,
@@ -238,6 +335,10 @@ class PostgresStore:
                             ALTER TABLE ocr_batches ADD COLUMN IF NOT EXISTS created_by VARCHAR(255);
                             ALTER TABLE ocr_records ADD COLUMN IF NOT EXISTS project_id VARCHAR(100) REFERENCES ocr_projects(project_id);
                             ALTER TABLE ocr_records ADD COLUMN IF NOT EXISTS created_by VARCHAR(255);
+                            ALTER TABLE ocr_records ALTER COLUMN cmnd TYPE VARCHAR(255);
+                            ALTER TABLE ocr_records ALTER COLUMN so_thua TYPE VARCHAR(255);
+                            ALTER TABLE ocr_records ALTER COLUMN to_ban_do TYPE VARCHAR(255);
+                            ALTER TABLE ocr_records ALTER COLUMN dien_tich TYPE VARCHAR(255);
                         """)
 
                         # ── 3. CCCD crop audit ─────────────────────────────────────────────
@@ -353,20 +454,23 @@ class PostgresStore:
             return False
 
     def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
-        """Lấy thông tin dự án theo ID."""
+        """Lấy thông tin dự án theo ID kèm khu vực."""
         if not self._pool:
             return None
         try:
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute(
-                        "SELECT * FROM ocr_projects WHERE project_id = %s",
-                        (project_id,)
-                    )
+                    cur.execute("""
+                        SELECT p.*, COALESCE(NULLIF(p.region, ''), ur.region, 'Chưa phân khu vực') AS effective_region
+                        FROM ocr_projects p
+                        LEFT JOIN user_regions ur ON ur.user_id = p.created_by
+                        WHERE p.project_id = %s
+                    """, (project_id,))
                     row = cur.fetchone()
                     if not row:
                         return None
                     result = dict(row)
+                    result["region"] = result.get("region") or result.get("effective_region") or "Chưa phân khu vực"
                     for key in ("created_at", "updated_at"):
                         if result.get(key):
                             result[key] = result[key].isoformat()
@@ -376,20 +480,24 @@ class PostgresStore:
             return None
 
     def list_all_projects(self, limit: int = 200) -> List[Dict[str, Any]]:
-        """Lấy tất cả dự án (admin only)."""
+        """Lấy tất cả dự án kèm khu vực chuẩn hóa (admin only)."""
         if not self._pool:
             return []
         try:
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute(
-                        "SELECT * FROM ocr_projects ORDER BY created_at DESC LIMIT %s",
-                        (limit,)
-                    )
+                    cur.execute("""
+                        SELECT p.*, COALESCE(NULLIF(p.region, ''), ur.region, 'Chưa phân khu vực') AS effective_region
+                        FROM ocr_projects p
+                        LEFT JOIN user_regions ur ON ur.user_id = p.created_by
+                        ORDER BY p.created_at DESC
+                        LIMIT %s
+                    """, (limit,))
                     rows = cur.fetchall()
                     results = []
                     for row in rows:
                         r = dict(row)
+                        r["region"] = r.get("region") or r.get("effective_region") or "Chưa phân khu vực"
                         for key in ("created_at", "updated_at"):
                             if r.get(key):
                                 r[key] = r[key].isoformat()
@@ -407,17 +515,18 @@ class PostgresStore:
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute("""
-                        SELECT DISTINCT p.*
+                        SELECT DISTINCT p.*, COALESCE(NULLIF(p.region, ''), ur.region, %s) AS effective_region
                         FROM ocr_projects p
                         LEFT JOIN user_regions ur ON ur.user_id = p.created_by
                         WHERE p.region = %s OR (p.region IS NULL AND ur.region = %s)
                         ORDER BY p.created_at DESC
                         LIMIT %s
-                    """, (region, region, limit))
+                    """, (region, region, region, limit))
                     rows = cur.fetchall()
                     results = []
                     for row in rows:
                         r = dict(row)
+                        r["region"] = r.get("region") or r.get("effective_region") or region
                         for key in ("created_at", "updated_at"):
                             if r.get(key):
                                 r[key] = r[key].isoformat()
@@ -435,11 +544,12 @@ class PostgresStore:
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute("""
-                        SELECT p.*
+                        SELECT p.*, COALESCE(NULLIF(p.region, ''), ur.region, 'Chưa phân khu vực') AS effective_region
                         FROM ocr_projects p
                         INNER JOIN project_members pm
                             ON pm.project_id = p.project_id
                             AND pm.user_id = %s
+                        LEFT JOIN user_regions ur ON ur.user_id = p.created_by
                         ORDER BY p.created_at DESC
                         LIMIT %s
                     """, (user_id, limit))
@@ -447,6 +557,7 @@ class PostgresStore:
                     results = []
                     for row in rows:
                         r = dict(row)
+                        r["region"] = r.get("region") or r.get("effective_region") or "Chưa phân khu vực"
                         for key in ("created_at", "updated_at"):
                             if r.get(key):
                                 r[key] = r[key].isoformat()
@@ -457,14 +568,35 @@ class PostgresStore:
             return []
 
     def delete_project(self, project_id: str) -> bool:
-        """Xóa dự án (CASCADE xóa members, batches, records liên quan)."""
-        if not self._pool:
+        """Xóa dự án (xóa sạch toàn bộ records, ảnh crop/preview trên đĩa, batches folders, members)."""
+        if not self._pool or not project_id:
             return False
         try:
+            # 1. Xóa sạch records và ảnh crop/artifacts trên đĩa của dự án
+            self.delete_records_by_project(project_id)
+
+            # 2. Xóa các thư mục batch trên đĩa thuộc dự án này
+            try:
+                project_root = Path(__file__).resolve().parents[5]
+                with self.get_connection() as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("SELECT batch_id FROM ocr_batches WHERE project_id = %s;", (project_id,))
+                        batch_rows = cur.fetchall()
+                for b in batch_rows:
+                    b_id = str(b.get("batch_id") or "").strip()
+                    if b_id:
+                        batch_folder = project_root / "output" / "batches" / b_id
+                        if batch_folder.exists() and batch_folder.is_dir():
+                            shutil.rmtree(batch_folder, ignore_errors=True)
+            except Exception as e_batch:
+                logger.warning(f"Lỗi dọn thư mục batches của dự án {project_id}: {e_batch}")
+
+            # 3. Xóa batches và project trong CSDL
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
+                    cur.execute("DELETE FROM ocr_batches WHERE project_id = %s;", (project_id,))
                     cur.execute(
-                        "DELETE FROM ocr_projects WHERE project_id = %s",
+                        "DELETE FROM ocr_projects WHERE project_id = %s;",
                         (project_id,)
                     )
                     conn.commit()
@@ -833,6 +965,13 @@ class PostgresStore:
         if not self._pool:
             return False
         try:
+            # OCR không đáng tin cậy có thể trả một đoạn văn rất dài thay vì
+            # một trường đơn. Bảo vệ cả DB cũ lẫn DB mới trước khi bind SQL;
+            # schema được mở rộng để migration không còn bị kẹt ở VARCHAR(50).
+            cmnd = self._bounded_ocr_value(cmnd)
+            so_thua = self._bounded_ocr_value(so_thua)
+            to_ban_do = self._bounded_ocr_value(to_ban_do)
+            dien_tich = self._bounded_ocr_value(dien_tich)
             # Tự động suy luận source_folder nếu có source_path
             if source_path and not source_folder:
                 source_folder = str(os.path.dirname(source_path))
@@ -898,6 +1037,13 @@ class PostgresStore:
 
             logger.error(f"Lỗi lưu ocr_record vào PostgreSQL: {e}")
             return False
+
+    @staticmethod
+    def _bounded_ocr_value(value: Optional[str], max_length: int = 50) -> Optional[str]:
+        """Convert an OCR scalar safely and preserve the established 50-char cap."""
+        if value is None:
+            return None
+        return str(value)[:max_length]
 
     def _ensure_batch_exists(self, batch_id: str, folder_name: str, source_path: str):
         """Đảm bảo bản ghi batch_id đã có trong ocr_batches để không vi phạm khóa ngoại."""
@@ -981,7 +1127,7 @@ class PostgresStore:
                         return None
                     item = dict(row)
                     created_at = item.get("created_at")
-                    item["reviewed_at"] = created_at.strftime("%Y-%m-%d %H:%M:%S") if created_at else ""
+                    item["reviewed_at"] = _format_vn_datetime(created_at)
                     item.pop("created_at", None)
                     item.pop("field_key", None)
                     return item
@@ -1050,9 +1196,11 @@ class PostgresStore:
         filter_project_ids: Optional[List[str]] = None,
         filter_created_by: Optional[str] = None,
         access_scope: Optional[Dict[str, Any]] = None,
+        project_id: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         Lấy danh sách bản ghi hồ sơ tóm tắt kèm hỗ trợ các bộ lọc:
+        - project_id: Lọc theo 1 dự án cụ thể
         - filter_project_ids: Chỉ lấy record thuộc các dự án này (None = không filter)
         - filter_created_by: Chỉ lấy record do user này tạo
         - folder_result, source_path, batch_id, min/max_files, search: bộ lọc thông thường
@@ -1074,6 +1222,11 @@ class PostgresStore:
                 placeholders = ",".join(["%s"] * len(filter_project_ids))
                 where_clauses.append(f"r.project_id IN ({placeholders})")
                 params.extend(filter_project_ids)
+
+            # Lọc theo 1 dự án được chọn cụ thể từ frontend
+            if project_id and project_id.strip() and project_id != "all":
+                where_clauses.append("r.project_id = %s")
+                params.append(project_id.strip())
 
             # Phân quyền theo người tạo (member chỉ xem dữ liệu mình)
             if filter_created_by:
@@ -1149,7 +1302,7 @@ class PostgresStore:
                     result = []
                     for r in rows:
                         item = dict(r)
-                        item["created_at"] = r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r.get("created_at") else ""
+                        item["created_at"] = _format_vn_datetime(r.get("created_at"))
                         result.append(item)
 
                     return result, total_count
@@ -1178,7 +1331,7 @@ class PostgresStore:
                     if not row:
                         return None
                     item = dict(row)
-                    item["created_at"] = row["created_at"].strftime("%Y-%m-%d %H:%M:%S") if row.get("created_at") else ""
+                    item["created_at"] = _format_vn_datetime(row.get("created_at"))
                     return item
         except Exception as e:
             logger.error(f"Lỗi get_record PostgreSQL: {e}")
@@ -1193,6 +1346,7 @@ class PostgresStore:
         ids: Optional[List[str]] = None,
         limit: int = 10000,
         access_scope: Optional[Dict[str, Any]] = None,
+        project_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Lấy toàn bộ các bản ghi OCR đầy đủ (kèm raw_markdown, structured_data) phục vụ backup/export."""
         if not self._pool:
@@ -1204,6 +1358,10 @@ class PostgresStore:
             scope_clauses, scope_params = self._scope_conditions("r", access_scope)
             where_clauses.extend(scope_clauses)
             params.extend(scope_params)
+
+            if project_id and project_id.strip() and project_id != "all":
+                where_clauses.append("r.project_id = %s")
+                params.append(project_id.strip())
 
             if ids:
                 where_clauses.append("r.id = ANY(%s)")
@@ -1256,7 +1414,7 @@ class PostgresStore:
                     result = []
                     for row in rows:
                         item = dict(row)
-                        item["created_at"] = row["created_at"].strftime("%Y-%m-%d %H:%M:%S") if row.get("created_at") else ""
+                        item["created_at"] = _format_vn_datetime(row.get("created_at"))
                         result.append(item)
                     return result
         except Exception as e:
@@ -1270,10 +1428,11 @@ class PostgresStore:
         batch_id: Optional[str] = None,
         limit: int = 5000,
         access_scope: Optional[Dict[str, Any]] = None,
+        project_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Trích xuất trực tiếp danh sách hàng 129 cột đã lưu từ PostgreSQL
-        theo mẻ quét hoặc thư mục kết quả được chọn.
+        theo mẻ quét hoặc thư mục kết quả hoặc dự án được chọn.
         """
         if not self._pool:
             return []
@@ -1284,6 +1443,10 @@ class PostgresStore:
             scope_clauses, scope_params = self._scope_conditions("r", access_scope)
             where_clauses.extend(scope_clauses)
             params.extend(scope_params)
+
+            if project_id and project_id.strip() and project_id != "all":
+                where_clauses.append("r.project_id = %s")
+                params.append(project_id.strip())
 
             if folder_result and folder_result.strip() and folder_result != "all":
                 where_clauses.append("r.folder_result = %s")
@@ -1361,7 +1524,7 @@ class PostgresStore:
                         {
                             "name": r["folder"],
                             "count": r["doc_count"],
-                            "date": r["last_created"].strftime("%Y-%m-%d %H:%M") if r.get("last_created") else ""
+                            "date": _format_vn_datetime(r.get("last_created"))[:16] if r.get("last_created") else ""
                         }
                         for r in folders_raw
                     ]
@@ -1401,16 +1564,27 @@ class PostgresStore:
             logger.error(f"Lỗi lấy filter options từ PostgreSQL: {e}")
             return {"folders": [], "sources": [], "batches": []}
 
-    def get_stats(self, access_scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Thống kê tổng thể về số batch, tổng số hồ sơ, số hồ sơ hợp lệ và lỗi."""
+    def get_stats(
+        self,
+        access_scope: Optional[Dict[str, Any]] = None,
+        project_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Thống kê tổng thể về số batch, tổng số hồ sơ, số hồ sơ hợp lệ và lỗi (hỗ trợ lọc theo project_id)."""
         if not self._pool:
             return {"connected": False}
         try:
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     record_scope, record_params = self._scope_conditions("r", access_scope)
-                    record_where = f"WHERE {' AND '.join(record_scope)}" if record_scope else ""
                     batch_scope, batch_params = self._scope_conditions("b", access_scope)
+
+                    if project_id and project_id.strip() and project_id != "all":
+                        record_scope.append("r.project_id = %s")
+                        record_params.append(project_id.strip())
+                        batch_scope.append("b.project_id = %s")
+                        batch_params.append(project_id.strip())
+
+                    record_where = f"WHERE {' AND '.join(record_scope)}" if record_scope else ""
                     batch_where = f"WHERE {' AND '.join(batch_scope)}" if batch_scope else ""
                     cur.execute(f"""
                         SELECT
@@ -1437,15 +1611,41 @@ class PostgresStore:
         except Exception as e:
             return {"connected": False, "error": str(e)}
 
-    # ─── XÓA CÓ CHỌN LỌC (SELECTIVE DELETION) ─────────────────────────────────
+    # ─── XÓA CÓ CHỌN LỌC & DỌN DẸP ẢNH CROP / OUTPUT TRÊN Ổ ĐĨA ───────────────
+
+    def clean_record_disk_artifacts(
+        self,
+        doc_ids: List[str],
+        records: Optional[List[Dict[str, Any]]] = None,
+        base_output_dir: Optional[Path] = None,
+    ) -> int:
+        return clean_record_disk_artifacts(doc_ids, records, base_output_dir)
 
     def delete_records_by_ids(self, ids: List[str]) -> int:
-        """Xóa có chọn lọc danh sách hồ sơ theo ID."""
+        """Xóa có chọn lọc danh sách hồ sơ theo ID, dọn sạch cả file ảnh crop/preview trên đĩa và CSDL."""
         if not self._pool or not ids:
             return 0
         try:
+            # 1. Truy vấn lấy thông tin records trước khi xóa để dọn đĩa
+            records_to_delete = []
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT id, batch_id, structured_data
+                        FROM ocr_records
+                        WHERE id = ANY(%s);
+                    """, (ids,))
+                    records_to_delete = cur.fetchall()
+
+            # 2. Xóa các file ảnh crop và thư mục artifacts trên đĩa
+            if records_to_delete:
+                doc_ids = [str(r["id"]) for r in records_to_delete]
+                self.clean_record_disk_artifacts(doc_ids, records_to_delete)
+
+            # 3. Xóa trong PostgreSQL
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
+                    cur.execute("DELETE FROM ocr_field_reviews WHERE document_id = ANY(%s);", (ids,))
                     cur.execute("""
                         DELETE FROM ocr_records
                         WHERE id = ANY(%s);
@@ -1457,65 +1657,101 @@ class PostgresStore:
             logger.error(f"Lỗi xóa records theo IDs trong PostgreSQL: {e}")
             return 0
 
+    def delete_records_by_project(self, project_id: str) -> int:
+        """Xóa toàn bộ hồ sơ thuộc một dự án, dọn sạch cả file ảnh crop/preview trên đĩa và CSDL."""
+        if not self._pool or not project_id:
+            return 0
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT id FROM ocr_records WHERE project_id = %s;", (project_id,))
+                    rows = cur.fetchall()
+            doc_ids = [str(r["id"]) for r in rows]
+            if doc_ids:
+                return self.delete_records_by_ids(doc_ids)
+            return 0
+        except Exception as e:
+            logger.error(f"Lỗi delete_records_by_project {project_id}: {e}")
+            return 0
+
     def delete_by_folder(self, folder_result: str) -> int:
-        """Xóa có chọn lọc toàn bộ hồ sơ thuộc một thư mục kết quả."""
+        """Xóa có chọn lọc toàn bộ hồ sơ thuộc một thư mục kết quả kèm ảnh crop."""
         if not self._pool or not folder_result:
             return 0
         try:
             with self.get_connection() as conn:
-                with conn.cursor() as cur:
-                    # 1. Xóa trong ocr_records
-                    cur.execute("""
-                        DELETE FROM ocr_records
-                        WHERE folder_result = %s;
-                    """, (folder_result,))
-                    deleted_count = cur.rowcount
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT id FROM ocr_records WHERE folder_result = %s;", (folder_result,))
+                    rows = cur.fetchall()
+            doc_ids = [str(r["id"]) for r in rows]
+            count = 0
+            if doc_ids:
+                count = self.delete_records_by_ids(doc_ids)
 
-                    # 2. Xóa hoặc cập nhật batch liên quan
+            # Xóa hoặc cập nhật batch liên quan
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
                     cur.execute("""
                         DELETE FROM ocr_batches
                         WHERE folder_name = %s OR batch_id = %s;
                     """, (folder_result, folder_result))
                     conn.commit()
-            return deleted_count
+            return count
         except Exception as e:
             logger.error(f"Lỗi xóa theo folder_result trong PostgreSQL: {e}")
             return 0
 
     def delete_by_source_path(self, source_path: str) -> int:
-        """Xóa có chọn lọc toàn bộ hồ sơ thuộc một đường dẫn/link nguồn trên máy."""
+        """Xóa có chọn lọc toàn bộ hồ sơ thuộc một đường dẫn/link nguồn trên máy kèm ảnh crop."""
         if not self._pool or not source_path:
             return 0
         try:
             with self.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        DELETE FROM ocr_records
-                        WHERE source_folder = %s OR source_path LIKE %s;
-                    """, (source_path, f"%{source_path}%"))
-                    deleted_count = cur.rowcount
-                    conn.commit()
-            return deleted_count
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        "SELECT id FROM ocr_records WHERE source_folder = %s OR source_path LIKE %s;",
+                        (source_path, f"%{source_path}%")
+                    )
+                    rows = cur.fetchall()
+            doc_ids = [str(r["id"]) for r in rows]
+            if doc_ids:
+                return self.delete_records_by_ids(doc_ids)
+            return 0
         except Exception as e:
             logger.error(f"Lỗi xóa theo source_path trong PostgreSQL: {e}")
             return 0
 
     def delete_batch(self, batch_id: str) -> int:
-        """Xóa toàn bộ một đợt quét (tự động CASCADE xóa tất cả ocr_records thuộc batch đó)."""
+        """Xóa toàn bộ một đợt quét kèm ảnh crop/previews và bản ghi liên quan."""
         if not self._pool or not batch_id:
             return 0
         try:
+            # 1. Tìm và xóa toàn bộ records của batch này kèm file trên đĩa
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT id FROM ocr_records WHERE batch_id = %s;", (batch_id,))
+                    rows = cur.fetchall()
+            doc_ids = [str(r["id"]) for r in rows]
+            if doc_ids:
+                self.delete_records_by_ids(doc_ids)
+
+            # 2. Xóa thư mục output/batches/<batch_id> trên đĩa (nếu có)
+            try:
+                project_root = Path(__file__).resolve().parents[5]
+                batch_folder = project_root / "output" / "batches" / batch_id
+                if batch_folder.exists():
+                    shutil.rmtree(batch_folder, ignore_errors=True)
+            except Exception:
+                pass
+
+            # 3. Xóa trong ocr_batches
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT COUNT(*) FROM ocr_records WHERE batch_id = %s;", (batch_id,))
-                    row = cur.fetchone()
-                    rec_count = row[0] if row else 0
-
                     cur.execute("DELETE FROM ocr_batches WHERE batch_id = %s;", (batch_id,))
                     conn.commit()
-            return rec_count
+            return len(doc_ids)
         except Exception as e:
-            logger.error(f"Lỗi xóa batch trong PostgreSQL: {e}")
+            logger.error(f"Lỗi delete_batch {batch_id}: {e}")
             return 0
 
     # ─── QUẢN LÝ KHU VỰC (REGIONS) ─────────────────────────────────────────────

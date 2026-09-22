@@ -23,6 +23,8 @@ def test_sensitive_routes_map_to_specific_permissions():
     assert security.required_permission_for_request("GET", "/output/doc_01/page_1.png") == security.Permission.RECORD_READ
     # Endpoint crop đối soát của cặp hồ sơ cho phép reviewer (RECORD_READ)
     assert security.required_permission_for_request("GET", "/api/v1/batch-pairs/pairs_01/pairs/p01/crops") == security.Permission.RECORD_READ
+    assert security.required_permission_for_request("POST", "/api/v1/batch/hsq/preview") == security.Permission.BATCH_CREATE
+    assert security.required_permission_for_request("POST", "/api/v1/batch/scan-hsq-dossiers") == security.Permission.BATCH_CREATE
     # Endpoints admin mới (reset-password, update, delete) đều yêu cầu USER_MANAGE
     assert security.required_permission_for_request("PUT", "/api/v1/admin/users/u1/reset-password") == security.Permission.USER_MANAGE
     assert security.required_permission_for_request("PUT", "/api/v1/admin/users/u1") == security.Permission.USER_MANAGE
@@ -49,3 +51,13 @@ def test_auth_disabled_is_explicit_local_admin(monkeypatch):
     principal = security.authenticate_authorization_header(None)
     assert principal.subject == "local-development"
     assert security.Permission.USER_MANAGE in principal.permissions
+
+
+def test_windows_hsq_path_alias_is_translated_for_docker(monkeypatch):
+    monkeypatch.setenv(
+        "OCR_SOURCE_PATH_ALIASES",
+        r"D:\HSQ TRAN NGUYEN HAN\HoNam sau VILG=>/data/hsq-vilg",
+    )
+    assert security._translate_source_path_alias(
+        r"D:\HSQ TRAN NGUYEN HAN\HoNam sau VILG\Tờ 01\thửa 9"
+    ) == "/data/hsq-vilg/Tờ 01/thửa 9"

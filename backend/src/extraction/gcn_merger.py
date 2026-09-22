@@ -52,6 +52,77 @@ class GCNMerger:
         return score, ds
 
     @staticmethod
+    def _select_land_code(raw_code: Any, purpose_text: Any) -> str:
+        """Resolve OCR-combined land codes with the stated land purpose.
+
+        OCR frequently joins adjacent table cells and produces ``ONT+ODT``.
+        A single purpose phrase (for example ``đất ở tại đô thị``) is stronger
+        evidence than that joined OCR token, therefore it selects ``ODT``.
+        A real multi-purpose phrase remains multi-valued instead of being
+        silently collapsed.
+        """
+        raw = str(raw_code or "").strip()
+        purpose = str(purpose_text or "").strip()
+        _, _, purpose_code, _ = GCNValidators.validate_land_use_purpose(purpose)
+        purpose_codes = [p for p in str(purpose_code or "").split("+") if p]
+        if "ONT" in purpose_codes and "ODT" in purpose_codes:
+            if any(k in purpose.lower() for k in ["đô thị", "do thi", "quận", "phường"]):
+                purpose_codes = [c for c in purpose_codes if c != "ONT"]
+            elif any(k in purpose.lower() for k in ["nông thôn", "nong thon", "huyện", "xã"]):
+                purpose_codes = [c for c in purpose_codes if c != "ODT"]
+
+        valid_raw, normalized_raw, _ = GCNValidators.validate_land_code(raw) if raw else (False, "", None)
+        raw_codes = [p for p in str(normalized_raw or "").split("+") if p] if valid_raw else []
+        if "ONT" in raw_codes and "ODT" in raw_codes:
+            if any(k in purpose.lower() for k in ["đô thị", "do thi", "quận", "phường"]):
+                raw_codes = [c for c in raw_codes if c != "ONT"]
+            elif any(k in purpose.lower() for k in ["nông thôn", "nong thon", "huyện", "xã"]):
+                raw_codes = [c for c in raw_codes if c != "ODT"]
+
+        if len(purpose_codes) == 1:
+            # The wording has identified exactly one land use.  This also
+            # handles an OCR value like ONT+ODT when the document says đô thị.
+            return purpose_codes[0]
+        if len(raw_codes) == 1:
+            return raw_codes[0]
+        if len(purpose_codes) > 1:
+            return "+".join(purpose_codes)
+        if len(raw_codes) > 1:
+            return "+".join(raw_codes)
+        return ""
+
+    @staticmethod
+    def _is_signer_noise(value: Any) -> bool:
+        """Reject authority/place/role text mistakenly detected as a signer."""
+        text = str(value or "").lower()
+        markers = (
+            "tài nguyên", "môi trường", "ủy ban", "uỷ ban", "ubnd",
+            "huyện", "quận", "phường", "xã", "tỉnh", "thành phố",
+            "chủ tịch", "giám đốc", "phó chủ", "phó giám", "ký thay",
+            "không được", "giấy chứng nhận", "plastic",
+        )
+        return any(marker in text for marker in markers)
+
+    @classmethod
+    def _find_valid_signer(cls, pages: List[Dict[str, Any]]) -> Tuple[str, str]:
+        """Return (raw, normalized) signer from a valid candidate only."""
+        for page in pages:
+            raw = (
+                page.get("nguoi_ky_qd")
+                or page.get("cap_gcn", {}).get("nguoi_ky_qd")
+                or page.get("raw_fields", {}).get("nguoi_ky_qd", {}).get("value")
+                or ""
+            )
+            if cls._is_signer_noise(raw):
+                continue
+            is_valid, normalized, _ = GCNValidators.validate_person_name(raw) if raw else (False, "", None)
+            if is_valid and normalized:
+                signer = GCNValidators.normalize_signer_name(normalized)
+                if signer and not cls._is_signer_noise(signer):
+                    return str(raw), signer
+        return "", ""
+
+    @staticmethod
     def merge(
         pages_results: List[Dict[str, Any]],
         bo_gcn_id: str = "GCN",
@@ -349,6 +420,24 @@ class GCNMerger:
             lambda p: p.get("raw_fields", {}).get("ngay_sinh_chu_2", {}).get("value") or p.get("nguoi_su_dung", {}).get("ngay_sinh_chu_2"),
             goc_owner_pages
         )
+        dong_thua_ke: List[Dict[str, Any]] = []
+        for owner_page in goc_owner_pages + pages_results:
+            raw_heirs = (
+                owner_page.get("nguoi_su_dung", {}).get("dong_thua_ke")
+                or owner_page.get("raw_fields", {}).get("dong_thua_ke", {}).get("value")
+                or []
+            )
+            if isinstance(raw_heirs, str) and raw_heirs.strip().startswith("["):
+                try:
+                    import ast
+                    raw_heirs = ast.literal_eval(raw_heirs.strip())
+                except Exception:
+                    pass
+            if isinstance(raw_heirs, list):
+                valid_heirs = [item for item in raw_heirs if isinstance(item, dict) and item.get("ho_ten")]
+                if valid_heirs:
+                    dong_thua_ke = valid_heirs
+                    break
 
         # Biến động chuyển nhượng mới nhất trên trang 4 / trang bổ sung / bìa sau (Mục IV)
         mutation_pages = [
@@ -521,6 +610,11 @@ class GCNMerger:
                 c1_curr["ngay_sinh"] = f"19{y45}"
             elif c3 in ['2', '3']:
                 c1_curr["ngay_sinh"] = f"20{y45}"
+
+        if dong_thua_ke:
+            c2_curr = {"ten": "", "cccd": "", "ngay_sinh": ""}
+            dong_su_dung = "Có (Đồng thừa kế)"
+            loai_chu = "Đồng thừa kế"
 
         # ─── 3. NHÓM THỬA ĐẤT & MỤC ĐÍCH ──────────────────────────────────────
         land_pages = [page_mt, page_ms] if main_template in ["mau_2024", "mau_B"] or len(pages_results) <= 2 else [page_ms, page_mt]
@@ -735,29 +829,9 @@ class GCNMerger:
             [page_ms, page_mt] + pages_results
         )
         muc_dich_su_dung = raw_muc_dich
-        ma_muc_dich = raw_ma_md
-        
-        # Suy diễn mã loại đất chuẩn từ nội dung mục đích nếu mã mục đích chưa có
-        if muc_dich_su_dung and not ma_muc_dich:
-            md_lower = muc_dich_su_dung.lower()
-            if any(k in md_lower for k in ["nông thôn", "nong thon"]):
-                ma_muc_dich = "ONT"
-            elif any(k in md_lower for k in ["đô thị", "do thi"]):
-                ma_muc_dich = "ODT"
-            elif any(k in md_lower for k in ["làm nhà ở", "lam nha o"]):
-                ma_muc_dich = "ONT"
-            elif any(k in md_lower for k in ["cây lâu năm", "cay lau nam"]):
-                ma_muc_dich = "CLN"
-            elif any(k in md_lower for k in ["lúa", "lua"]):
-                ma_muc_dich = "LUC"
-        
-        # Kiểm tra tính hợp lệ của mã loại đất
-        if ma_muc_dich:
-            v_ok, norm_code, _ = GCNValidators.validate_land_code(ma_muc_dich)
-            if v_ok:
-                ma_muc_dich = norm_code
-            else:
-                can_review_set.add("ma_muc_dich")
+        ma_muc_dich = GCNMerger._select_land_code(raw_ma_md, muc_dich_su_dung)
+        if (raw_ma_md or muc_dich_su_dung) and not ma_muc_dich:
+            can_review_set.add("ma_muc_dich")
 
         # 3.8 Thời hạn & Hình thức sử dụng
         thoi_han = get_val(
@@ -833,6 +907,24 @@ class GCNMerger:
             cap_pages + pages_results
         )
         noi_cap = GCNValidators.normalize_authority_name(raw_noi_cap or '')
+        if not noi_cap:
+            # The first non-empty page can be an OCR fragment.  Prefer the
+            # first *valid normalized* authority rather than exporting it.
+            for candidate_page in cap_pages + pages_results:
+                candidate_raw = (
+                    candidate_page.get("noi_cap")
+                    or candidate_page.get("cap_gcn", {}).get("noi_cap")
+                    or candidate_page.get("raw_fields", {}).get("noi_cap", {}).get("value")
+                    or ""
+                )
+                candidate_norm = GCNValidators.normalize_authority_name(candidate_raw)
+                if candidate_norm:
+                    raw_noi_cap = str(candidate_raw)
+                    noi_cap = candidate_norm
+                    nc_p = candidate_page.get("_page_num", candidate_page.get("page_index", nc_p))
+                    break
+        if not noi_cap:
+            can_review_set.add("noi_cap")
 
         raw_ngay_cap, ng_p, ng_box, ng_conf = get_field_provenance(
             lambda p: p.get("ngay_cap") or p.get("cap_gcn", {}).get("ngay_cap") or p.get("raw_fields", {}).get("ngay_cap", {}).get("value"),
@@ -844,12 +936,11 @@ class GCNMerger:
             ng_conf = min(ng_conf, 0.40)
             if raw_ngay_cap: can_review_set.add("ngay_cap")
 
-        raw_nguoi_ky = get_val(
-            lambda p: p.get("nguoi_ky_qd") or p.get("cap_gcn", {}).get("nguoi_ky_qd") or p.get("raw_fields", {}).get("nguoi_ky_qd", {}).get("value"),
-            cap_pages + pages_results
-        )
-        nk_valid, norm_nguoi_ky, _ = GCNValidators.validate_person_name(raw_nguoi_ky) if raw_nguoi_ky else (False, "", None)
-        nguoi_ky_qd = GCNValidators.normalize_signer_name(norm_nguoi_ky if nk_valid else (raw_nguoi_ky or ""))
+        raw_nguoi_ky, nguoi_ky_qd = GCNMerger._find_valid_signer(cap_pages + pages_results)
+        if not nguoi_ky_qd:
+            # Never substitute an officer name: an unreadable signature is a
+            # review item, not evidence for a specific person.
+            can_review_set.add("nguoi_ky_qd")
 
         raw_chuc_vu = get_val(
             lambda p: p.get("chuc_vu_nguoi_ky") or p.get("cap_gcn", {}).get("chuc_vu_nguoi_ky") or p.get("raw_fields", {}).get("chuc_vu_nguoi_ky", {}).get("value"),
@@ -924,7 +1015,7 @@ class GCNMerger:
         schema_v1.nguon_goc_su_dung = make_fr(nguon_goc, nguon_goc, bool(nguon_goc), None, 2, 0.85)
         schema_v1.noi_cap = make_fr(raw_noi_cap, GCNValidators.normalize_authority_name(noi_cap), bool(noi_cap), None, nc_p, nc_conf)
         schema_v1.ngay_cap = make_fr(raw_ngay_cap, ngay_cap, ng_valid, ng_err, ng_p, ng_conf)
-        schema_v1.nguoi_ky_qd = make_fr(raw_nguoi_ky, GCNValidators.normalize_signer_name(nguoi_ky_qd), True, None, cap_pages[0].get("_page_num", 2) if cap_pages else 2, 0.95)
+        schema_v1.nguoi_ky_qd = make_fr(raw_nguoi_ky, nguoi_ky_qd, bool(nguoi_ky_qd), None, cap_pages[0].get("_page_num", 2) if cap_pages else 2, 0.95 if nguoi_ky_qd else 0.0)
         schema_v1.chuc_vu_nguoi_ky = make_fr(raw_chuc_vu, chuc_vu_nguoi_ky, cv_valid, None, cap_pages[0].get("_page_num", 2) if cap_pages else 2, 0.90 if cv_valid else 0.40)
         schema_v1.ty_le_ban_do = make_fr(raw_ty_le, ty_le, tl_valid, tl_err, tl_p, tl_conf)
 
@@ -933,6 +1024,12 @@ class GCNMerger:
             schema_v1.thong_tin_bien_dong = make_fr(thong_tin_bien_dong, thong_tin_bien_dong, True, None, 4, 0.90)
         else:
             schema_v1.thong_tin_bien_dong = FieldResult(status="not_applicable")
+
+        if dong_thua_ke:
+            # This is a represented inheritance group, not a married couple.
+            # The projection expands it after parcel expansion.
+            dong_su_dung = "Có (Đồng thừa kế)"
+            loai_chu = "Đồng thừa kế"
 
         schema_v1.can_review = sorted(list(can_review_set))
 
@@ -958,7 +1055,9 @@ class GCNMerger:
                 "ngay_sinh": c1_curr["ngay_sinh"] or (raw_ngay_sinh_goc if GCNValidators.validate_birth_year(raw_ngay_sinh_goc)[0] else ""),
                 "dia_chi_thuong_tru": dia_chi_thuong_tru,
                 "dia_chi_thuong_tru_chu_2": dia_chi_thuong_tru_c2,
-                "loai_chu": loai_chu
+                "loai_chu": loai_chu,
+                "nguoi_dai_dien": c1_curr["ten"] or ten_chu_goc,
+                "dong_thua_ke": dong_thua_ke,
             },
             "thua_dat": {
                 "so_thua": so_thua,
@@ -982,7 +1081,7 @@ class GCNMerger:
             "cap_gcn": {
                 "noi_cap": GCNValidators.normalize_authority_name(noi_cap),
                 "ngay_cap": ngay_cap,
-                "nguoi_ky_qd": GCNValidators.normalize_signer_name(nguoi_ky_qd),
+                "nguoi_ky_qd": nguoi_ky_qd,
                 "chuc_vu_nguoi_ky": chuc_vu_nguoi_ky
             },
             "bien_dong": {

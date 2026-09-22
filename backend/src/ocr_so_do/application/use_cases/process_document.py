@@ -6,7 +6,7 @@ import time
 import logging
 import gc
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Mapping, Optional
 import numpy as np
 
 from ..pipeline.orchestrator import PipelineOrchestrator
@@ -36,6 +36,7 @@ class ProcessDocumentUseCase:
         folder_result: Optional[str] = None,
         project_id: Optional[str] = None,
         created_by: Optional[str] = None,
+        hsq_ground_truth: Optional[Mapping[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Thực thi xử lý OCR toàn bộ các trang của 1 tài liệu.
@@ -88,32 +89,12 @@ class ProcessDocumentUseCase:
                 del page_img
                 cleanup_memory(force_os_trim=False)
 
-        # Fallback vẫn streaming, chỉ dùng khi bộ lọc thông minh không trả trang.
         if page_count == 0:
-            page_iter = self.orchestrator.ingestion.iter_pages(
-                str(doc_p), split_a3=False, smart_gcn_filter=False
-            )
-            for p_idx, page_img in enumerate(page_iter):
-                page_count += 1
-                page_job_id = f"{document_id}/page_{p_idx + 1}"
-                try:
-                    p_res = self.orchestrator.process_page(
-                        image=page_img, job_id=page_job_id, page_index=p_idx
-                    )
-                    p_res["file_name"] = f"{stem_name}_p{p_idx + 1}.png"
-                    page_results.append(p_res)
-                except Exception as e_p:
-                    logger.error(f"[{document_id}] Lỗi xử lý trang {p_idx + 1}: {e_p}", exc_info=True)
-                    page_results.append({
-                        "page_index": p_idx,
-                        "file_name": f"{stem_name}_p{p_idx + 1}.png",
-                        "error": str(e_p), "ocr_results": [], "raw_fields": {}, "crops": []
-                    })
-                finally:
-                    del page_img
-                    cleanup_memory(force_os_trim=False)
-
-        if page_count == 0:
+            if smart_gcn_filter:
+                raise ValueError(
+                    "Không tìm thấy trang GCN theo hình học hoặc text layer; "
+                    "đã không OCR các trang A4 để tránh lẫn đơn đăng ký/biên lai."
+                )
             raise ValueError(f"Không thể đọc trang nào từ file: {document_path}")
 
         # Chỉ gắn metadata cấu trúc cho mẫu 2 trang; không đổi template/mapping
@@ -130,6 +111,8 @@ class ProcessDocumentUseCase:
         merged["document_id"] = document_id
         if document_profile:
             merged["document_profile"] = document_profile
+        if hsq_ground_truth:
+            self._apply_hsq_ground_truth(merged, hsq_ground_truth)
         qr_pages = [p for p in page_results if p.get("qr_detected")]
         merged["qr_detected"] = bool(qr_pages)
         merged["qr_payload"] = next((p.get("qr_payload", "") for p in qr_pages if p.get("qr_payload")), "")
@@ -272,3 +255,46 @@ class ProcessDocumentUseCase:
             "chuyen_doi_rows": chuyen_doi_rows,
             "elapsed_seconds": elapsed,
         }
+
+    @staticmethod
+    def _apply_hsq_ground_truth(merged: Dict[str, Any], hints: Mapping[str, Any]) -> None:
+        """Record HSQ path hints and fill only OCR fields that are genuinely empty.
+
+        Directory data is useful for a torn or faint scan but is never allowed
+        to overwrite a value read from the certificate.  A per-field audit is
+        retained in ``hsq_cross_check`` for review in raw data/JSON.
+        """
+        expected = {
+            "to_ban_do": str(hints.get("to_ban_do") or "").strip(),
+            "so_thua": str(hints.get("so_thua") or "").strip(),
+            "ten_chu": str(hints.get("ten_chu") or "").strip(),
+        }
+        merged["hsq_ground_truth"] = expected
+
+        parcel = merged.setdefault("thua_dat", {})
+        owner = merged.setdefault("nguoi_su_dung", {})
+        extracted = {
+            "to_ban_do": str(parcel.get("to_ban_do") or "").strip(),
+            "so_thua": str(parcel.get("so_thua") or "").strip(),
+            "ten_chu": str(owner.get("ten") or owner.get("ho_ten_chu_1") or "").strip(),
+        }
+        cross_check: Dict[str, Dict[str, Any]] = {}
+        for field, expected_value in expected.items():
+            actual = extracted[field]
+            if not expected_value:
+                cross_check[field] = {"expected": "", "extracted": actual, "status": "not_available"}
+            elif not actual:
+                cross_check[field] = {"expected": expected_value, "extracted": "", "status": "filled_from_path"}
+            elif actual.casefold() == expected_value.casefold():
+                cross_check[field] = {"expected": expected_value, "extracted": actual, "status": "matched"}
+            else:
+                cross_check[field] = {"expected": expected_value, "extracted": actual, "status": "mismatch"}
+
+        if expected["to_ban_do"] and not parcel.get("to_ban_do"):
+            parcel["to_ban_do"] = expected["to_ban_do"]
+        if expected["so_thua"] and not parcel.get("so_thua"):
+            parcel["so_thua"] = expected["so_thua"]
+        if expected["ten_chu"] and not (owner.get("ten") or owner.get("ho_ten_chu_1")):
+            owner["ten"] = expected["ten_chu"]
+            owner["ho_ten_chu_1"] = expected["ten_chu"]
+        merged["hsq_cross_check"] = cross_check
