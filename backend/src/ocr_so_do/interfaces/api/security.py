@@ -370,6 +370,9 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
     if path.startswith("/api/v1/documents"):
         return Permission.DOCUMENT_CREATE
 
+    if path.startswith("/api/v1/parcel-renaming"):
+        return Permission.BATCH_CREATE if method == "POST" else Permission.BATCH_READ
+
     if path.startswith("/api/v1/batch-pairs"):
         if method == "POST" and path.endswith("/cancel"):
             return Permission.BATCH_READ

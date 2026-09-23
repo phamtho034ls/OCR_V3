@@ -105,22 +105,48 @@ class GCNMerger:
 
     @classmethod
     def _find_valid_signer(cls, pages: List[Dict[str, Any]]) -> Tuple[str, str]:
-        """Return (raw, normalized) signer from a valid candidate only."""
+        """Return (raw, normalized) signer from a valid candidate only.
+
+        Prefer a signer re-parsed from the spatial OCR boxes.  Parsed JSON can
+        retain an older bad selection (for example ``F Nha``); the box parser
+        ties the name to the signing role before this method accepts it.
+        """
+        from .parsers.certification_parser import CertificationParser
+
         for page in pages:
-            raw = (
-                page.get("nguoi_ky_qd")
-                or page.get("cap_gcn", {}).get("nguoi_ky_qd")
-                or page.get("raw_fields", {}).get("nguoi_ky_qd", {}).get("value")
-                or ""
-            )
-            if cls._is_signer_noise(raw):
+            ocr_boxes = page.get("ocr_results") or []
+            if not ocr_boxes:
                 continue
-            is_valid, normalized, _ = GCNValidators.validate_person_name(raw) if raw else (False, "", None)
-            if is_valid and normalized:
-                signer = GCNValidators.normalize_signer_name(normalized)
-                if signer and not cls._is_signer_noise(signer):
-                    return str(raw), signer
+            parsed = CertificationParser.parse(ocr_boxes)
+            raw = parsed.get("nguoi_ky_qd") or ""
+            signer = GCNValidators.normalize_signer_name(raw)
+            if signer and not cls._is_signer_noise(signer):
+                return str(raw), signer
+
+        # Cached parsed JSON is not evidence: it can retain a prior
+        # false-positive selection.  A fresh OCR box with geometry is required
+        # before a real person's name reaches the 129-column export.
         return "", ""
+
+    @staticmethod
+    def _find_valid_authority(pages: List[Dict[str, Any]]) -> Tuple[str, str, Any]:
+        """Return authority with OCR-box evidence before trusting cached JSON."""
+        from .parsers.certification_parser import CertificationParser
+
+        for page in pages:
+            ocr_boxes = page.get("ocr_results") or []
+            if not ocr_boxes:
+                continue
+            parsed = CertificationParser.parse(ocr_boxes)
+            raw = parsed.get("noi_cap") or ""
+            normalized = GCNValidators.normalize_authority_name(raw)
+            if normalized:
+                return str(raw), normalized, page.get("_page_num", page.get("page_index"))
+
+        # Do not promote cached parser output without the supporting OCR boxes.
+        # A generic/guessed authority belongs in review, not the 129-column
+        # export.
+        return "", "", None
 
     @staticmethod
     def merge(
@@ -906,23 +932,11 @@ class GCNMerger:
             lambda p: p.get("noi_cap") or p.get("cap_gcn", {}).get("noi_cap") or p.get("raw_fields", {}).get("noi_cap", {}).get("value"),
             cap_pages + pages_results
         )
-        noi_cap = GCNValidators.normalize_authority_name(raw_noi_cap or '')
-        if not noi_cap:
-            # The first non-empty page can be an OCR fragment.  Prefer the
-            # first *valid normalized* authority rather than exporting it.
-            for candidate_page in cap_pages + pages_results:
-                candidate_raw = (
-                    candidate_page.get("noi_cap")
-                    or candidate_page.get("cap_gcn", {}).get("noi_cap")
-                    or candidate_page.get("raw_fields", {}).get("noi_cap", {}).get("value")
-                    or ""
-                )
-                candidate_norm = GCNValidators.normalize_authority_name(candidate_raw)
-                if candidate_norm:
-                    raw_noi_cap = str(candidate_raw)
-                    noi_cap = candidate_norm
-                    nc_p = candidate_page.get("_page_num", candidate_page.get("page_index", nc_p))
-                    break
+        evidence_raw_noi_cap, evidence_noi_cap, evidence_page = GCNMerger._find_valid_authority(cap_pages + pages_results)
+        noi_cap = evidence_noi_cap
+        if noi_cap:
+            raw_noi_cap = evidence_raw_noi_cap
+            nc_p = evidence_page if evidence_page is not None else nc_p
         if not noi_cap:
             can_review_set.add("noi_cap")
 

@@ -255,6 +255,13 @@ class GCNValidators:
         if not re.fullmatch(r"(?:[A-Z]{1,4})?\d{3,8}(?:/[A-Z0-9-]+)?", compact):
             return False, s_clean, f"Số vào sổ sai định dạng: '{s_clean}'"
 
+        # CH00000 / CS00000 are OCR placeholders, never a usable registry
+        # number.  They previously passed the format-only validator and made
+        # the export look complete while carrying no information.
+        registry_digits = re.sub(r"\D", "", compact)
+        if registry_digits and set(registry_digits) == {"0"}:
+            return False, s_clean, f"Số vào sổ là placeholder toàn số 0: '{s_clean}'"
+
         return True, compact, None
 
     @staticmethod
@@ -783,7 +790,9 @@ class GCNValidators:
         BAD_TERM_WORDS = [
             "nguồn gốc", "nguon goc", "mục đích", "muc dich",
             "địa chỉ", "dia chi", "diện tích", "dien tich",
-            "thửa đất", "to ban do"
+            "thửa đất", "to ban do", "thông báo", "thong bao",
+            "chậm nhất", "cham nhat", "kể từ ngày", "ke tu ngay",
+            "ban hành", "ban hanh"
         ]
 
         def _is_bad(txt: str) -> bool:
@@ -964,55 +973,10 @@ class GCNValidators:
         s = GCNValidators.clean_text(auth_str)
         if not s:
             return False, None, "Cơ quan cấp trống"
-            
-        # Loại bỏ tiền tố ký thay hoặc kính gửi
-        s = re.sub(r'^(?:TM\s*\.?\s*|Kính\s*g[ửữ]i\s*[:\.]?\s*)+', '', s, flags=re.IGNORECASE).strip()
-        s = re.sub(r'\bUBND\b', 'Ủy ban nhân dân', s, flags=re.IGNORECASE)
-        s = re.sub(r'(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UY\s*BAN\s*NHAN\s*DAN)', 'Ủy ban nhân dân', s, flags=re.IGNORECASE)
-        # A role, date, or signing instruction attached to the same OCR line
-        # is never part of the issuing authority.
-        s = re.split(
-            r'\s*(?:[,;]|\b(?:TM\.?|KT\.?|ngày|ngay|chủ\s*tịch|phó\s*chủ|giám\s*đốc|ký\s*thay)\b)',
-            s,
-            maxsplit=1,
-            flags=re.IGNORECASE,
-        )[0].strip(' .:-,')
-        
-        VALID_AUTH_KEYWORDS = ["ủy ban nhân dân", "ubnd", "sở tài nguyên", "văn phòng đăng ký", "chi nhánh"]
-        if not any(kw in s.lower() for kw in VALID_AUTH_KEYWORDS):
-            return False, s, f"Tên đơn vị cấp không chứa cơ quan hành chính hợp lệ: '{s}'"
-
-        INVALID_AUTH_KEYWORDS = [
-            "thế chấp", "the chap", "xoá", "xóa", "xoa", "chuyển nhượng", "chuyen nhuong",
-            "bất động sản", "bat dong san", "dân cư cấp", "dan cu cap", "dlqg",
-            "quy định", "quy dinh", "giá do", "gia do", "xác nhận", "xac nhan",
-            "tuổi thị tích", "tuoi thi tich", "đăng ký quyền", "nội dung", "chứng nhận",
-            "khai báo", "khai bao", "hư hỏng", "hu hong", "sửa chữa", "sua chua"
-        ]
-        if any(kw in s.lower() for kw in INVALID_AUTH_KEYWORDS):
-            return False, s, f"Tên đơn vị cấp chứa từ khóa nghiệp vụ/rác: '{s}'"
-            
-        s = re.sub(r'(\bHuyện\b|\bhuyện\b|\bHuy\.\.\.\.\b)', 'huyện', s, flags=re.IGNORECASE)
-        s = re.sub(r'\s+', ' ', s).strip(' .:-,')
-        # Cắt bỏ các đoạn gạch chấm rác OCR viết tay cuối dòng (ví dụ: 'Huy...... Bình..... Của.')
-        s = re.sub(r'[\.]{2,}.*$', '', s).strip(' .:-,')
-
-        # Chuẩn hóa địa danh hành chính phổ biến nếu OCR thiếu dấu hoặc sai chính tả
-        if re.search(r'Ủy\s*ban\s*nhân\s*dân\s*(?:qu[ậa]n\s*)?l[êe]\s*ch[âa]n\b', s, re.IGNORECASE):
-            s = "Ủy ban nhân dân quận Lê Chân"
-        elif re.search(r'Ủy\s*ban\s*nhân\s*dân\s*(?:huyện\s*)?b[iì]nh\s*gia\b', s, re.IGNORECASE):
-            s = "Ủy ban nhân dân huyện Bình Gia"
-        elif re.search(r'Ủy\s*ban\s*nhân\s*dân\s*(?:huyện\s*)?cao\s*lộc\b', s, re.IGNORECASE):
-            s = "Ủy ban nhân dân huyện Cao Lộc"
-        elif re.search(r'Sở\s*Tài\s*nguyên\s*(?:và\s*Môi\s*trường)?\s*(?:thành\s*phố\s*)?h[ảa]i\s*ph[òo]ng\b', s, re.IGNORECASE):
-            s = "Sở Tài nguyên và Môi trường thành phố Hải Phòng"
-        elif re.search(r'Chi\s*nhánh\s*Văn\s*phòng\s*đăng\s*ký\s*đất\s*đai\s*(?:qu[ậa]n\s*)?l[êe]\s*ch[âa]n\b', s, re.IGNORECASE):
-            s = "Chi nhánh Văn phòng đăng ký đất đai quận Lê Chân"
-        
-        if len(s) < 10:
-            return False, s, f"Tên đơn vị cấp quá ngắn: '{s}'"
-            
-        return True, s, None
+        normalized = GCNValidators.normalize_authority_name(s)
+        if not normalized:
+            return False, s, f"Tên đơn vị cấp không đủ bằng chứng để chuẩn hóa: '{s}'"
+        return True, normalized, None
 
     @staticmethod
     def validate_address(addr_str: Any) -> Tuple[bool, Optional[str], Optional[str]]:
@@ -1039,14 +1003,17 @@ class GCNValidators:
 
     @staticmethod
     def normalize_authority_name(raw: Any) -> str:
-        """Return only the issuing-authority name, without signature text."""
+        """Return a verified issuing authority, never an arbitrary OCR fragment.
+
+        A generic ``Ủy ban nhân dân`` is not sufficient evidence: OCR often
+        reads unrelated text next to the signing block as its place name.  An
+        UBND value therefore needs an administrative scope and a locality.
+        """
         s = GCNValidators.clean_text(raw)
         if not s:
             return ""
         s = re.sub(r"\s+", " ", s).strip()
-        s = re.sub(r"^(?:TM\.?|KT\.?|Kính\s*g[ửữ]i\s*[:.]?)\s*", "", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bUBND\b", "Ủy ban nhân dân", s, flags=re.IGNORECASE)
-        s = re.sub(r"(?:UY|ỦY)\s*BAN\s*NHAN\s*DAN", "Ủy ban nhân dân", s, flags=re.IGNORECASE)
+        s = re.sub(r"^(?:(?:TM\.?|KT\.?)\s*|Kính\s*g[ửữ]i\s*[:.]?\s*)+", "", s, flags=re.IGNORECASE)
 
         # OCR occasionally joins the authority line with the date, role, or
         # signature. Those are not part of GCN_donViCap.
@@ -1056,36 +1023,71 @@ class GCNValidators:
             maxsplit=1,
             flags=re.IGNORECASE,
         )[0].strip(" .:-,")
-        low = s.lower()
-        if "ủy ban nhân dân" in low:
-            tail = re.split(r"ủy\s*ban\s*nhân\s*dân", s, maxsplit=1, flags=re.IGNORECASE)[-1].strip(" .:-,")
-            scope = re.search(
-                r"\b(huyện|quận|thị\s*xã|thành\s*phố|tỉnh)\s+"
-                r"([A-Za-zÀ-ỸĐa-zà-ỹđ][A-Za-zÀ-ỸĐa-zà-ỹđ\s\-]{1,}?)"
-                r"(?=\s+\b(?:tỉnh|thành\s*phố|huyện|quận|thị\s*xã)\b|$)",
-                tail,
-                re.IGNORECASE,
-            )
-            if scope:
-                scope_name = re.sub(r"\s+", " ", scope.group(2)).strip()
-                result = f"Ủy ban nhân dân {scope.group(1).lower()} {scope_name}"
-            elif tail:
-                words = tail.split()
-                if len(words) > 6 or any(ch.isdigit() for ch in tail):
-                    return ""
-                result = "Ủy ban nhân dân " + tail
-            else:
-                result = "Ủy ban nhân dân"
-            if re.search(r"\bcao\s*(?:l[ọộổo][cing]?|la|lý|long|lộng|lội)\b", result, re.IGNORECASE):
-                return "Ủy ban nhân dân huyện CAO LỘC"
-            return result.strip()
+        folded = unicodedata.normalize("NFD", s.lower().replace("đ", "d"))
+        folded = "".join(ch for ch in folded if unicodedata.category(ch) != "Mn")
+        folded = re.sub(r"\s+", " ", folded).strip()
+        if any(noise in folded for noise in (
+            "the chap", "chuyen nhuong", "dan cu cap", "quy dinh",
+            "xac nhan", "chung nhan", "khai bao", "hu hong", "sua chua",
+        )):
+            return ""
 
-        if re.search(r"sở\s*tài\s*nguyên|so\s*tai\s*nguyen", s, re.IGNORECASE):
-            match = re.search(r"sở\s*tài\s*nguyên(?:\s*và\s*môi\s*trường)?(?:\s+tỉnh\s+[A-Za-zÀ-ỸĐa-zà-ỹđ\s\-]+)?", s, re.IGNORECASE)
-            return match.group(0).strip() if match else ""
-        if re.search(r"(?:văn\s*phòng\s*đăng\s*ký|chi\s*nhánh\s*văn\s*phòng)", s, re.IGNORECASE):
-            match = re.search(r"(?:chi\s*nhánh\s*)?văn\s*phòng\s*đăng\s*ký(?:\s*đất\s*đai)?(?:\s+[A-Za-zÀ-ỸĐa-zà-ỹđ\s\-]+)?", s, re.IGNORECASE)
-            return match.group(0).strip() if match else ""
+        # Canonical forms for the established data set, tolerant of accents
+        # and common OCR spelling variants.
+        if "le chan" in folded and ("chi nhanh" in folded or "van phong dang ky" in folded):
+            return "Chi nhánh Văn phòng đăng ký đất đai quận Lê Chân"
+        if "le chan" in folded and ("uy ban" in folded or "ubnd" in folded):
+            return "Ủy ban nhân dân quận Lê Chân"
+        if "binh gia" in folded and ("uy ban" in folded or "ubnd" in folded):
+            return "Ủy ban nhân dân huyện Bình Gia"
+        if "cao loc" in folded and ("uy ban" in folded or "ubnd" in folded):
+            return "Ủy ban nhân dân huyện Cao Lộc"
+        if "hai phong" in folded and "so tai nguyen" in folded:
+            return "Sở Tài nguyên và Môi trường thành phố Hải Phòng"
+
+        if "uy ban" in folded or re.search(r"\bubnd\b", folded):
+            # A locality must be introduced by an administrative unit.  This
+            # rejects OCR garbage such as "Ủy ban nhân dân tự xã hội cấp".
+            scope = re.search(
+                r"\b(huyen|quan|thi xa|thanh pho|tinh|xa|phuong|thi tran)\s+"
+                r"([a-z][a-z\s\-]{1,50}?)(?=\s+\b(?:tinh|thanh pho|huyen|quan|thi xa|xa|phuong|thi tran)\b|$)",
+                folded,
+            )
+            if not scope:
+                return ""
+            scope_name = re.sub(r"\s+", " ", scope.group(2)).strip()
+            if any(token in scope_name.split() for token in ("hoi", "cap", "cu", "tu", "do")):
+                return ""
+            scope_display = {
+                "huyen": "huyện", "quan": "quận", "thi xa": "thị xã",
+                "thanh pho": "thành phố", "tinh": "tỉnh", "xa": "xã",
+                "phuong": "phường", "thi tran": "thị trấn",
+            }[scope.group(1)]
+            return f"Ủy ban nhân dân {scope_display} {scope_name.title()}"
+
+        # Other authority families also need their locality.  Returning only
+        # "Sở ..." or "Văn phòng ..." looks clean but is not a traceable
+        # issuing authority in a multi-province data set.
+        scope = re.search(
+            r"\b(huyen|quan|thi xa|thanh pho|tinh)\s+"
+            r"([a-z][a-z\s\-]{1,50}?)(?=\s+\b(?:tinh|thanh pho|huyen|quan|thi xa)\b|$)",
+            folded,
+        )
+        if not scope:
+            return ""
+        scope_name = re.sub(r"\s+", " ", scope.group(2)).strip()
+        if any(token in scope_name.split() for token in ("hoi", "cap", "cu", "tu", "do")):
+            return ""
+        scope_display = {
+            "huyen": "huyện", "quan": "quận", "thi xa": "thị xã",
+            "thanh pho": "thành phố", "tinh": "tỉnh",
+        }[scope.group(1)]
+        if "chi nhanh van phong dang ky" in folded:
+            return f"Chi nhánh Văn phòng đăng ký đất đai {scope_display} {scope_name.title()}"
+        if "van phong dang ky" in folded:
+            return f"Văn phòng đăng ký đất đai {scope_display} {scope_name.title()}"
+        if "so tai nguyen" in folded:
+            return f"Sở Tài nguyên và Môi trường {scope_display} {scope_name.title()}"
         return ""
 
     @staticmethod
@@ -1120,8 +1122,10 @@ class GCNValidators:
             if pat and re.search(pat, s_clean, re.IGNORECASE):
                 return item.get("canonical_name", s_clean.title())
 
-        # Bác bỏ nếu chứa chữ số hoặc ký tự đặc biệt (tuyệt đối không nhận nhầm mã vạch, số CMND, tọa độ)
-        if re.search(r"[\d:;_\(\)\{\}\[\]\/\\]", s_clean):
+        # Bác bỏ nếu chứa chữ số hoặc ký tự không thuộc tên người.  Dấu chấm
+        # cuối/mảnh một ký tự là bằng chứng crop bị cắt, không phải tên hoàn
+        # chỉnh; các alias OCR đã cấu hình được xử lý ở trên.
+        if re.search(r"[^A-Za-zÀ-Ỹà-ỹĐđ\s]", s_clean):
             return ""
 
         # Blacklist từ khóa hành chính / kỹ thuật không phải tên người
@@ -1133,6 +1137,7 @@ class GCNValidators:
             "giấy chứng nhận", "chi nhánh", "văn phòng", "đăng ký", "hội đồng", "nhân dân",
             "cộng hòa", "độc lập", "tự do", "hạnh phúc", "ngày", "tháng", "năm", "chú ý", "lưu ý",
             "thửa đất", "tờ bản đồ", "mục đích", "diện tích", "thời hạn", "quyền sử dụng",
+            "sử dụng đất", "su dung dat", "đăng ký", "dang ky",
             "xây dựng", "lê chân", "hải phòng", "bình gia", "cao lộc", "mã vạch", "barcode"
         ]):
             return ""
@@ -1143,7 +1148,12 @@ class GCNValidators:
             return ""
 
         words = normalized.split()
-        if len(words) < 2 or len(words) > 5:
+        # Hai từ rất dễ là một mảnh địa danh hay nhãn OCR ("Lê Chấn",
+        # "Đăng Ký").  Cho phép ngoại lệ duy nhất qua danh bạ alias ở trên,
+        # nơi có canonical name và căn cứ nghiệp vụ rõ ràng.
+        if len(words) < 3 or len(words) > 5:
+            return ""
+        if any(len(word) < 2 for word in words):
             return ""
 
         # Kiểm tra họ người Việt ở từ đầu tiên
@@ -1151,10 +1161,8 @@ class GCNValidators:
         if first_word_low in VIETNAMESE_SURNAMES or unicodedata.normalize("NFD", first_word_low) in VIETNAMESE_SURNAMES:
             return normalized
 
-        # Fallback cho trường hợp họ hiếm nhưng chuỗi chữ cái hợp lệ
-        if all(w.isalpha() for w in words):
-            return normalized
-
+        # Do not accept arbitrary two-word OCR fragments as a signer.  A rare
+        # surname must be added as an explicit alias with an evidence trace.
         return ""
 
 

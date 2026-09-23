@@ -3,26 +3,34 @@
 venv/
 env/
 node_modules/
-frontend/node_modules/
+**/node_modules/
 
 # Cache & Build artifacts
-.cache/
-__pycache__/
-*.py[cod]
-*.pyo
-.pytest_cache/
-frontend/dist/
+**/.cache/
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+**/.pytest_cache/
+**/dist/
+scratch_themes.jar
 
 # Logs & Temp files
 *.log
-scratch/
+**/tmp/
+tmp/
 temp/
+**/temp/
+scratch/
+**/scratch/
 
 # Output folders
 output/
 outputs/
+**/output/
+**/outputs/
 
 # Git
 .git/
 .gitignore
 .env
+

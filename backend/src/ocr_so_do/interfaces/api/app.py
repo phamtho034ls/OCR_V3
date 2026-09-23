@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ...infrastructure.persistence.postgres_store import get_postgres_store
-from .routers import admin, auth, documents, exports, batch, pg_storage, batch_pairs, projects
+from .routers import admin, auth, documents, exports, batch, pg_storage, batch_pairs, projects, parcel_renaming
 from .security import (
     authenticate_authorization_header,
     can_access_project_data,
@@ -126,6 +126,7 @@ app.include_router(batch_pairs.router, prefix=api_v1_prefix)
 app.include_router(auth.router, prefix=api_v1_prefix)
 app.include_router(admin.router, prefix=api_v1_prefix)
 app.include_router(projects.router, prefix=api_v1_prefix)
+app.include_router(parcel_renaming.router, prefix=api_v1_prefix)
 
 # Ảnh trang gốc, crop OCR và sơ đồ thửa đất là bằng chứng trực quan trong màn
 # tra soát. AuthenticationMiddleware bắt buộc `record.read` cho mọi URL /output.

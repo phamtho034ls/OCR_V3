@@ -120,6 +120,9 @@ class TestDomainParsers:
         res = CertificationParser.parse(boxes)
         assert res["so_phat_hanh"] == "CĐ 754219"
         assert res["so_vao_so"] == "CH00123"
-        assert "Ủy ban nhân dân" in res["noi_cap"]
+        # The OCR box has only a generic authority header, without locality.
+        assert res["noi_cap"] is None
         assert res["chuc_vu_nguoi_ky"] == "Phó Chủ tịch"
-        assert res["nguoi_ky_qd"] == "Lê Văn C"
+        # A one-character final token is an incomplete OCR crop, not enough
+        # evidence to export a real person's name.
+        assert res["nguoi_ky_qd"] is None

@@ -6,6 +6,7 @@ import re
 import logging
 from typing import Any, Dict, List, Optional
 from ..spatial_engine import SpatialEngine
+from ..validation.validators import GCNValidators
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,34 @@ class CertificationParser:
         "Văn phòng đăng ký đất đai",
         "Sở Tài nguyên và Môi trường"
     ]
+
+    @staticmethod
+    def _collect_verified_authorities(lines: List[str]) -> List[str]:
+        """Join adjacent authority fragments before accepting their value."""
+        anchor = re.compile(
+            r"(?:ủy\s*ban|uy\s*ban|\bubnd\b|sở\s*tài|so\s*tai|"
+            r"chi\s*nhánh|chi\s*nhanh|văn\s*phòng|van\s*phong)",
+            re.IGNORECASE,
+        )
+        stop = re.compile(
+            r"(?:\b(?:ngày|ngay)\b|chủ\s*tịch|chu\s*tich|giám\s*đốc|"
+            r"giam\s*doc|ký\s*thay|\bkt\.?\b)",
+            re.IGNORECASE,
+        )
+        authorities: List[str] = []
+        for start, line in enumerate(lines):
+            if not anchor.search(line):
+                continue
+            merged = ""
+            for end in range(start, min(start + 3, len(lines))):
+                part = lines[end].strip()
+                if end > start and stop.search(part):
+                    break
+                merged = f"{merged} {part}".strip()
+                normalized = GCNValidators.normalize_authority_name(merged)
+                if normalized and normalized not in authorities:
+                    authorities.append(normalized)
+        return authorities
 
     @staticmethod
     def parse(ocr_boxes: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -73,25 +102,13 @@ class CertificationParser:
             result["so_vao_so"] = CertificationParser._extract_so_vao_so(sorted_boxes, full_text)
 
 
-        # 3. Nơi cấp GCN
-        for line in all_lines:
-            line_s = line.strip()
-            if re.search(r"(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UBND|UY\s*BAN\s*NHAN\s*DAN)", line_s, re.IGNORECASE):
-                val = line_s
-                val = re.sub(r'^(?:TM\s*\.?\s*|Kính\s*g[ửữ]i\s*[:\.]?\s*)+', '', val, flags=re.IGNORECASE)
-                val = re.sub(r'\bUBND\b', 'Ủy ban nhân dân', val, flags=re.IGNORECASE)
-                val = re.sub(r'(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UY\s*BAN\s*NHAN\s*DAN)', 'Ủy ban nhân dân', val, flags=re.IGNORECASE)
-                val = re.sub(r'^(?:Ủy\s*ban\s*nhân\s*dân\s*)+', 'Ủy ban nhân dân ', val, flags=re.IGNORECASE)
-                val = re.sub(r'[\.]{2,}.*$', '', val).strip(' .:-,')
-                result["noi_cap"] = val.strip(" .:-,")
-                break
-            elif re.search(r"(?:VĂN\s*PHÒNG\s*ĐĂNG\s*KÝ\s*ĐẤT\s*ĐAI|CHI\s*NHÁNH\s*VĂN\s*PHÒNG)", line_s, re.IGNORECASE):
-                result["noi_cap"] = line_s.strip(" .:-,")
-                break
-            elif re.search(r"(?:SỞ\s*TÀI\s*NGUYÊN\s*VÀ\s*MÔI\s*TRƯỜNG|SO\s*TAI\s*NGUYEN)", line_s, re.IGNORECASE):
-                val_sn = re.sub(r"^.*?(?:SỞ\s*TÀI\s*NGUYÊN|SO\s*TAI\s*NGUYEN)", "Sở Tài nguyên", line_s, flags=re.IGNORECASE)
-                result["noi_cap"] = val_sn.strip(" .:-,")
-                break
+        # 3. Nơi cấp GCN.  Never export a single partial OCR box.
+        authority_candidates = CertificationParser._collect_verified_authorities(all_lines)
+        if authority_candidates:
+            result["noi_cap"] = max(
+                authority_candidates,
+                key=lambda s: (bool(re.search(r"(?:huyện|quận|thành phố|tỉnh|sở)", s, re.IGNORECASE)), len(s)),
+            )
 
         # 4. Người ký quyết định & Chức vụ
         for idx, line in enumerate(all_lines):
@@ -115,7 +132,6 @@ class CertificationParser:
                         continue
                     if re.search(r"\b(?:ch[uủũùúụ]\s*t[iịìíĩ][cch]|gi[aáàãảạ]m\s*đ[oóòõỏọ][cch]|ph[oóòõỏọ]\s*ch[uủũùúụ]|ubnd|ủy\s*ban)\b", nxt_s, re.IGNORECASE):
                         continue
-                    from ..validation.validators import GCNValidators
                     cand = GCNValidators.normalize_signer_name(nxt_s)
                     if cand and len(cand.split()) >= 2:
                         result["nguoi_ky_qd"] = cand

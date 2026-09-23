@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Database, FileSpreadsheet, Folder, FolderUp, Layers, LogOut, Upload, UserCog } from 'lucide-react';
+import { Database, FileSpreadsheet, Folder, FolderUp, Layers, LogOut, Tags, Upload, UserCog } from 'lucide-react';
 import { DataConversionPage } from '../pages/data-conversion/DataConversionPage';
 import { DocumentUploadPage } from '../pages/document-upload/DocumentUploadPage';
 import { BatchScanPage } from '../pages/batch-scan/BatchScanPage';
@@ -8,10 +8,11 @@ import { RawMarkdownPage } from '../pages/raw-markdown/RawMarkdownPage';
 import { UserManagementPage } from '../pages/admin/UserManagementPage';
 import { ProjectListPage } from '../pages/projects/ProjectListPage';
 import { LoginPage } from '../pages/login/LoginPage';
+import { ParcelRenamingPage } from '../pages/parcel-renaming/ParcelRenamingPage';
 import { useAuth } from '../shared/auth/AuthProvider';
 import { UserProfileModal } from '../shared/components/UserProfileModal';
 
-type AppTab = 'batch' | 'conversion' | 'records' | 'upload' | 'admin' | 'projects';
+type AppTab = 'batch' | 'conversion' | 'records' | 'upload' | 'rename' | 'admin' | 'projects';
 
 const navigation: Array<{
   id: AppTab;
@@ -22,6 +23,7 @@ const navigation: Array<{
 }> = [
   { id: 'batch', label: 'Xử lý hàng loạt', shortLabel: 'Hàng loạt', Icon: FolderUp, permission: 'batch.create' },
   { id: 'upload', label: 'Kiểm tra hồ sơ', shortLabel: 'Hồ sơ', Icon: Upload, permission: 'document.create' },
+  { id: 'rename', label: 'Đổi tên PDF', shortLabel: 'Đổi tên', Icon: Tags, permission: 'batch.create' },
   { id: 'conversion', label: 'Bảng dữ liệu 129 cột', shortLabel: 'Bảng dữ liệu', Icon: FileSpreadsheet, permission: 'record.read' },
   { id: 'records', label: 'Kho hồ sơ', shortLabel: 'Kho hồ sơ', Icon: Database, permission: 'record.read' },
   { id: 'projects', label: 'Dự án', shortLabel: 'Dự án', Icon: Folder, permission: 'project.read' },
@@ -243,6 +245,9 @@ export const App: React.FC = () => {
         </div>
         <div className={currentTab === 'upload' ? 'block' : 'hidden'}>
           <DocumentUploadPage onNavigateToProjects={() => setCurrentTab('projects')} />
+        </div>
+        <div className={currentTab === 'rename' ? 'block' : 'hidden'}>
+          <ParcelRenamingPage onNavigateToProjects={() => setCurrentTab('projects')} />
         </div>
         <div className={currentTab === 'projects' ? 'block' : 'hidden'}>
           <ProjectListPage />

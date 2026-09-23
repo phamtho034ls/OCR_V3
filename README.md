@@ -315,6 +315,12 @@ Khi truy cập vào **[http://127.0.0.1:3000](http://127.0.0.1:3000)**, hệ th�
 - Kéo thả hoặc chọn 1 tệp ảnh / PDF cần kiểm tra nhanh.
 - Xem trực tiếp ảnh gốc, ảnh sơ đồ thửa đất đã bóc tách, mã vạch và dữ liệu JSON chi tiết.
 
+### 5. Đổi Tên PDF Theo Số Tờ - Số Thửa (`Đổi tên PDF`)
+- Chọn một thư mục PDF từ máy tính; hệ thống giữ lại cấu trúc thư mục con.
+- OCR chỉ nhận giá trị dưới bảng **"Thông tin theo hồ sơ đăng ký đất đai"**, không dùng bảng "theo bản đồ 299".
+- Bản sao hợp lệ được đổi tên theo mẫu `{so_to}-{so_thua}.pdf` (ví dụ `38-109.pdf`) và tải về trong một tệp ZIP.
+- Các PDF không đạt điều kiện nhận dạng được giữ nguyên tên trong thư mục `can-kiem-tra` cùng báo cáo `ket-qua-doi-ten.csv` để đối soát.
+
 ---
 
 ## 🔌 Danh Sách API Endpoints Chính
@@ -323,6 +329,12 @@ Khi truy cập vào **[http://127.0.0.1:3000](http://127.0.0.1:3000)**, hệ th�
 | Phương thức | Đường dẫn | Chức năng |
 | :---: | :--- | :--- |
 | `POST` | `/api/v1/documents` | Upload một file tài liệu (PDF, PNG, JPG), chạy OCR và lưu PostgreSQL |
+
+### Nhóm Đổi Tên PDF Theo Thửa (`/api/v1/parcel-renaming`)
+| Phương thức | Đường dẫn | Chức năng |
+| :---: | :--- | :--- |
+| `POST` | `/api/v1/parcel-renaming` | Upload nhiều PDF/thư mục, OCR số tờ-số thửa và tạo ZIP đổi tên |
+| `GET` | `/api/v1/parcel-renaming/{job_id}/download` | Tải ZIP gồm PDF đã đổi tên, PDF cần kiểm tra và CSV đối soát |
 
 ### Nhóm Quét Thư Mục Hàng Loạt (`/api/v1/batch`)
 | Phương thức | Đường dẫn | Chức năng |

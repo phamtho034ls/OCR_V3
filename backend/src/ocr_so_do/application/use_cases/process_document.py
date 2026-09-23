@@ -141,6 +141,7 @@ class ProcessDocumentUseCase:
                 "crops": p.get("crops", []),
                 "ocr_results": p.get("ocr_results", []),
                 "raw_ocr_markdown": p.get("raw_ocr_markdown", ""),
+                "audit_trace": p.get("audit_trace", {}),
                 "document_profile": p.get("document_profile", ""),
                 "page_role": p.get("page_role", ""),
                 "qr_detected": bool(p.get("qr_detected")),
@@ -149,6 +150,17 @@ class ProcessDocumentUseCase:
             }
             for i, p in enumerate(page_results)
         ]
+        merged["audit_trace"] = {
+            "schema_version": "ocr-audit-v1",
+            "document_id": document_id,
+            "source_path": str(doc_p),
+            "pages": [p.get("audit_trace", {}) for p in page_results],
+            "review_fields": sorted({
+                field
+                for p in page_results
+                for field in (p.get("can_review") or [])
+            }),
+        }
 
         # Chọn preview chính (ưu tiên trang có sơ đồ hoặc thửa đất)
         main_p = page_results[0]

@@ -105,6 +105,69 @@ class CertificationParser:
         return norm if norm else None
 
     @staticmethod
+    def _is_signer_candidate_position(role_box: Dict[str, Any], candidate_box: Dict[str, Any]) -> bool:
+        """Require the candidate crop to sit in the same signing block.
+
+        Reading order alone crosses columns and sections on scanned GCN pages.
+        A name must therefore be below its role, close enough vertically, and
+        horizontally aligned with that role.  Missing geometry means there is
+        no evidence and the caller must send the field to review.
+        """
+        if not role_box.get("bbox") or not candidate_box.get("bbox"):
+            return False
+        rx1, ry1, rx2, ry2 = SpatialEngine.get_rect(role_box["bbox"])
+        cx1, cy1, cx2, cy2 = SpatialEngine.get_rect(candidate_box["bbox"])
+        role_height = max(1.0, ry2 - ry1)
+        role_width = max(1.0, rx2 - rx1)
+        candidate_width = max(1.0, cx2 - cx1)
+
+        if cy1 < ry1 - role_height * 0.35:
+            return False
+        if cy1 - ry2 > max(500.0, role_height * 22.0):
+            return False
+
+        # Either horizontally overlap, or stay close enough to the role to be
+        # part of the same right-aligned signing block.
+        horizontal_gap = max(rx1 - cx2, cx1 - rx2, 0.0)
+        return horizontal_gap <= max(160.0, min(500.0, max(role_width, candidate_width) * 2.5))
+
+    @staticmethod
+    def _collect_verified_authorities(lines: List[str]) -> List[str]:
+        """Recover a verified authority from one or more adjacent OCR boxes.
+
+        Paddle/VietOCR commonly split ``TM. ỦY BAN NHÂN`` and ``DÂN QUẬN
+        LÊ CHÂN`` into separate boxes.  Selecting either fragment created the
+        false values seen in Excel.  Only return a value once the joined text
+        passes the strict authority normalizer.
+        """
+        anchor = re.compile(
+            r"(?:ủy\s*ban|uy\s*ban|\bubnd\b|sở\s*tài|so\s*tai|"
+            r"chi\s*nhánh|chi\s*nhanh|văn\s*phòng|van\s*phong)",
+            re.IGNORECASE,
+        )
+        stop = re.compile(
+            r"(?:\b(?:ngày|ngay)\b|chủ\s*tịch|chu\s*tich|giám\s*đốc|"
+            r"giam\s*doc|ký\s*thay|\bkt\.?\b)",
+            re.IGNORECASE,
+        )
+        authorities: List[str] = []
+        for start, line in enumerate(lines):
+            if not anchor.search(line):
+                continue
+            merged = ""
+            # Three boxes cover the known split patterns while avoiding a
+            # merge across unrelated table rows.
+            for end in range(start, min(start + 3, len(lines))):
+                candidate_line = lines[end].strip()
+                if end > start and stop.search(candidate_line):
+                    break
+                merged = f"{merged} {candidate_line}".strip()
+                normalized = GCNValidators.normalize_authority_name(merged)
+                if normalized and normalized not in authorities:
+                    authorities.append(normalized)
+        return authorities
+
+    @staticmethod
     def parse(ocr_boxes: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = {
             "so_phat_hanh": None,
@@ -121,7 +184,8 @@ class CertificationParser:
             return result
 
         sorted_boxes = SpatialEngine.sort_reading_order(ocr_boxes)
-        all_lines = [b.get("text", "").strip() for b in sorted_boxes if b.get("text", "").strip()]
+        line_boxes = [b for b in sorted_boxes if b.get("text", "").strip()]
+        all_lines = [b.get("text", "").strip() for b in line_boxes]
         full_text = " \n ".join(all_lines)
 
         # ROI được thêm bởi PipelineOrchestrator sau khi nhận dạng riêng vùng
@@ -152,64 +216,12 @@ class CertificationParser:
 
 
         # 3. Nơi cấp GCN
-        authority_candidates = []
-        other_authority_candidates = []
-        for line in all_lines:
-            line_s = line.strip()
-            if any(k in line_s.lower() for k in [
-                "thế chấp", "the chap", "xoá", "xóa", "xoa", "chuyển nhượng", "chuyen nhuong",
-                "bất động sản", "bat dong san", "dân cư", "dlqg", "quy định", "quy dinh",
-                "giá do", "gia do", "xác nhận", "xac nhan", "tuổi thị tích", "tuoi thi tich",
-                "đăng ký quyền", "nội dung", "chứng nhận", "khai báo", "khai bao", "hư hỏng",
-                "hu hong", "sửa chữa", "sua chua", "người được cấp", "khi bị mất", "sau khi cấp"
-            ]):
-                continue
-
-            if re.search(r"(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UBND|UY\s*BAN\s*NHAN\s*DAN)", line_s, re.IGNORECASE):
-                val = line_s
-                val = re.sub(r'^(?:TM\s*\.?\s*|Kính\s*g[ửữ]i\s*[:\.]?\s*)+', '', val, flags=re.IGNORECASE)
-                val = re.sub(r'\bUBND\b', 'Ủy ban nhân dân', val, flags=re.IGNORECASE)
-                val = re.sub(r'(?:ỦY\s*BAN\s*NHÂN\s*DÂN|UY\s*BAN\s*NHAN\s*DAN)', 'Ủy ban nhân dân', val, flags=re.IGNORECASE)
-                val = re.sub(r'^(?:Ủy\s*ban\s*nhân\s*dân\s*)+', 'Ủy ban nhân dân ', val, flags=re.IGNORECASE)
-                val = re.sub(r'[\.]{2,}.*$', '', val).strip(' .:-,')
-                if val:
-                    authority_candidates.append(val)
-            elif re.search(r"(?:VĂN\s*PHÒNG\s*ĐĂNG\s*KÝ\s*ĐẤT\s*ĐAI|CHI\s*NHÁNH\s*VĂN\s*PHÒNG|SỞ\s*TÀI\s*NGUYÊN\s*VÀ\s*MÔI\s*TRƯỜNG|SO\s*TAI\s*NGUYEN)", line_s, re.IGNORECASE):
-                normalized_other = re.sub(
-                    r"^.*?(?:SỞ\s*TÀI\s*NGUYÊN|SO\s*TAI\s*NGUYEN)",
-                    "Sở Tài nguyên",
-                    line_s,
-                    flags=re.IGNORECASE,
-                )
-                other_authority_candidates.append(normalized_other.strip(" .:-,"))
-
+        authority_candidates = CertificationParser._collect_verified_authorities(all_lines)
         if authority_candidates:
-            valid_auths = []
-            for cand in authority_candidates:
-                ok, norm, _ = GCNValidators.validate_issuing_authority(cand)
-                if ok and norm:
-                    valid_auths.append(norm)
-            if valid_auths:
-                result["noi_cap"] = max(
-                    valid_auths,
-                    key=lambda s: (bool(re.search(r"(?:huyện|quận|thành phố|tỉnh|sở)", s, re.IGNORECASE)), len(s))
-                )
-            else:
-                raw_auth = max(
-                    authority_candidates,
-                    key=lambda s: (bool(re.search(r"(?:huyện|quận|thành phố|tỉnh|sở)", s, re.IGNORECASE)), len(s))
-                )
-                result["noi_cap"] = GCNValidators.normalize_authority_name(raw_auth)
-        elif other_authority_candidates:
-            valid_other = []
-            for cand in other_authority_candidates:
-                ok, norm, _ = GCNValidators.validate_issuing_authority(cand)
-                if ok and norm:
-                    valid_other.append(norm)
-            if valid_other:
-                result["noi_cap"] = max(valid_other, key=len)
-            else:
-                result["noi_cap"] = GCNValidators.normalize_authority_name(max(other_authority_candidates, key=len))
+            result["noi_cap"] = max(
+                authority_candidates,
+                key=lambda s: (bool(re.search(r"(?:huyện|quận|thành phố|tỉnh|sở)", s, re.IGNORECASE)), len(s)),
+            )
 
         # 4. Người ký quyết định & Chức vụ
         for idx, line in enumerate(all_lines):
@@ -229,9 +241,14 @@ class CertificationParser:
                 # Look below for the full signer name.  OCR may split a name
                 # over two lines, so inspect both the line and a compact join.
                 for next_idx in range(idx + 1, min(idx + 8, len(all_lines))):
+                    if not CertificationParser._is_signer_candidate_position(line_boxes[idx], line_boxes[next_idx]):
+                        continue
                     nxt_s = all_lines[next_idx].strip()
                     candidates = [nxt_s]
-                    if next_idx + 1 < len(all_lines):
+                    if (
+                        next_idx + 1 < len(all_lines)
+                        and CertificationParser._is_signer_candidate_position(line_boxes[idx], line_boxes[next_idx + 1])
+                    ):
                         candidates.append(f"{nxt_s} {all_lines[next_idx + 1].strip()}")
                     for candidate in candidates:
                         signer = CertificationParser._normalise_signer_candidate(candidate)

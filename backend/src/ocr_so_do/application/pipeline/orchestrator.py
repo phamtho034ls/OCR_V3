@@ -13,6 +13,7 @@ import numpy as np
 
 from ...domain.models import OCRToken, BoundingBox
 from ...domain.enums import OCREngine
+from ...domain.rules.validation.validators import GCNValidators
 from ...infrastructure.imaging.opencv_cropper import OpenCVCropper
 from ...infrastructure.memory import cleanup_memory
 from ..ports import DetectorPort, RecognizerPort, ArtifactStorePort
@@ -21,6 +22,7 @@ from ..ports import DetectorPort, RecognizerPort, ArtifactStorePort
 from preprocessing.ingestion import Ingestion
 from preprocessing.deskew import Deskew
 from preprocessing.color_profile import ColorProfile
+from preprocessing.signature_preprocessor import SignaturePreprocessor
 from preprocessing.seal_mask import SealMask
 from preprocessing.orientation import OrientationCorrector
 from extraction.template_classifier import TemplateClassifier
@@ -174,6 +176,147 @@ class PipelineOrchestrator:
             None, cls._ocr_comparable_text(p_text), cls._ocr_comparable_text(v_text)
         ).ratio() if v_text else 0.0
         return not v_text or (p_conf >= v_conf + 0.12 and similarity < 0.58)
+
+    def _rerun_signature_region_ocr(
+        self,
+        image: np.ndarray,
+        ocr_results: List[Dict[str, Any]],
+    ) -> None:
+        """Re-read only crops spatially close to the authority/signing block.
+
+        The normal OCR path remains unchanged.  This fallback uses contrast
+        enhancement only around an official-authority or role anchor and
+        accepts a replacement only if it becomes a verified signer or issuing
+        authority.  It prevents image enhancement from introducing free-form
+        OCR noise into unrelated cadastral fields.
+        """
+        anchor_pattern = re.compile(
+            r"(?:ủy\s*ban|uy\s*ban|\bubnd\b|sở\s*tài|so\s*tai|"
+            r"chi\s*nhánh|chi\s*nhanh|văn\s*phòng|van\s*phong|"
+            r"chủ\s*tịch|chu\s*tich|giám\s*đốc|giam\s*doc)",
+            re.IGNORECASE,
+        )
+
+        def center(item: Dict[str, Any]) -> Optional[tuple[float, float]]:
+            bbox = item.get("bbox") or []
+            if len(bbox) != 4:
+                return None
+            try:
+                xs = [float(point[0]) for point in bbox]
+                ys = [float(point[1]) for point in bbox]
+            except (IndexError, TypeError, ValueError):
+                return None
+            return (sum(xs) / len(xs), sum(ys) / len(ys))
+
+        anchors = [
+            center(item)
+            for item in ocr_results
+            if anchor_pattern.search(str(item.get("text") or "")) and center(item)
+        ]
+        if not anchors:
+            return
+
+        height, width = image.shape[:2]
+        nearby: List[tuple[float, int]] = []
+        for idx, item in enumerate(ocr_results):
+            point = center(item)
+            if point is None or len(item.get("bbox") or []) != 4:
+                continue
+            distances = []
+            for anchor_x, anchor_y in anchors:
+                delta_y = point[1] - anchor_y
+                if -80 <= delta_y <= min(900, height * 0.45) and abs(point[0] - anchor_x) <= max(900, width * 0.7):
+                    distances.append(abs(delta_y) + abs(point[0] - anchor_x) * 0.15)
+            if distances:
+                nearby.append((min(distances), idx))
+
+        # Bound work per page: this is a fallback for a small local region.
+        selected_indices = [idx for _, idx in sorted(nearby)[:16]]
+        if not selected_indices:
+            return
+
+        enhanced_crops: List[np.ndarray] = []
+        valid_indices: List[int] = []
+        for idx in selected_indices:
+            crop = OpenCVCropper.crop_polygon(image, ocr_results[idx]["bbox"], pad=None, box_type="default")
+            if crop is None or crop.size == 0:
+                continue
+            try:
+                enhanced_crops.append(SignaturePreprocessor.process(crop))
+                valid_indices.append(idx)
+            except (ValueError, cv2.error):
+                logger.debug("Không thể tiền xử lý crop khối ký idx=%s", idx)
+
+        if not enhanced_crops:
+            return
+        enhanced_predictions = self.recognizer.recognize_batch(enhanced_crops)
+        for idx, prediction in zip(valid_indices, enhanced_predictions):
+            enhanced_text, enhanced_conf = prediction
+            enhanced_text = str(enhanced_text or "").strip()
+            if not enhanced_text:
+                continue
+            current_text = str(ocr_results[idx].get("text") or "")
+            current_verified = bool(
+                GCNValidators.normalize_signer_name(current_text)
+                or GCNValidators.normalize_authority_name(current_text)
+            )
+            enhanced_verified = bool(
+                GCNValidators.normalize_signer_name(enhanced_text)
+                or GCNValidators.normalize_authority_name(enhanced_text)
+            )
+            candidates = dict(ocr_results[idx].get("ocr_candidates") or {})
+            candidates["signature_preprocessed"] = {
+                "text": enhanced_text,
+                "confidence": float(enhanced_conf or 0.0),
+            }
+            ocr_results[idx]["ocr_candidates"] = candidates
+            if enhanced_verified and not current_verified:
+                ocr_results[idx]["text"] = enhanced_text
+                ocr_results[idx]["confidence"] = float(enhanced_conf or 0.0)
+                ocr_results[idx]["selected_engine"] = "signature_preprocessed"
+                ocr_results[idx]["selection_reason"] = "verified_signature_region_candidate"
+
+    @staticmethod
+    def _build_audit_trace(
+        job_id: str,
+        page_index: int,
+        ocr_results: List[Dict[str, Any]],
+        extracted_fields: Dict[str, Any],
+        can_review: List[str],
+    ) -> Dict[str, Any]:
+        """Create a persisted, field-level audit record for one OCR page.
+
+        The trace is intentionally based on stable document/page keys and
+        evidence already returned by the pipeline.  It makes a later gold-set
+        evaluation reproducible without treating Markdown as ground truth.
+        """
+        engine_counts: Dict[str, int] = {}
+        for item in ocr_results:
+            engine = str(item.get("selected_engine") or "unknown")
+            engine_counts[engine] = engine_counts.get(engine, 0) + 1
+
+        field_trace: Dict[str, Dict[str, Any]] = {}
+        for field_name, field_data in extracted_fields.items():
+            if not isinstance(field_data, dict):
+                continue
+            field_trace[str(field_name)] = {
+                "value": field_data.get("value", ""),
+                "raw_text": field_data.get("raw_text", field_data.get("source_line", "")),
+                "confidence": round(float(field_data.get("confidence", 0.0) or 0.0), 3),
+                "bbox": field_data.get("bbox", []),
+                "selection_reason": field_data.get("selection_reason", field_data.get("source_line", "field_extractor")),
+                "needs_review": field_name in can_review,
+            }
+
+        return {
+            "schema_version": "ocr-audit-v1",
+            "document_key": job_id,
+            "page_index": page_index,
+            "ocr_box_count": len(ocr_results),
+            "selected_engine_counts": engine_counts,
+            "review_fields": sorted(set(can_review)),
+            "fields": field_trace,
+        }
 
     def process_page(
         self,
@@ -480,6 +623,10 @@ class PipelineOrchestrator:
 
             del crops_in_memory, crop_indices
 
+        # A second, guarded pass for the difficult stamp/signature region.
+        # It runs after standard OCR so it has reliable spatial anchors.
+        self._rerun_signature_region_ocr(deskewed, ocr_results)
+
         # 7b. Sinh Markdown dữ liệu thô (Raw OCR Data) trước khi bóc tách nghiệp vụ
         from ...domain.rules.raw_markdown import RawMarkdownGenerator
         raw_page_markdown = RawMarkdownGenerator.generate_page_raw_markdown(
@@ -518,6 +665,14 @@ class PipelineOrchestrator:
                 confidence[field_name] = round(float(conf), 3)
                 if conf < REVIEW_THRESHOLD or not field_data.get("value"):
                     can_review.append(field_name)
+
+        audit_trace = self._build_audit_trace(
+            job_id=job_id,
+            page_index=page_index,
+            ocr_results=ocr_results,
+            extracted_fields=extracted_fields,
+            can_review=can_review,
+        )
 
         def get_val(fname: str) -> str:
             return extracted_fields.get(fname, {}).get("value", "") or ""
@@ -589,6 +744,7 @@ class PipelineOrchestrator:
             "raw_fields": extracted_fields,
             "confidence": confidence,
             "can_review": can_review,
+            "audit_trace": audit_trace,
             "quality_check": quality,
             "diagram": diagram_box,
             "so_phat_hanh": so_phat_hanh,
