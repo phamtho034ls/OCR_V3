@@ -84,6 +84,8 @@ services:
       - OCR_KEYCLOAK_ADMIN_CLIENT_ID=${OCR_KEYCLOAK_ADMIN_CLIENT_ID:-ocr-so-do-admin-api}
       - OCR_KEYCLOAK_ADMIN_CLIENT_SECRET=${OCR_KEYCLOAK_ADMIN_CLIENT_SECRET:?Set OCR_KEYCLOAK_ADMIN_CLIENT_SECRET in .env}
       - OCR_ALLOWED_SOURCE_ROOTS=${OCR_ALLOWED_SOURCE_ROOTS:-}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
       - ocr_outputs:/app/output
       - ocr_cache:/app/.cache
@@ -94,6 +96,17 @@ services:
       keycloak:
         condition: service_started
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 12g
+          cpus: "8"
+        reservations:
+          memory: 4g
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   frontend:
     build:

@@ -653,14 +653,12 @@ async def scan_directory(
 
     dir_p = permitted_source_directory(req.directory_path)
 
-    # Kiểm tra user có thuộc dự án không (admin bypass)
+    # Chức năng quét thư mục máy chủ chỉ mở cho Quản trị viên cao nhất để kiểm thử
     if not principal.is_admin():
-        pg_chk = _get_pg_store()
-        if not pg_chk.is_project_member(req.project_id, principal.subject):
-            raise HTTPException(
-                status_code=403,
-                detail=f"Bạn không phải thành viên của dự án '{req.project_id}'.",
-            )
+        raise HTTPException(
+            status_code=403,
+            detail="Chức năng quét thư mục máy chủ chỉ dành cho Quản trị viên cao nhất phục vụ kiểm thử và chạy test.",
+        )
 
     # Thu thập toàn bộ file PDF và ảnh (dùng set để tránh lặp file trên Windows case-insensitive)
     found_files = set()

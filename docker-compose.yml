@@ -114,6 +114,8 @@ services:
       # Bind mount HSQ source read-only; the API only accepts this container path.
       - OCR_ALLOWED_SOURCE_ROOTS=/data/hsq-vilg
       - OCR_SOURCE_PATH_ALIASES=${OCR_SOURCE_PATH_ALIASES:-}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     # CHÚ Ý: Không mount thư mục mã nguồn máy chủ (src) vào container để việc
     # sửa code trên máy không ảnh hưởng đến Docker đang chạy.
     # Chỉ khi nào chạy "docker compose build" thì code mới được cập nhật vào image.
@@ -134,10 +136,14 @@ services:
     deploy:
       resources:
         limits:
-          memory: 10g
+          memory: 12g
           cpus: "8"
         reservations:
           memory: 4g
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # ── 3. FRONTEND REACT + NGINX PROXY ────────────────────────────────────────
   frontend:

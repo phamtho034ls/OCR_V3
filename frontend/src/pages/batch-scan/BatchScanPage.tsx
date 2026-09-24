@@ -49,7 +49,15 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
   isActive,
 }) => {
   const { can } = useAuth();
+  const canServerScan = can('batch.server_scan');
   const [scanMode, setScanMode] = useState<'client_folder' | 'server_path' | 'hsq_vilg' | 'pair_scan'>('client_folder');
+
+  useEffect(() => {
+    if (!canServerScan && scanMode === 'server_path') {
+      setScanMode('client_folder');
+    }
+  }, [canServerScan, scanMode]);
+
   const [projectId, setProjectId] = useState<string>('');
   const [projectName, setProjectName] = useState<string>('');
   const [projectSummary, setProjectSummary] = useState<{ total_records: number; success_records: number; total_folders: number } | null>(null);
@@ -856,18 +864,20 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
               <FolderUp size={15} />
               <span>Từ máy tính</span>
             </button>
-            <button
-              onClick={() => { if (!isRunning && !isPairScanning) setScanMode('server_path'); }}
-              disabled={isRunning || isPairScanning}
-              className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
-                scanMode === 'server_path'
-                  ? 'bg-gov-800 text-white shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-gov-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <Server size={15} />
-              <span>Từ máy chủ</span>
-            </button>
+            {canServerScan && (
+              <button
+                onClick={() => { if (!isRunning && !isPairScanning) setScanMode('server_path'); }}
+                disabled={isRunning || isPairScanning}
+                className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+                  scanMode === 'server_path'
+                    ? 'bg-gov-800 text-white shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-gov-900 hover:bg-slate-200/60'
+                }`}
+              >
+                <Server size={15} />
+                <span>Từ máy chủ (Test)</span>
+              </button>
+            )}
             <button
               onClick={() => { if (!isRunning && !isPairScanning) setScanMode('hsq_vilg'); }}
               disabled={isRunning || isPairScanning}
@@ -1123,7 +1133,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
       )}
 
       {/* ── CHẾ ĐỘ 2: QUÉT THƯ MỤC TRÊN MÁY CHỦ ── */}
-      {scanMode === 'server_path' && (
+      {canServerScan && scanMode === 'server_path' && (
         <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-2">
             <span className="w-5 h-5 rounded-full bg-gov-900 text-amber-400 text-xs font-bold flex items-center justify-center">2</span>

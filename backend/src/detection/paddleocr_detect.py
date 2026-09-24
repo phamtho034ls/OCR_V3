@@ -22,6 +22,11 @@ try:
 except Exception:
     pass
 
+try:
+    import pyclipper  # Nạp pyclipper trước để tránh xung đột shared library zlib trên Linux/Docker
+except Exception:
+    pass
+
 import cv2
 import numpy as np
 

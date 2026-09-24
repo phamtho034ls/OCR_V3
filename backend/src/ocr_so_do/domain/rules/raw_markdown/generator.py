@@ -119,9 +119,57 @@ class RawMarkdownGenerator:
                     lines.append(f"Thửa {stt_p}: Thửa số {s_thua} | Tờ số {t_bando} | Diện tích: {dt_p} m2 | Mục đích: {md_p} | Thời hạn: {th_p} | Nguồn gốc: {ng_p} | Địa chỉ: {dc_p}")
             lines.append("```")
             lines.append("")
+
+            # Section II: Những thay đổi sau khi cấp giấy chứng nhận (Trang 4)
+            mutations = merged_data.get("bien_dong_trang_4", [])
+            if mutations:
+                lines.append("---")
+                lines.append("")
+                lines.append("## II. NHỮNG THAY ĐỔI SAU KHI CẤP GIẤY CHỨNG NHẬN (TRANG 4)")
+                lines.append("| STT | Ngày xác nhận | Số hồ sơ | Nội dung thay đổi & Cơ sở pháp lý | Cơ quan xác nhận & Người ký |")
+                lines.append("|:---:|:---:|:---:|:---|:---|")
+                for m in mutations:
+                    stt_m = m.get("stt", 1)
+                    date_m = m.get("ngay_thang") or "-"
+                    dossier_m = m.get("so_ho_so") or "-"
+                    text_m = (m.get("noi_dung_thay_doi") or m.get("raw_text") or "-").replace("\n", " ")
+                    auth_m = (m.get("co_quan_xac_nhan") or "-").replace("\n", " ")
+                    lines.append(f"| {stt_m} | {date_m} | {dossier_m} | {text_m} | {auth_m} |")
+                lines.append("")
+
+            # Section III: Kết quả suy luận biến động pháp lý (Qwen3-8B)
+            ai_res = merged_data.get("ai_reasoning")
+            if ai_res:
+                lines.append("---")
+                lines.append("")
+                lines.append("## III. KẾT QUẢ SUY LUẬN BIẾN ĐỘNG PHÁP LÝ (MÔ HÌNH QWEN3-8B AI REASONING)")
+                model_name = ai_res.get("model", "qwen3:8b")
+                status = ai_res.get("status", "success")
+                lines.append(f"> **Mô hình AI:** `{model_name}` | **Trạng thái thẩm định:** `{status}`")
+                lines.append("")
+
+                changes = ai_res.get("applied_changes", [])
+                if changes:
+                    lines.append("### 🔄 Các trường dữ liệu đã được cập nhật sau biến động:")
+                    lines.append("| Trường dữ liệu | Giá trị gốc (Trang 1, 2) | Giá trị mới cập nhật | Căn cứ pháp lý |")
+                    lines.append("|:---|:---|:---|:---|")
+                    for ch in changes:
+                        f_name = ch.get("truong", "-")
+                        old_v = ch.get("gia_tri_cu", "-")
+                        new_v = ch.get("gia_tri_moi", "-")
+                        basis = ch.get("can_cu", "-")
+                        lines.append(f"| `{f_name}` | {old_v} | **{new_v}** | {basis} |")
+                    lines.append("")
+
+                rationale = ai_res.get("rationale")
+                if rationale:
+                    lines.append("### 📝 Giải trình căn cứ pháp lý:")
+                    lines.append(f"> {rationale}")
+                    lines.append("")
+
             lines.append("---")
             lines.append("")
-            lines.append("## II. VĂN BẢN OCR THÔ THEO THỨ TỰ LOGIC ĐỌC (RAW OCR TEXT)")
+            lines.append("## IV. VĂN BẢN OCR THÔ THEO THỨ TỰ LOGIC ĐỌC (RAW OCR TEXT)")
         else:
             lines.append("## DANH SÁCH VĂN BẢN THEO THỨ TỰ ĐỌC TỰ NHIÊN (SPATIAL READING ORDER)")
             lines.append("> *Toàn bộ dữ liệu dưới đây là kết quả OCR thô nguyên bản từ mô hình nhận dạng, chưa qua bất kỳ bộ lọc, regex hay quy tắc bóc tách nghiệp vụ nào.*")

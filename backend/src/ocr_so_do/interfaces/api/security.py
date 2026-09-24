@@ -32,6 +32,7 @@ class Permission:
 
     # ── Dữ liệu OCR (kiểm tra thêm project/user context ở tầng data) ───────
     DOCUMENT_CREATE = "document.create"
+    SERVER_SCAN = "batch.server_scan"
     BATCH_CREATE = "batch.create"
     BATCH_READ = "batch.read"
     BATCH_CANCEL = "batch.cancel"
@@ -44,7 +45,7 @@ class Permission:
     ALL = frozenset({
         USER_MANAGE, AUDIT_READ,
         PROJECT_CREATE, PROJECT_MANAGE, PROJECT_READ,
-        DOCUMENT_CREATE, BATCH_CREATE, BATCH_READ, BATCH_CANCEL,
+        DOCUMENT_CREATE, SERVER_SCAN, BATCH_CREATE, BATCH_READ, BATCH_CANCEL,
         RECORD_READ, RECORD_REVIEW, RECORD_DELETE, EXPORT_129, EXPORT_RAW,
     })
 
@@ -55,7 +56,6 @@ ROLE_PERMISSIONS: dict[str, FrozenSet[str]] = {
         Permission.PROJECT_CREATE,
         Permission.PROJECT_MANAGE,
         Permission.PROJECT_READ,
-        Permission.DOCUMENT_CREATE,
         Permission.BATCH_CREATE,
         Permission.BATCH_READ,
         Permission.BATCH_CANCEL,
@@ -68,7 +68,6 @@ ROLE_PERMISSIONS: dict[str, FrozenSet[str]] = {
     }),
     "ocr-member": frozenset({
         Permission.PROJECT_READ,
-        Permission.DOCUMENT_CREATE,
         Permission.BATCH_CREATE,
         Permission.BATCH_READ,
         Permission.BATCH_CANCEL,
@@ -80,7 +79,6 @@ ROLE_PERMISSIONS: dict[str, FrozenSet[str]] = {
     # chúng thì nhân sự đang đăng nhập sẽ thành tài khoản không có quyền.
     "ocr-operator": frozenset({
         Permission.PROJECT_READ,
-        Permission.DOCUMENT_CREATE,
         Permission.BATCH_CREATE,
         Permission.BATCH_READ,
         Permission.BATCH_CANCEL,
@@ -385,9 +383,10 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
         return Permission.BATCH_READ
 
     if path.startswith("/api/v1/batch"):
+        if method == "POST" and path.endswith("/scan-directory"):
+            return Permission.SERVER_SCAN
         if method == "POST" and (
-            path.endswith("/scan-directory")
-            or path.endswith("/scan-hsq-dossiers")
+            path.endswith("/scan-hsq-dossiers")
             or path.endswith("/hsq/preview")
         ):
             return Permission.BATCH_CREATE

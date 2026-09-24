@@ -32,13 +32,19 @@ def test_sensitive_routes_map_to_specific_permissions():
 
 
 def test_operator_permissions_separate_from_exporter():
-    """Phương án 2: Tách bạch rõ rệt giữa ocr-operator (nhập liệu) và ocr-exporter (khai thác)."""
+    """Tách bạch vai trò: ocr-operator chỉ xử lý batch, kiểm thử đơn lẻ và server scan chỉ dành cho ocr-admin."""
     operator_perms = security.permissions_for_roles(["ocr-operator"])
     assert security.Permission.BATCH_CREATE in operator_perms
-    assert security.Permission.DOCUMENT_CREATE in operator_perms
+    assert security.Permission.DOCUMENT_CREATE not in operator_perms  # Chỉ mở cho admin cao nhất
+    assert security.Permission.SERVER_SCAN not in operator_perms      # Chỉ mở cho admin cao nhất
     assert security.Permission.RECORD_READ in operator_perms
     assert security.Permission.EXPORT_129 not in operator_perms
     assert security.Permission.RECORD_REVIEW not in operator_perms
+
+    # Admin cao nhất có toàn quyền kiểm thử
+    admin_perms = security.permissions_for_roles(["ocr-admin"])
+    assert security.Permission.DOCUMENT_CREATE in admin_perms
+    assert security.Permission.SERVER_SCAN in admin_perms
 
     # Nhân viên kiêm nhiệm cả 2 vai trò
     dual_perms = security.permissions_for_roles(["ocr-operator", "ocr-exporter"])

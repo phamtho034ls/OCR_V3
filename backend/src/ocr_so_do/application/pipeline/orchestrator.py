@@ -347,11 +347,11 @@ class PipelineOrchestrator:
             logger.info(f"[{job_id}] Xoay {rot_angle}° trang {page_index + 1} theo Paddle orientation")
             quick_ocr = self.detector.detect(deskewed)
 
-        # Keep the specialised front-cover barcode guard as a second signal.
-        if page_index == 0 and not rot_angle:
-            needs_180, reason = OrientationCorrector.check_trang_1_needs_180(deskewed, quick_ocr)
+        # Kiểm tra chuyên sâu xoay 180° cho tất cả các trang (Trang 1 bìa, Trang 4 biến động, v.v.)
+        if not rot_angle:
+            needs_180, reason = OrientationCorrector.check_page_needs_180(deskewed, quick_ocr, page_index=page_index)
             if needs_180:
-                logger.warning(f"[{job_id}] Xoay 180° trang 1 (lý do: {reason})")
+                logger.warning(f"[{job_id}] Xoay 180° trang {page_index + 1} (lý do: {reason})")
                 deskewed = cv2.rotate(deskewed, cv2.ROTATE_180)
                 rot_angle = 180
                 quick_ocr = self.detector.detect(deskewed)
@@ -726,6 +726,21 @@ class PipelineOrchestrator:
             ocr_boxes=ocr_results
         )
 
+        # 10. Trích xuất biến động Trang 4 nếu có
+        mutations = []
+        try:
+            from extraction.mutation_extractor import MutationExtractor
+            if MutationExtractor.is_mutation_page(ocr_results):
+                mutations = MutationExtractor.extract_mutations(
+                    ocr_results,
+                    page_width=float(deskewed.shape[1]),
+                    page_height=float(deskewed.shape[0]),
+                )
+                if mutations:
+                    logger.info(f"[{job_id}] Đã trích xuất được {len(mutations)} mục biến động tại Trang {page_index + 1}.")
+        except Exception as e_mut:
+            logger.warning(f"[{job_id}] Lỗi khi trích xuất biến động Trang {page_index + 1}: {e_mut}")
+
         res_dict = {
             "job_id": job_id,
             "page_index": page_index,
@@ -742,6 +757,8 @@ class PipelineOrchestrator:
             "crops": crops_meta,
             "extracted_fields": extracted_fields,
             "raw_fields": extracted_fields,
+            "mutations": mutations,
+            "thay_doi_sau_cap_gcn": mutations,
             "confidence": confidence,
             "can_review": can_review,
             "audit_trace": audit_trace,

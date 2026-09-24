@@ -186,6 +186,22 @@ class ProcessDocumentUseCase:
                 merged["attachments"]["so_do_thua_dat"] = diag
                 break
 
+        # Thu thập và suy luận biến động Trang 4 qua mô hình AI (Qwen3-8B / Qwen2.5-7B)
+        all_mutations = []
+        for p in page_results:
+            p_muts = p.get("mutations") or p.get("thay_doi_sau_cap_gcn") or []
+            if p_muts:
+                all_mutations.extend(p_muts)
+
+        if all_mutations:
+            try:
+                from ..services.cadastral_reasoning import CadastralReasoningService
+                reasoning_service = CadastralReasoningService()
+                merged = reasoning_service.apply_mutations(merged, all_mutations)
+            except Exception as e_reason:
+                logger.warning(f"[{document_id}] Lỗi khi suy luận biến động Trang 4: {e_reason}")
+                merged["bien_dong_trang_4"] = all_mutations
+
         # Projection 129 cột
         chuyen_doi_rows = ExcelChuyenDoiMapper.map_merged_to_rows(
             merged, start_stt=stt, file_name=display_name

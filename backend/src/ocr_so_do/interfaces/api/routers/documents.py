@@ -79,12 +79,11 @@ async def upload_document(
             detail="Vui lòng chọn dự án hợp lệ trước khi xử lý hồ sơ.",
         )
 
-    # Kiểm tra user có thuộc dự án không
-    pg_store = get_postgres_store()
-    if not principal.is_admin() and not pg_store.is_project_member(project_id, principal.subject):
+    # Luồng kiểm tra hồ sơ đơn lẻ chỉ mở cho Quản trị viên cao nhất để kiểm thử
+    if not principal.is_admin():
         raise HTTPException(
             status_code=403,
-            detail="Bạn không phải thành viên của dự án này hoặc dự án không tồn tại.",
+            detail="Luồng kiểm tra hồ sơ đơn lẻ chỉ mở cho Quản trị viên cao nhất phục vụ kiểm thử và chạy test.",
         )
 
     doc_id = f"doc_{uuid.uuid4().hex[:8]}"
