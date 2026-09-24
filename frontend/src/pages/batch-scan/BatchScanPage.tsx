@@ -372,9 +372,12 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
     setBatchStatus('paused');
   };
 
+  const cleanDirPath = (p: string) => (p || '').trim().replace(/^["']+|["']+$/g, '');
+
   // Run Server Path Batch Scanning (hỗ trợ tiếp tục quét dở dang)
   const startServerScan = async (resume: boolean = false) => {
-    if (!serverPath.trim()) {
+    const targetDir = cleanDirPath(serverPath);
+    if (!targetDir) {
       alert('Vui lòng nhập đường dẫn thư mục máy chủ!');
       return;
     }
@@ -400,7 +403,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
 
     try {
       const res = await axios.post('/api/v1/batch/scan-directory', {
-        directory_path: serverPath.trim(),
+        directory_path: targetDir,
         project_id: projectId,
         sample_count: sampleCount,
         split_a3: true,
@@ -421,7 +424,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
   };
 
   const previewHSQDossiers = async () => {
-    if (!hsqServerPath.trim()) {
+    const targetDir = cleanDirPath(hsqServerPath);
+    if (!targetDir) {
       alert('Vui lòng nhập đường dẫn thư mục HSQ VILG.');
       return;
     }
@@ -433,7 +437,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
     setErrorMessage(null);
     try {
       const res = await axios.post('/api/v1/batch/hsq/preview', {
-        directory_path: hsqServerPath.trim(),
+        directory_path: targetDir,
         project_id: projectId,
       });
       setHsqPreviewData(res.data);
@@ -446,7 +450,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
   };
 
   const startHSQScan = async (resume: boolean = false) => {
-    if (!hsqServerPath.trim()) {
+    const targetDir = cleanDirPath(hsqServerPath);
+    if (!targetDir) {
       alert('Vui lòng nhập đường dẫn thư mục HSQ VILG.');
       return;
     }
@@ -469,7 +474,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
     }
     try {
       const res = await axios.post('/api/v1/batch/scan-hsq-dossiers', {
-        directory_path: hsqServerPath.trim(),
+        directory_path: targetDir,
         project_id: projectId,
         sample_count: hsqSampleCount,
         split_a3: true,
@@ -547,7 +552,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
 
   // ── XỬ LÝ QUÉT GHÉP CẶP GCN & GT (CCCD) ──────────────────────────
   const handlePreviewPairs = async () => {
-    if (!pairServerPath.trim()) {
+    const targetDir = cleanDirPath(pairServerPath);
+    if (!targetDir) {
       alert('Vui lòng nhập đường dẫn thư mục chứa hồ sơ!');
       return;
     }
@@ -559,7 +565,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
     setErrorMessage(null);
     try {
       const res = await axios.post('/api/v1/batch-pairs/preview', {
-        directory_path: pairServerPath.trim(),
+        directory_path: targetDir,
         project_id: projectId,
       });
       setPairPreviewData(res.data);
@@ -571,7 +577,8 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
   };
 
   const handleStartPairScan = async () => {
-    if (!pairServerPath.trim()) {
+    const targetDir = cleanDirPath(pairServerPath);
+    if (!targetDir) {
       alert('Vui lòng nhập đường dẫn thư mục!');
       return;
     }
@@ -588,7 +595,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
     setPairCccdAuditSummary({});
     try {
       const res = await axios.post('/api/v1/batch-pairs/start', {
-        directory_path: pairServerPath.trim(),
+        directory_path: targetDir,
         project_id: projectId,
         sample_limit: pairSampleLimit,
         use_gpu: true,
@@ -1227,7 +1234,7 @@ export const BatchScanPage: React.FC<BatchScanPageProps> = ({
                   value={hsqServerPath}
                   onChange={e => setHsqServerPath(e.target.value)}
                   disabled={isRunning}
-                  placeholder="D:\\HSQ ...\\HoNam sau VILG hoặc ...\\Tờ 01\\thửa 9\\Bùi Thị Du"
+                  placeholder="D:\\HSQ TRAN NGUYEN HAN\\Tran Nguyen Han\\HSQ sau VILG\\Du Hang sau VILG hoặc ...\\Tờ 1\\Thửa 14"
                   className="w-full text-sm font-mono bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-emerald-500"
                 />
               </div>

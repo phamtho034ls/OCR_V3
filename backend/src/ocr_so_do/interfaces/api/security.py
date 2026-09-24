@@ -424,16 +424,34 @@ def permitted_source_directory(raw_path: str) -> Path:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Chưa cấu hình OCR_ALLOWED_SOURCE_ROOTS cho chức năng quét thư mục máy chủ.",
         )
-    translated_path = _translate_source_path_alias(raw_path)
+    cleaned_raw_path = (raw_path or "").strip().strip("\"'")
+    translated_path = _translate_source_path_alias(cleaned_raw_path)
+
+    directory: Optional[Path] = None
+    # 1. Try translated path first (standard path inside Docker container)
     try:
-        directory = Path(translated_path).expanduser().resolve(strict=True)
+        candidate = Path(translated_path).expanduser().resolve(strict=True)
+        if candidate.is_dir():
+            directory = candidate
     except (OSError, RuntimeError):
+        pass
+
+    # 2. If translated path was not found, fallback to raw path (supports local development on host)
+    if directory is None and cleaned_raw_path != translated_path:
+        try:
+            candidate = Path(cleaned_raw_path).expanduser().resolve(strict=True)
+            if candidate.is_dir():
+                directory = candidate
+        except (OSError, RuntimeError):
+            pass
+
+    if directory is None:
         raise HTTPException(status_code=400, detail="Thư mục nguồn không tồn tại hoặc không thể truy cập.")
     if not directory.is_dir():
         raise HTTPException(status_code=400, detail="Đường dọn nguồn phải là một thư mục.")
 
     for root_value in raw_roots.split(","):
-        root_value = root_value.strip()
+        root_value = root_value.strip().strip("\"'")
         if not root_value:
             continue
         try:
@@ -453,19 +471,25 @@ def _translate_source_path_alias(raw_path: str) -> str:
     ``host_path=>container_path`` entries and is applied before the strict
     allowlist check.  No alias means the original local path is used.
     """
-    supplied = (raw_path or "").strip()
+    supplied = (raw_path or "").strip().strip("\"'")
     aliases = os.getenv("OCR_SOURCE_PATH_ALIASES", "").strip()
     if not supplied or not aliases:
         return supplied
 
     supplied_normalized = supplied.replace("\\", "/").rstrip("/")
+    parsed_aliases = []
     for item in aliases.split(","):
         if "=>" not in item:
             continue
-        host_root, container_root = (part.strip() for part in item.split("=>", 1))
+        host_root, container_root = (part.strip().strip("\"'") for part in item.split("=>", 1))
         host_normalized = host_root.replace("\\", "/").rstrip("/")
-        if not host_normalized:
-            continue
+        if host_normalized:
+            parsed_aliases.append((host_normalized, container_root))
+
+    # Match more specific (longer) prefixes first
+    parsed_aliases.sort(key=lambda x: len(x[0]), reverse=True)
+
+    for host_normalized, container_root in parsed_aliases:
         if supplied_normalized.casefold() == host_normalized.casefold():
             return container_root
         prefix = f"{host_normalized}/"

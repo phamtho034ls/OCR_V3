@@ -55,6 +55,31 @@ def test_uses_bounded_table_geometry_when_column_accents_are_lost():
     assert (result.map_sheet, result.parcel_number) == ("38", "109")
 
 
+def test_extracts_values_when_ocr_boxes_touch_malformed_headers():
+    """A scanner OCR result from the rename workflow must not be discarded.
+
+    The value boxes begin just 2-3 pixels below the headers and ``thửa`` is
+    recognized as ``thira``.  The adjacent 299-table numbers remain excluded.
+    """
+    tokens = [
+        _token("Thong tin theo ho so dang ky dat dai", 211, 747, 588, 772),
+        _token("Thong tin thua dat theo ban do 299", 665, 744, 1026, 772),
+        _token("Số tờ bản đồ", 222, 798, 349, 828),
+        _token("S thira dat", 450, 798, 569, 828),
+        _token("Số tờ bản đồ", 670, 798, 798, 828),
+        _token("Số thửa đất", 904, 800, 1016, 824),
+        _token("38", 266, 830, 305, 860),
+        _token("281", 486, 831, 533, 860),
+        _token("05", 714, 830, 753, 860),
+        _token("274", 934, 830, 984, 858),
+    ]
+
+    result = extract_registration_parcel(tokens, page_number=1, page_width=1191)
+
+    assert result is not None
+    assert (result.map_sheet, result.parcel_number) == ("38", "281")
+
+
 def test_write_zip_handles_all_row_fields(tmp_path):
     from ocr_so_do.interfaces.api.routers.parcel_renaming import _write_zip
 

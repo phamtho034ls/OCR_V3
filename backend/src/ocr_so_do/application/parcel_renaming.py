@@ -117,6 +117,28 @@ def _is_registration_anchor(line: _Line) -> bool:
     return "299" not in words and len(words & expected) >= 7
 
 
+def _is_map_sheet_label(line: _Line) -> bool:
+    """Recognize ``Số tờ bản đồ`` despite minor OCR character errors."""
+    return "so to ban do" in line.normalized
+
+
+def _is_parcel_label(line: _Line) -> bool:
+    """Recognize ``Số thửa đất`` despite a single corrupted character.
+
+    Scanned PDFs frequently yield ``thira`` for ``thửa``.  The caller still
+    constrains this label to the left-hand registration table, so accepting
+    this narrow variation cannot select the adjacent 299-map table.
+    """
+    if "so thua dat" in line.normalized:
+        return True
+    words = line.normalized.split()
+    return (
+        "dat" in words
+        and any(word in {"so", "s"} for word in words)
+        and any(re.fullmatch(r"th[ui]ra", word) for word in words)
+    )
+
+
 def _nearest_value_below(
     lines: Iterable[_Line],
     label: _Line,
@@ -126,7 +148,10 @@ def _nearest_value_below(
     candidates: list[tuple[float, str, _Line]] = []
     for line in lines:
         vertical_distance = line.y1 - label.y2
-        if not 4 <= vertical_distance <= 240:
+        # OCR boxes for a table header and its value can touch or overlap by a
+        # few pixels after rasterization.  Zero is valid; a negative distance
+        # means the candidate belongs above the label and must be ignored.
+        if not 0 <= vertical_distance <= 240:
             continue
         if not x_min <= line.center_x <= x_max:
             continue
@@ -163,11 +188,11 @@ def extract_registration_parcel(
     label_window = [line for line in lines if anchor.y1 < line.y1 < anchor.y1 + 420]
     sheet_labels = [
         line for line in label_window
-        if "so to ban do" in line.normalized and line.center_x < page_width * 0.48
+        if _is_map_sheet_label(line) and line.center_x < page_width * 0.48
     ]
     parcel_labels = [
         line for line in label_window
-        if "so thua dat" in line.normalized and page_width * 0.20 < line.center_x < page_width * 0.64
+        if _is_parcel_label(line) and page_width * 0.20 < line.center_x < page_width * 0.64
     ]
     if sheet_labels and parcel_labels:
         sheet_label = min(sheet_labels, key=lambda line: abs(line.y1 - anchor.y1))
@@ -178,8 +203,15 @@ def extract_registration_parcel(
         if parcel_label.center_x <= sheet_label.center_x:
             return None
         boundary = (sheet_label.center_x + parcel_label.center_x) / 2
+        # The registration-table heading defines a more reliable right edge
+        # than a fixed percentage of the page.  This keeps the neighboring
+        # 299-table values outside the search window on narrow scans.
+        registration_right_edge = min(
+            page_width * 0.64,
+            anchor.x2 + max(80, (anchor.x2 - anchor.x1) * 0.12),
+        )
         sheet = _nearest_value_below(lines, sheet_label, max(0, sheet_label.x1 - 100), boundary)
-        parcel = _nearest_value_below(lines, parcel_label, boundary, page_width * 0.64)
+        parcel = _nearest_value_below(lines, parcel_label, boundary, registration_right_edge)
         if not sheet or not parcel:
             return None
         map_sheet, sheet_value_line = sheet

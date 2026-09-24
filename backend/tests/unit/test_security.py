@@ -56,8 +56,23 @@ def test_auth_disabled_is_explicit_local_admin(monkeypatch):
 def test_windows_hsq_path_alias_is_translated_for_docker(monkeypatch):
     monkeypatch.setenv(
         "OCR_SOURCE_PATH_ALIASES",
-        r"D:\HSQ TRAN NGUYEN HAN\HoNam sau VILG=>/data/hsq-vilg",
+        r"D:\HSQ TRAN NGUYEN HAN=>/data/hsq-vilg",
     )
     assert security._translate_source_path_alias(
-        r"D:\HSQ TRAN NGUYEN HAN\HoNam sau VILG\Tờ 01\thửa 9"
-    ) == "/data/hsq-vilg/Tờ 01/thửa 9"
+        r"D:\HSQ TRAN NGUYEN HAN\Tran Nguyen Han\HSQ sau VILG\Du Hang sau VILG"
+    ) == "/data/hsq-vilg/Tran Nguyen Han/HSQ sau VILG/Du Hang sau VILG"
+
+    assert security._translate_source_path_alias(
+        r"D:\HSQ TRAN NGUYEN HAN\Tran Nguyen Han\HSQ sau VILG\Tran Nguyen Han sau VILG"
+    ) == "/data/hsq-vilg/Tran Nguyen Han/HSQ sau VILG/Tran Nguyen Han sau VILG"
+
+
+def test_windows_path_with_quotes_is_cleaned_and_translated(monkeypatch):
+    monkeypatch.setenv(
+        "OCR_SOURCE_PATH_ALIASES",
+        r"D:\HSQ TRAN NGUYEN HAN=>/data/hsq-vilg",
+    )
+    # Quotes from Windows Explorer "Copy as path"
+    quoted = '"D:\\HSQ TRAN NGUYEN HAN\\Tran Nguyen Han\\HSQ sau VILG\\Du Hang sau VILG"'
+    assert security._translate_source_path_alias(quoted) == "/data/hsq-vilg/Tran Nguyen Han/HSQ sau VILG/Du Hang sau VILG"
+
