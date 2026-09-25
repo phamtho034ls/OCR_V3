@@ -72,6 +72,7 @@ ROLE_PERMISSIONS: dict[str, FrozenSet[str]] = {
         Permission.BATCH_READ,
         Permission.BATCH_CANCEL,
         Permission.RECORD_READ,
+        Permission.RECORD_DELETE,
         Permission.EXPORT_129,
     }),
     # Giữ khả năng đọc token của đợt RBAC cũ trong thời gian chuyển đổi. Các
@@ -189,6 +190,19 @@ def can_access_project_data(
     if not project_id or not store.is_project_member(project_id, principal.subject):
         return False
     return is_project_manager(store, principal, project_id) or created_by == principal.subject
+
+
+def can_delete_project_record(
+    store: Any,
+    principal: Principal,
+    project_id: Optional[str],
+) -> bool:
+    """Kiểm tra quyền xóa hồ sơ: Admin hoặc thành viên/quản lý của dự án."""
+    if principal.is_admin():
+        return True
+    if not project_id:
+        return False
+    return store.is_project_member(project_id, principal.subject) or is_project_manager(store, principal, project_id)
 
 
 def require_project_data_access(

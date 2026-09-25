@@ -95,9 +95,11 @@ export const formatVietnamDateTime = (dateStr?: string | null): string => {
 };
 
 export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table, isActive }) => {
-  const { can, isRootAdmin } = useAuth();
+  const { user, can, isRootAdmin } = useAuth();
+  const isAdmin = Boolean(user?.roles?.includes('ocr-admin') || isRootAdmin);
   // Dữ liệu hồ sơ
   const [records, setRecords] = useState<PgRecordSummary[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [stats, setStats] = useState<PgStats | null>(null);
@@ -119,7 +121,7 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   // Modal xác nhận xóa
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean;
-    type: 'single' | 'folder' | 'source' | 'project' | 'wipe_all';
+    type: 'single' | 'folder' | 'source' | 'project' | 'wipe_all' | 'bulk';
     targetName: string;
     targetTitle?: string;
     targetIds?: string[];
@@ -458,10 +460,14 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
         });
         alert(res.data?.message || 'Đã xóa toàn bộ dữ liệu dự án và thu hồi đĩa.');
         setSelectedProject('all');
-      } else if (deleteConfirm.type === 'single' && deleteConfirm.targetIds?.[0]) {
-        await axios.delete('/api/v1/pg/records', {
+      } else if ((deleteConfirm.type === 'single' || deleteConfirm.type === 'bulk') && deleteConfirm.targetIds?.length) {
+        const res = await axios.delete('/api/v1/pg/records', {
           data: { ids: deleteConfirm.targetIds }
         });
+        setSelectedIds(new Set());
+        if (deleteConfirm.type === 'bulk') {
+          alert(res.data?.message || `Đã xóa thành công ${deleteConfirm.targetIds.length} hồ sơ và dọn sạch các tệp ảnh đĩa.`);
+        }
       }
       // Nạp lại dữ liệu
       await Promise.all([fetchRecords(), fetchStats()]);
@@ -763,13 +769,33 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
             </button>
           )}
 
-          {/* Nút Thu Hồi Dung Lượng Đĩa (Chạy VACUUM FULL & Dọn file mồ côi) */}
-          {can('record.delete') && (
+          {/* Nút Xóa Các Hồ Sơ Đã Chọn (Bulk Delete) */}
+          {can('record.delete') && selectedIds.size > 0 && (
+            <button
+              onClick={() => {
+                setDeleteConfirm({
+                  open: true,
+                  type: 'bulk',
+                  targetName: `${selectedIds.size}_ho_so`,
+                  targetTitle: `${selectedIds.size} hồ sơ đã chọn`,
+                  targetIds: Array.from(selectedIds),
+                });
+              }}
+              className="px-3 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer animate-in fade-in"
+              title={`Xóa vĩnh viễn ${selectedIds.size} hồ sơ đã chọn khỏi CSDL và xóa sạch ảnh crop trên ổ đĩa`}
+            >
+              <Trash2 size={14} />
+              <span>Xóa ({selectedIds.size}) hồ sơ đã chọn</span>
+            </button>
+          )}
+
+          {/* Nút Thu Hồi Dung Lượng Đĩa (Chạy VACUUM FULL & Dọn file mồ côi - Chỉ dành riêng cho Admin) */}
+          {isAdmin && (
             <button
               onClick={handleVacuumDatabase}
               disabled={vacuuming}
               className="px-3 py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 border border-slate-300 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
-              title="Chạy VACUUM FULL trong PostgreSQL và dọn sạch các tệp ảnh mồ côi trên ổ cứng"
+              title="Chạy VACUUM FULL trong PostgreSQL và dọn sạch các tệp ảnh mồ côi trên ổ cứng (Chỉ Quản trị viên)"
             >
               <Sparkles size={14} className={vacuuming ? "animate-spin text-amber-500" : "text-amber-600"} />
               <span>{vacuuming ? 'Đang thu hồi đĩa...' : 'Thu hồi dung lượng đĩa'}</span>
@@ -875,6 +901,23 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
           <table className="w-full text-left text-xs text-slate-700 border-collapse">
             <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
               <tr>
+                {can('record.delete') && (
+                  <th className="py-3 px-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={records.length > 0 && records.every(r => selectedIds.has(r.id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedIds(new Set(records.map(r => r.id)));
+                        } else {
+                          setSelectedIds(new Set());
+                        }
+                      }}
+                      className="rounded border-slate-300 text-gov-800 focus:ring-gov-800 h-3.5 w-3.5 cursor-pointer"
+                      title="Chọn tất cả hồ sơ trên trang này"
+                    />
+                  </th>
+                )}
                 <th className="py-3 px-3 w-12 text-center">STT</th>
                 <th className="py-3 px-3 min-w-[200px]">Tên tệp hồ sơ</th>
                 <th className="py-3 px-3 min-w-[140px]">Dự án / Đợt quét</th>
@@ -890,14 +933,14 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
             <tbody className="divide-y divide-slate-100 font-medium">
               {loading && records.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-400">
+                  <td colSpan={can('record.delete') ? 11 : 10} className="py-16 text-center text-slate-400">
                     <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-gov-800" />
                     <span>Đang tải dữ liệu từ PostgreSQL...</span>
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-400">
+                  <td colSpan={can('record.delete') ? 11 : 10} className="py-16 text-center text-slate-400">
                     <FileText size={36} className="mx-auto mb-2 text-slate-300" />
                     <p className="text-sm font-semibold text-slate-600">Không tìm thấy hồ sơ nào trong PostgreSQL</p>
                     <p className="text-xs text-slate-400 mt-1">Hãy quét thư mục hoặc nhận dạng file để lưu dữ liệu vào đây.</p>
@@ -907,7 +950,25 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
                 records.map((r, idx) => {
                   const sttNumber = (page - 1) * limit + idx + 1;
                   return (
-                    <tr key={r.id} className="hover:bg-gov-50/40 transition">
+                    <tr key={r.id} className={`hover:bg-gov-50/40 transition ${selectedIds.has(r.id) ? 'bg-amber-50/40' : ''}`}>
+                      {can('record.delete') && (
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(r.id)}
+                            onChange={(e) => {
+                              const next = new Set(selectedIds);
+                              if (e.target.checked) {
+                                next.add(r.id);
+                              } else {
+                                next.delete(r.id);
+                              }
+                              setSelectedIds(next);
+                            }}
+                            className="rounded border-slate-300 text-gov-800 focus:ring-gov-800 h-3.5 w-3.5 cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
                         {sttNumber}
                       </td>
@@ -1062,6 +1123,9 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
               <div className="text-xs text-slate-600 mt-2 leading-relaxed space-y-1.5">
                 {deleteConfirm.type === 'single' && (
                   <p>Bạn có chắc chắn muốn xóa hồ sơ <b>"{deleteConfirm.targetName}"</b> khỏi CSDL và xóa toàn bộ ảnh crop, preview liên quan trên ổ đĩa?</p>
+                )}
+                {deleteConfirm.type === 'bulk' && (
+                  <p>Bạn có chắc chắn muốn xóa vĩnh viễn <b>{deleteConfirm.targetIds?.length || 0} hồ sơ đã chọn</b> khỏi CSDL và xóa toàn bộ các tệp ảnh crop, preview tương ứng trên ổ đĩa?</p>
                 )}
                 {deleteConfirm.type === 'project' && (
                   <p>Bạn có chắc chắn muốn xóa toàn bộ hồ sơ, dữ liệu bóc tách và tất cả ảnh crop/preview thuộc dự án <b>"{deleteConfirm.targetTitle || deleteConfirm.targetName}"</b> khỏi CSDL và ổ đĩa?</p>

@@ -15,6 +15,14 @@ def test_exporter_cannot_review_or_delete():
     assert security.Permission.RECORD_DELETE not in permissions
 
 
+def test_member_has_record_delete_permission():
+    permissions = security.permissions_for_roles(["ocr-member"])
+    assert security.Permission.RECORD_DELETE in permissions
+    assert security.Permission.RECORD_READ in permissions
+    assert security.Permission.PROJECT_READ in permissions
+
+
+
 def test_sensitive_routes_map_to_specific_permissions():
     assert security.required_permission_for_request("POST", "/api/v1/documents") == security.Permission.DOCUMENT_CREATE
     assert security.required_permission_for_request("POST", "/api/v1/pg/records/doc_01/review") == security.Permission.RECORD_REVIEW

@@ -480,5 +480,27 @@ async def test_empty_project_id_rejected_in_batch_scan(tmp_path):
     assert "Vui lòng chọn dự án hợp lệ" in err.value.detail
 
 
+def test_can_delete_project_record_permissions():
+    store = FakeProjectStore()
+    member = _principal("member", {"ocr-member"})
+    non_member = _principal("stranger", {"ocr-member"})
+    manager = _principal("manager", {"ocr-truongphong"})
+    admin = _principal("super-admin", {"ocr-admin"})
+
+    # Thành viên dự án: Được phép xóa hồ sơ trong dự án của mình
+    assert security.can_delete_project_record(store, member, "project-a") is True
+
+    # Người ngoài dự án: Không được phép
+    assert security.can_delete_project_record(store, non_member, "project-a") is False
+
+    # Trưởng phòng dự án: Được phép
+    assert security.can_delete_project_record(store, manager, "project-a") is True
+
+    # Admin: Toàn quyền
+    assert security.can_delete_project_record(store, admin, "project-a") is True
+    assert security.can_delete_project_record(store, admin, "other-project") is True
+
+
+
 
 

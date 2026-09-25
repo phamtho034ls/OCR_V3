@@ -23,6 +23,7 @@ from ..security import (
     Principal,
     get_current_principal,
     is_project_manager,
+    can_delete_project_record,
     require_project_data_access,
     require_root_admin,
 )
@@ -620,13 +621,13 @@ async def delete_pg_records_by_ids(
         record = store.get_record(doc_id)
         if not record:
             continue
-        if not is_project_manager(store, principal, record.get("project_id")):
+        if not can_delete_project_record(store, principal, record.get("project_id")):
             raise HTTPException(status_code=403, detail="Bạn không có quyền xóa hồ sơ của dự án này.")
     count = store.delete_records_by_ids(payload.ids)
     return JSONResponse(content={
         "status": "success",
         "deleted_count": count,
-        "message": f"Đã xóa thành công {count} hồ sơ khỏi PostgreSQL"
+        "message": f"Đã xóa thành công {count} hồ sơ khỏi PostgreSQL và dọn sạch ổ đĩa"
     })
 
 
@@ -641,14 +642,14 @@ async def delete_pg_records_by_folder(
         limit=10000,
         access_scope=_access_scope(store, principal),
     )
-    if any(not is_project_manager(store, principal, record.get("project_id")) for record in records):
+    if any(not can_delete_project_record(store, principal, record.get("project_id")) for record in records):
         raise HTTPException(status_code=403, detail="Bạn không có quyền xóa toàn bộ thư mục này.")
     count = store.delete_records_by_ids([str(record["id"]) for record in records])
     return JSONResponse(content={
         "status": "success",
         "deleted_count": count,
         "folder_result": folder_result,
-        "message": f"Đã xóa thành công {count} hồ sơ thuộc thư mục kết quả '{folder_result}'"
+        "message": f"Đã xóa thành công {count} hồ sơ thuộc thư mục kết quả '{folder_result}' và dọn sạch ổ đĩa"
     })
 
 
@@ -663,14 +664,14 @@ async def delete_pg_records_by_source(
         limit=10000,
         access_scope=_access_scope(store, principal),
     )
-    if any(not is_project_manager(store, principal, record.get("project_id")) for record in records):
+    if any(not can_delete_project_record(store, principal, record.get("project_id")) for record in records):
         raise HTTPException(status_code=403, detail="Bạn không có quyền xóa dữ liệu từ nguồn này.")
     count = store.delete_records_by_ids([str(record["id"]) for record in records])
     return JSONResponse(content={
         "status": "success",
         "deleted_count": count,
         "source_path": source_path,
-        "message": f"Đã xóa thành công {count} hồ sơ thuộc đường dẫn máy '{source_path}'"
+        "message": f"Đã xóa thành công {count} hồ sơ thuộc đường dẫn máy '{source_path}' và dọn sạch ổ đĩa"
     })
 
 
