@@ -221,15 +221,23 @@ cd frontend
 npm install
 ```
 
-### Chạy bằng Docker (cục bộ)
+### 3. Tải và Cấu Hình Các Mô Hình AI (Weights)
 
-Sau khi đặt `PG_PASSWORD` trong `.env`:
+Hệ thống sử dụng các mô hình VietOCR, PaddleOCR và LLM Qwen3-8B (Ollama). Vui lòng xem hướng dẫn chi tiết về cách tải weights, cấu hình offline tại:
+👉 **[Tài liệu Hướng dẫn tải và cấu hình Model AI](docs/HUONG_DAN_TAI_VA_CAU_HINH_MODEL.md)**
+
+---
+
+### 4. Triển Khai và Chạy Toàn Bộ Hệ Thống Bằng Docker (Khuyến Nghị)
+
+Hệ thống hỗ trợ chạy trọn gói gồm: PostgreSQL, Keycloak SSO, Backend OCR (GPU/CPU) và Frontend Nginx qua Docker Compose:
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
-Các cổng Docker mặc định chỉ bind vào `127.0.0.1`; dùng reverse proxy có TLS và xác thực khi triển khai cho nhiều người dùng.
+👉 **Xem cẩm nang hướng dẫn đầy đủ từ A-Z về Docker, biến môi trường `.env`, backup CSDL và khắc phục sự cố tại:**
+👉 **[Tài liệu Hướng dẫn triển khai và vận hành Docker](docs/HUONG_DAN_CHAY_DOCKER.md)**
 
 ---
 
