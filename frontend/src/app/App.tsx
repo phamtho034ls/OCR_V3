@@ -20,9 +20,10 @@ const navigation: Array<{
   shortLabel: string;
   Icon: typeof FolderUp;
   permission?: string;
+  rootAdminOnly?: boolean;
 }> = [
   { id: 'batch', label: 'Xử lý hàng loạt', shortLabel: 'Hàng loạt', Icon: FolderUp, permission: 'batch.create' },
-  { id: 'upload', label: 'Kiểm tra hồ sơ', shortLabel: 'Hồ sơ', Icon: Upload, permission: 'document.create' },
+  { id: 'upload', label: 'Kiểm tra hồ sơ', shortLabel: 'Hồ sơ', Icon: Upload, permission: 'document.create', rootAdminOnly: true },
   { id: 'rename', label: 'Đổi tên PDF', shortLabel: 'Đổi tên', Icon: Tags, permission: 'batch.create' },
   { id: 'conversion', label: 'Bảng dữ liệu 129 cột', shortLabel: 'Bảng dữ liệu', Icon: FileSpreadsheet, permission: 'record.read' },
   { id: 'records', label: 'Kho hồ sơ', shortLabel: 'Kho hồ sơ', Icon: Database, permission: 'record.read' },
@@ -31,14 +32,17 @@ const navigation: Array<{
 ];
 
 export const App: React.FC = () => {
-  const { user, loading: authLoading, error: authError, can, logout, retry } = useAuth();
+  const { user, isRootAdmin, loading: authLoading, error: authError, can, logout, retry } = useAuth();
   const [currentTab, setCurrentTab] = useState<AppTab>('batch');
   const [scannedRows, setScannedRows] = useState<Record<string, any>[]>([]);
   const [storageAvailable, setStorageAvailable] = useState<boolean | null>(null);
   const [isBatchRunning, setIsBatchRunning] = useState<boolean>(false);
   const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
 
-  const visibleNavigation = navigation.filter((item) => !item.permission || can(item.permission));
+  const visibleNavigation = navigation.filter((item) => {
+    if (item.rootAdminOnly && !isRootAdmin) return false;
+    return !item.permission || can(item.permission);
+  });
 
   useEffect(() => {
     if (!visibleNavigation.some((item) => item.id === currentTab)) {
@@ -49,7 +53,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     const handleNav = (e: Event) => {
       const customEvent = e as CustomEvent<AppTab>;
-      if (customEvent.detail && navigation.some((n) => n.id === customEvent.detail)) {
+      if (customEvent.detail && visibleNavigation.some((n) => n.id === customEvent.detail)) {
         setCurrentTab(customEvent.detail);
       }
     };
@@ -243,9 +247,11 @@ export const App: React.FC = () => {
             isActive={currentTab === 'records'}
           />
         </div>
-        <div className={currentTab === 'upload' ? 'block' : 'hidden'}>
-          <DocumentUploadPage onNavigateToProjects={() => setCurrentTab('projects')} />
-        </div>
+        {isRootAdmin && (
+          <div className={currentTab === 'upload' ? 'block' : 'hidden'}>
+            <DocumentUploadPage onNavigateToProjects={() => setCurrentTab('projects')} />
+          </div>
+        )}
         <div className={currentTab === 'rename' ? 'block' : 'hidden'}>
           <ParcelRenamingPage onNavigateToProjects={() => setCurrentTab('projects')} />
         </div>

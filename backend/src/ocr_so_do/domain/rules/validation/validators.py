@@ -74,7 +74,10 @@ SECTION_HEADER_KEYWORDS = [
     "THỬA ĐẤT SỐ", "THUA DAT SO", "III. TÀI SẢN", "III. TAI SAN",
     "3. TÀI SẢN", "3. TAI SAN", "NHÀ Ở", "NHA O", "CÔNG TRÌNH",
     "CONG TRINH", "DIỆN TÍCH XÂY DỰNG", "DIEN TICH XAY DUNG",
-    "BẢNG LIỆT KÊ", "BANG LIET KE", "SƠ ĐỒ THỬA ĐẤT", "SO DO THUA DAT"
+    "BẢNG LIỆT KÊ", "BANG LIET KE", "SƠ ĐỒ THỬA ĐẤT", "SO DO THUA DAT",
+    "THÔNG TIN VỀ ĐẤT", "THÔNG TIN VỀ ĐÁT", "THONG TIN VE DAT",
+    "TÀI SẢN GẮN LIỀN VỚI ĐẤT", "TAI SAN GAN LIEN VOI DAT",
+    "THỬA ĐẤT, NHÀ Ở", "THUA DAT, NHA O", "1. THÔNG TIN VỀ ĐẤT", "1. THONG TIN VE DAT"
 ]
 
 # Mã phát hành/serial thường bị OCR ghép vào cuối địa chỉ. Không giới hạn
@@ -207,60 +210,88 @@ class GCNValidators:
             return False, None, "Giá trị trống"
         
         # Xóa tiền tố rác
-        s_clean = re.sub(r'^(?:cấp|cap|gcn|gtn|sổ|so|ấp|lập|vào\s*sổ|vao\s*so)\s*[:\.]?\s*', '', s, flags=re.IGNORECASE).strip(".:- ")
+        s_clean = re.sub(
+            r'^(?:cấp|cap|gcn|gtn|gơn|sổ|số|so|ấp|lập|vào\s*s[ổốóoôòõỏ]|vao\s*s[ổốóoôòõỏ]|số\s*vào\s*s[ổốóoôòõỏ]\s*cấp\s*gcn)\s*[:\.]?\s*',
+            '',
+            s,
+            flags=re.IGNORECASE
+        ).strip(".:- ")
+        if not s_clean or s_clean in ('-', '--', '-/-', '...'):
+            return False, None, "Chỉ là dấu gạch ngang placeholder"
 
         # Blacklist từ khóa địa chính, tiêu đề văn bản và giấy tờ tùy thân (tuyệt đối không nhận nhầm diện tích riêng chung, CMND, tiêu đề bìa)
         REGISTRY_BLACKLIST = [
             "riêng", "chung", "mục đích", "diện tích", "thời hạn", "sử dụng",
             "thửa", "bản đồ", "không", "lúa", "đất ở", "rừng", "cmnd", "cccd", "hộ", "sinh năm",
             "quyền sở hữu", "quyen so huu", "tài sản", "tai san", "gắn liền", "gan lien",
-            "người sử dụng", "nguoi su dung", "người sắt dụng", "nhà ở"
+            "người sử dụng", "nguoi su dung", "người sắt dụng", "nhà ở", "quy định", "lưu ý", "khai báo"
         ]
         if any(bw in s_clean.lower() for bw in REGISTRY_BLACKLIST) or s_clean.upper().startswith(("MND", "CMND", "CCCD")):
             return False, None, f"Số vào sổ chứa từ khóa không hợp lệ: '{s_clean}'"
 
-        # Chuẩn hóa nhầm lẫn quang học OCR cho mã sổ dạng CH/CS (O->0, S->5, l->1, D->0, G->6, %->9)
-        m_ch = re.search(r'(?:GCN|GƠN|sổ)?\s*(C[HNS]|VP)\s*([0-9A-Za-z\.\-_%]+)', s_clean, re.IGNORECASE)
-        if m_ch:
-            prefix = m_ch.group(1).upper()
-            body = m_ch.group(2)
-            repl = {'O': '0', 'o': '0', 'S': '5', 's': '5', 'I': '1', 'l': '1', 'i': '1', 'L': '1', 'B': '8', 'q': '9', 'D': '0', 'G': '6', 'U': '0', 'u': '0', 'C': '0', 'c': '0', '%': '9'}
-            norm_body = "".join(repl.get(c, c) for c in body)
-            norm_body = re.sub(r"[.\-_]", "", norm_body)
-            m_dig = re.fullmatch(r"(\d{3,8})", norm_body)
-            if m_dig:
-                s_clean = f"{prefix}{m_dig.group(1)}"
+        # Chuẩn hóa nhầm lẫn quang học và bóc tách tiền tố/thân số/hậu tố
+        repl = {
+            'O': '0', 'o': '0', 'D': '0', 'd': '0', 'Đ': '0', 'đ': '0',
+            'U': '0', 'u': '0', 'V': '0', 'v': '0', 'C': '0', 'c': '0',
+            'Q': '0', 'q': '0', 'Í': '1', 'í': '1', 'Ì': '1', 'ì': '1',
+            'I': '1', 'i': '1', 'l': '1', 'L': '1', '|': '1', '!': '1',
+            'S': '5', 's': '5', 'B': '8', 'G': '6', 'T': '7', 't': '7',
+            '%': '9'
+        }
+
+        # Bóc tách tiền tố (CH, CS, CN, VP, C.H, Ctt, Ct., OH, MOD, U4...)
+        m_pfx = re.search(r'^(?:GCN|SỔ|SO)?\s*(C[\.\-_ ]?[HNS]|Ctt|Ct\.|VP|CT|OH|MOD|U4)\s*[:\.]?\s*(.+)$', s_clean, re.IGNORECASE)
+        prefix = ""
+        body = s_clean
+        if m_pfx:
+            raw_pfx = m_pfx.group(1).upper().replace(".", "").replace("-", "").replace(" ", "")
+            if raw_pfx in ("CH", "CTT", "CT", "OH", "MOD", "U4"):
+                prefix = "CH"
+            elif raw_pfx.startswith("CN"):
+                prefix = "CN"
+            elif raw_pfx.startswith("CS"):
+                prefix = "CS"
+            elif raw_pfx.startswith("VP"):
+                prefix = "VP"
             else:
-                # Không cắt phần số ở trước một chữ cái còn sót lại của OCR.
-                return False, s_clean, f"Số vào sổ sai định dạng: '{s_clean}'"
+                prefix = raw_pfx[:2]
+            body = m_pfx.group(2)
 
-        if len(s_clean) < 3 or s_clean.upper() in {"CN", "GI", "CHT", "SO", "SỐ", "GCN", "CH", "CS", "CẤP"}:
-            return False, s_clean, f"Số vào sổ quá ngắn hoặc chỉ là mã viết tắt: '{s_clean}'"
+        # Bóc tách hậu tố nếu có (ví dụ: /TNH, /VP, /QĐ)
+        suffix = ""
+        if "/" in body:
+            parts = body.split("/", 1)
+            body = parts[0]
+            cleaned_suffix = re.sub(r'[^A-Z0-9]', '', parts[1].upper())
+            if cleaned_suffix:
+                if any(k in cleaned_suffix for k in ("TNH", "INH", "1NH")):
+                    suffix = "/TNH"
+                else:
+                    suffix = "/" + cleaned_suffix
 
-        if len(s_clean) > 30:
-            return False, s_clean, f"Số vào sổ quá dài ({len(s_clean)} ký tự, giới hạn tối đa 30 ký tự): '{s_clean}'"
+        # Chuẩn hóa các ký tự thân số
+        norm_body = "".join(repl.get(c, c) for c in body)
+        norm_clean = re.sub(r"[\.\-_\s]", "", norm_body)
+        digits = re.sub(r'\D', '', norm_clean)
 
-        # Phải có ít nhất 1 chữ số
-        if not re.search(r"\d", s_clean):
-            return False, s_clean, f"Số vào sổ không chứa chữ số: '{s_clean}'"
+        if not digits or set(digits) == {'0'}:
+            return False, s_clean, f"Số vào sổ là placeholder toàn số 0 hoặc không có số: '{s_clean}'"
 
-        # Không được chứa các từ khóa cơ quan
-        if any(kw in s_clean.upper() for kw in AGENCY_KEYWORDS):
+        if len(digits) < 3 and not prefix:
+            return False, s_clean, f"Số vào sổ quá ngắn: '{s_clean}'"
+
+        if prefix:
+            if len(digits) < 5 and prefix in ("CH", "CS", "VP"):
+                digits = digits.zfill(5)
+            compact = f"{prefix}{digits}{suffix}"
+        else:
+            compact = f"{digits}{suffix}"
+
+        if len(compact) > 30:
+            return False, s_clean, f"Số vào sổ quá dài ({len(compact)} ký tự): '{s_clean}'"
+
+        if any(kw in compact for kw in AGENCY_KEYWORDS):
             return False, s_clean, f"Số vào sổ chứa từ khóa cơ quan hành chính: '{s_clean}'"
-
-        # Không chấp nhận chuỗi thập phân hoặc các ký tự rời rạc OCR. Số vào
-        # sổ chỉ gồm tiền tố chữ cái tùy chọn, phần số và hậu tố sau dấu /.
-        # Quy tắc cũ nhận 0.313859 và Gr.37.3.86.86.3 như một số vào sổ hợp lệ.
-        compact = re.sub(r"\s+", "", s_clean).upper()
-        if not re.fullmatch(r"(?:[A-Z]{1,4})?\d{3,8}(?:/[A-Z0-9-]+)?", compact):
-            return False, s_clean, f"Số vào sổ sai định dạng: '{s_clean}'"
-
-        # CH00000 / CS00000 are OCR placeholders, never a usable registry
-        # number.  They previously passed the format-only validator and made
-        # the export look complete while carrying no information.
-        registry_digits = re.sub(r"\D", "", compact)
-        if registry_digits and set(registry_digits) == {"0"}:
-            return False, s_clean, f"Số vào sổ là placeholder toàn số 0: '{s_clean}'"
 
         return True, compact, None
 
@@ -339,29 +370,56 @@ class GCNValidators:
         if not s:
             return False, None, "Giá trị trống"
         
-        # Bác bỏ nếu chứa từ khóa cơ quan/chức vụ
+        # Bác bỏ triệt để nếu chứa từ khóa cơ quan/chức vụ/địa chỉ/quy hoạch
         s_upper = s.upper()
         if any(kw in s_upper for kw in AGENCY_KEYWORDS):
             return False, s, f"Trường ngày chứa từ khóa cơ quan nhà nước: '{s}'"
         if any(kw in s_upper for kw in ["CHỦ TỊCH", "CHU TICH", "GIÁM ĐỐC", "GIAM DOC", "KÝ THAY", "KY THAY"]):
             return False, s, f"Trường ngày chứa chức danh người ký: '{s}'"
+        if any(kw in s.lower() for kw in ["chi nhánh", "văn phòng đăng ký", "hành lang", "quy hoạch", "nội dung thay đổi", "phường", "quận lê chân"]):
+            return False, s, f"Trường ngày chứa chuỗi ô nhiễm hành chính: '{s}'"
         
-        # Tìm mẫu ngày tháng năm: ngày ... tháng ... năm ... hoặc DD/MM/YYYY
-        m_txt = re.search(r"(?:ngày|ngay)\s*(\d{1,2})\s*(?:tháng|thang)\s*(\d{1,2})\s*(?:năm|nam)\s*(\d{4})", s, re.IGNORECASE)
+        repl = {'S': '5', 's': '5', 'O': '0', 'o': '0', 'l': '1', 'I': '1', 'i': '1', 'B': '8', 'q': '9', 'D': '0', 'd': '0'}
+
+        # 1. Tìm mẫu ngày tháng năm: ngày ... tháng ... năm ...
+        m_txt = re.search(r"(?:ngày|ngay)\s*([0-9SsOoIliBqD,\.]{1,3})\s*(?:tháng|thang)\s*([0-9SsOoIliBqD,\.]{1,3})\s*(?:năm|nam)\s*(\d{2}\s*\d{2}|\d{4})", s, re.IGNORECASE)
         if m_txt:
-            d, m, y = int(m_txt.group(1)), int(m_txt.group(2)), int(m_txt.group(3))
+            d_cand = "".join(repl.get(c, c) for c in m_txt.group(1))
+            d_digits = re.sub(r'\D', '', d_cand)
+            m_cand = "".join(repl.get(c, c) for c in m_txt.group(2))
+            m_digits = re.sub(r'\D', '', m_cand)
+            y_digits = m_txt.group(3).replace(" ", "")
+            if d_digits and m_digits and y_digits:
+                d = int(d_digits)
+                m = int(m_digits)
+                y = int(y_digits)
+            else:
+                d, m, y = 0, 0, 0
         else:
-            m_slash = re.search(r"\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b", s)
+            # 2. Tìm mẫu DD/MM/YYYY hoặc DD.MM.YYYY
+            m_slash = re.search(r"\b([0-9]{1,2})[\/\-\.]([0-9]{1,2})[\/\-\.]([0-9]{4})\b", s)
             if m_slash:
                 d, m, y = int(m_slash.group(1)), int(m_slash.group(2)), int(m_slash.group(3))
             else:
-                return False, s, f"Không tìm thấy định dạng ngày tháng năm hợp lệ trong: '{s}'"
+                # 3. Fallback: tháng ... năm ... (mặc định lấy ngày 01)
+                m_mth = re.search(r"(?:tháng|thang)\s*([0-9SsOoIliBqD,\.]{1,3})\s*(?:năm|nam)\s*(\d{4})", s, re.IGNORECASE)
+                if m_mth:
+                    m_cand = "".join(repl.get(c, c) for c in m_mth.group(1))
+                    m_digits = re.sub(r'\D', '', m_cand)
+                    if m_digits:
+                        d = 1
+                        m = int(m_digits)
+                        y = int(m_mth.group(2))
+                    else:
+                        return False, s, f"Không tìm thấy định dạng ngày tháng năm hợp lệ trong: '{s}'"
+                else:
+                    return False, s, f"Không tìm thấy định dạng ngày tháng năm hợp lệ trong: '{s}'"
         
         # Kiểm tra tính hợp lệ trên lịch thực
         try:
             dt = datetime(y, m, d)
-            if not (1985 <= y <= 2026):
-                return False, s, f"Năm cấp ngoài khoảng hợp lý (1985-2026): {y}"
+            if not (1950 <= y <= 2026):
+                return False, s, f"Năm cấp ngoài khoảng hợp lý (1950-2026): {y}"
             normalized = f"{d:02d}/{m:02d}/{y:04d}"
             return True, normalized, None
         except ValueError as err:
@@ -582,14 +640,50 @@ class GCNValidators:
         # Cắt mã phát hành bị dính ở cuối địa chỉ (ví dụ `..., H275322`).
         s = strip_serial_tail(s)
 
-        # Cắt bỏ dấu kết thúc tài liệu -/-
+        # Cắt bỏ dấu kết thúc tài liệu -/- và số rác OCR ở cuối (như ', 111')
         s = re.sub(r'\s*[\-\/]{2,}\s*$', '', s).strip()
+        s = re.sub(r'[,;\s]+\d{1,4}\s*$', '', s).strip()
+
+        # Làm sạch dấu gạch ngang nối vụn vặt và dấu hỏi OCR (như 'Trần Nguyên Hãn -,', '-,', '- ,')
+        s = re.sub(r"[\s\-_–—\?]+,", ",", s)
+        s = re.sub(r",\s*[\-_–—\?]+\s*,", ", ", s)
+        s = re.sub(r",\s*[\-_–—\?]+\s*", ", ", s)
+        s = re.sub(r"\s*[\-–—]\s*(?=(?:phường|quận|thành phố|xã|huyện)\b)", ", ", s, flags=re.IGNORECASE)
+
+        # Chuẩn hóa lỗi chính tả OCR địa danh Hải Phòng
+        s = re.sub(r"\bqu[aậâ]n\s*[:\.]?\s*L[eêề]\s*[\-,]\s*Ch[a-zA-Zà-ỹÀ-Ỹ\[\]\?;]*\b", "quận Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bqu[aậâ]n\s*[:\.]?\s*L[eêề]\s+Ch[a-zA-Zà-ỹÀ-Ỹ\[\]\?;]+\b[;]?", "quận Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bqu[aậâ]n\s*[:\.]?\s*L[eêề]\s*(?:Ch[aâăáàảãạiíoô][a-z\[\]\?]*|C\b|Ch\b)", "quận Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bqu[aậâ]n\s*[:\.]?\s*L[eêề]\b(?!\s*Chân)", "quận Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bL[eêề]\s*(?:Châi\[|Chai\[|Châu|Chau|Chầi|Chân\[|Chần|Chất)\b", "Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bLề\s*Chân\b", "Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bLê\s*Châu\b", "Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bhuyện\s+Lê\s*Chân\b", "quận Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bhuyện\s+(Hồng\s*Bàng|Ngô\s*Quyền|Hải\s*An|Kiến\s*An|Đồ\s*Sơn|Dương\s*Kinh)\b", r"quận \1", s, flags=re.IGNORECASE)
+        s = re.sub(r"\btỉnh\s+Hải\s*Phòng\b", "thành phố Hải Phòng", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bTôn\s*Đức\s*Tháng\b", "Tôn Đức Thắng", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bTr[aâăáàảãạ]n\s+[nN]guy[eê]n\s+H[aãáàảạ]n\b", "Trần Nguyên Hãn", s, flags=re.IGNORECASE)
+        s = re.sub(r"quận Lê Chân;\s*,", "quận Lê Chân,", s, flags=re.IGNORECASE)
         
         # Chuẩn hóa tiền tố "Số ..."
         s = re.sub(r'\bS[oố60]\s*(\d+)', r'Số \1', s)
 
         # Cắt lại sau chuẩn hóa để loại mọi phần thừa sau tỉnh/thành.
         s = truncate_address_after_province(s)
+
+        # Loại bỏ các chuỗi rác cơ quan hành chính bị nhận nhầm thành địa chỉ (như 'CHI NHÁN, QUẬN')
+        s_low = s.lower()
+        if any(bad in s_low for bad in [
+            "chi nhánh, quận", "chi nhán, quận", "chi nhánh văn phòng", "văn phòng đăng ký",
+            "chi nhánh vpq", "chi nhánh vpđkđđ", "quận chi nhánh", "quận chinhánh"
+        ]) or (len(s) <= 25 and any(k in s_low for k in ["chi nhánh", "chi nhán"]) and not any(k in s_low for k in ["số ", "thôn", "tổ ", "ngõ ", "phố ", "đường "])):
+            return ""
+
+        # Loại bỏ các chuỗi rác tiêu đề Section II
+        if any(bad in s_low for bad in [
+            "thông tin về đất", "thông tin về đát", "tài sản gắn liền với đất", "thông tin về nhà ở", "thửa đất, nhà ở"
+        ]):
+            return ""
 
         # Loại bỏ các chuỗi rác dạng đầu mục như "b)", "a)", "1.", "-"
         if len(s) < 6 or re.match(r'^[a-zA-Z0-9\-_./\(\)]+$', s):

@@ -24,6 +24,7 @@ from ..security import (
     get_current_principal,
     is_project_manager,
     require_project_data_access,
+    require_root_admin,
 )
 
 router = APIRouter(prefix="/pg", tags=["PostgreSQL Storage"])
@@ -44,6 +45,10 @@ def _accessible_record(store, principal: Principal, doc_id: str) -> dict:
         record.get("created_by"),
     )
     return record
+
+
+class WipeAllRequest(BaseModel):
+    confirmation: str = Field(..., description="Cần nhập chính xác chuỗi 'XOA TOAN BO' để xác nhận")
 
 
 class DeleteRecordsRequest(BaseModel):
@@ -536,11 +541,48 @@ async def export_pg_raw_excel(
     )
 
 
+# ─── QUẢN TRỊ BẢO TRÌ & XÓA KHÔNG DÙNG LỆNH DELETE (ZERO-BLOAT) ─────────────
+
+@router.delete("/wipe-all", summary="Xóa sạch toàn bộ kho dữ liệu OCR và ổ đĩa (Chỉ Root Admin)")
+async def wipe_all_pg_data(
+    payload: WipeAllRequest,
+    principal: Principal = Depends(require_root_admin),
+):
+    if (payload.confirmation or "").strip().upper() != "XOA TOAN BO":
+        raise HTTPException(
+            status_code=400,
+            detail="Xác nhận không hợp lệ. Vui lòng nhập chính xác cụm từ 'XOA TOAN BO' để thực hiện thao tác này."
+        )
+    store = get_postgres_store()
+    result = store.wipe_all_data()
+    return JSONResponse(content={
+        "status": "success",
+        "message": f"Đã xóa sạch {result.get('deleted_records', 0)} hồ sơ CSDL bằng TRUNCATE và giải phóng {result.get('cleaned_files', 0)} tệp đĩa (zero dead tuples).",
+        **result
+    })
+
+
+@router.post("/vacuum", summary="Thu hồi dung lượng đĩa và dọn tệp mồ côi (Admin)")
+async def vacuum_pg_database(
+    principal: Principal = Depends(get_current_principal),
+):
+    if not principal.is_admin():
+        raise HTTPException(status_code=403, detail="Chỉ Quản trị viên mới có quyền chạy bảo trì thu hồi bộ nhớ.")
+    store = get_postgres_store()
+    result = store.vacuum_database()
+    return JSONResponse(content={
+        "status": "success",
+        "message": f"Đã chạy VACUUM FULL và dọn {result.get('cleaned_folders', 0)} thư mục rác thành công.",
+        **result
+    })
+
+
 # ─── CÁC ENDPOINT XÓA CÓ CHỌN LỌC (SELECTIVE DELETION) ─────────────────────────
 
 @router.delete("/by-project", summary="Xóa có chọn lọc toàn bộ hồ sơ và file ảnh crop thuộc dự án")
 async def delete_pg_records_by_project(
     project_id: str = Query(..., description="Mã dự án cần xóa toàn bộ hồ sơ"),
+    confirmation: Optional[str] = Query(None, description="Xác nhận XOA TOAN BO"),
     principal: Principal = Depends(get_current_principal),
 ):
     store = get_postgres_store()
@@ -550,6 +592,12 @@ async def delete_pg_records_by_project(
 
     if not is_project_manager(store, principal, project_id):
         raise HTTPException(status_code=403, detail="Bạn không có quyền quản lý để xóa dữ liệu của dự án này.")
+
+    if confirmation is not None and confirmation.strip().upper() != "XOA TOAN BO":
+        raise HTTPException(
+            status_code=400,
+            detail="Xác nhận không hợp lệ. Vui lòng nhập chính xác cụm từ 'XOA TOAN BO'."
+        )
 
     count = store.delete_records_by_project(project_id)
     return JSONResponse(content={

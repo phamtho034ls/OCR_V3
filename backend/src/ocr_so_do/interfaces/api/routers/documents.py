@@ -80,7 +80,7 @@ async def upload_document(
         )
 
     # Luồng kiểm tra hồ sơ đơn lẻ chỉ mở cho Quản trị viên cao nhất để kiểm thử
-    if not principal.is_admin():
+    if not principal.is_root_admin():
         raise HTTPException(
             status_code=403,
             detail="Luồng kiểm tra hồ sơ đơn lẻ chỉ mở cho Quản trị viên cao nhất phục vụ kiểm thử và chạy test.",

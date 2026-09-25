@@ -51,10 +51,19 @@ class MutationExtractor:
         if not ocr_results:
             return []
 
+        # Tự động tính page_height và page_width thực tế từ bounding box OCR nếu lớn hơn default
+        if ocr_results:
+            all_xs = [pt[0] for item in ocr_results for pt in item.get("bbox", [])]
+            all_ys = [pt[1] for item in ocr_results for pt in item.get("bbox", [])]
+            if all_xs:
+                page_width = max(page_width, max(all_xs) + 100.0)
+            if all_ys:
+                page_height = max(page_height, max(all_ys) + 100.0)
+
         # 1. Tìm vị trí tiêu đề cột và ranh giới bảng
         header_y_max = 0.0
         col_split_x = page_width * 0.55
-        table_y_max = page_height * 0.95
+        table_y_max = page_height * 0.98
 
         noidung_boxes = []
         xacnhan_boxes = []
@@ -126,12 +135,19 @@ class MutationExtractor:
 
         # 4. Phân đoạn các mục biến động (Mutation entries)
         # Các mục biến động thường bắt đầu bằng các cụm:
-        # "Người sử dụng đất", "Đính chính", "Chuyển nhượng", "Tách thửa", "Thế chấp", "Xóa thế chấp", "Tặng cho"
+        # "Người sử dụng đất", "Đính chính", "Chuyển nhượng", "Tách thửa", "Thế chấp", "Xóa thế chấp", "Tặng cho", "Thừa kế", ngày tháng
         start_pattern = re.compile(
-            r"^(?:\d+[\.\)]\s*)?(?:người sử dụng đất|nguoi su dung dat|đính chính|dinh chinh|"
-            r"chuyển nhượng|chuyen nhuong|tặng cho|tang cho|thế chấp|the chap|xóa thế chấp|"
-            r"xoa the chap|thay đổi|thay doi|đổi cmnd|doi cmnd|đổi cccd|doi cccd|"
-            r"thừa kế|thua ke|tách thửa|tach thua)",
+            r"^(?:\d+[\.\)]\s*)?(?:(?:ngày|ngay)\s*)?\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}[:\s\-]*|"
+            r"^(?:\d+[\.\)]\s*)?(?:ng[u|ư][o|ơ]i\s*s[u|ử]\s*d[u|ụ]ng\s*[d|đ][a|ấ]t|"
+            r"[d|đ][i|í]nh\s*ch[i|í]nh|"
+            r"chuy[e|ê]n\s*nh[u|ư][o|ơ]ng|"
+            r"t[a|ặ]ng\s*cho|"
+            r"th[e|ế]\s*ch[a|ấ]p|"
+            r"x[o|ó]a\s*th[e|ế]\s*ch[a|ấ]p|"
+            r"thay\s*[d|đ][o|ổ]i|"
+            r"[d|đ][o|ổ]i\s*(?:cmnd|cccd|căn\s*cước)|"
+            r"th[u|ü|i|ư]ra?\s*k[e|é|ế]|thừa\s*kế|thua\s*ke|"
+            r"(?:t[a|á]ch|h[o|ợ]p)\s*th[u|ử]a)",
             re.IGNORECASE,
         )
 
@@ -142,11 +158,23 @@ class MutationExtractor:
             text = str(b.get("text", "")).strip()
             if not text:
                 continue
+
+            # Tính khoảng cách dọc (gap) so với box liền trước trong entry hiện tại
+            gap = 0
+            if current_entry:
+                prev_max_y = max(pt[1] for pt in current_entry[-1]["bbox"])
+                curr_min_y = min(pt[1] for pt in b["bbox"])
+                gap = curr_min_y - prev_max_y
+
             # Nếu bắt đầu một mục mới và mục trước đã có text
-            if current_entry and (
-                start_pattern.search(text)
-                or (entries_c1 and len(current_entry) >= 2 and min(pt[1] for pt in b["bbox"]) - max(pt[1] for pt in current_entry[-1]["bbox"]) > 40)
-            ):
+            is_new_entry = False
+            if current_entry:
+                if start_pattern.search(text):
+                    is_new_entry = True
+                elif len(current_entry) >= 1 and gap > 50:
+                    is_new_entry = True
+
+            if is_new_entry:
                 entries_c1.append(current_entry)
                 current_entry = [b]
             else:
@@ -185,7 +213,7 @@ class MutationExtractor:
                 ngay_str = f"{int(d):02d}/{int(m):02d}/{y}"
 
             # Trích xuất Số hồ sơ
-            hoso_match = re.search(r"hồ sơ số\s*([0-9A-Za-z\.\-_/]+)", full_text, re.IGNORECASE)
+            hoso_match = re.search(r"(?:hồ sơ|ho so|hs)\s*(?:số|so)?\s*[:\s]*([0-9A-Za-z\.\-_/]+)", full_text, re.IGNORECASE)
             so_ho_so = hoso_match.group(1).strip() if hoso_match else ""
 
             # Trích xuất thẩm quyền / cơ quan xác nhận
@@ -207,16 +235,18 @@ class MutationExtractor:
             c1_norm = _normalize_text(c1_text)
             if "dinh chinh" in c1_norm:
                 entry_type = "dinh_chinh"
-            elif any(k in c1_norm for k in ["cmnd", "cccd", "so dinh danh", "can cuoc"]):
-                entry_type = "thay_doi_cccd"
             elif "chuyen nhuong" in c1_norm:
                 entry_type = "chuyen_nhuong"
+            elif any(k in c1_norm for k in ["thua ke", "thira ke", "thura ke"]):
+                entry_type = "thua_ke"
             elif "tang cho" in c1_norm:
                 entry_type = "tang_cho"
             elif "the chap" in c1_norm:
                 entry_type = "the_chap"
-            elif "tach thua" in c1_norm:
+            elif any(k in c1_norm for k in ["tach thua", "hop thua"]):
                 entry_type = "tach_thua"
+            elif any(k in c1_norm for k in ["cmnd", "cccd", "so dinh danh", "can cuoc", "doi cmnd", "doi cccd"]):
+                entry_type = "thay_doi_cccd"
 
             mutations.append({
                 "stt": idx,

@@ -24,7 +24,7 @@ class CadastralReasoningService:
         self,
         ollama_url: Optional[str] = None,
         model_name: Optional[str] = None,
-        timeout: int = 45,
+        timeout: int = 90,
     ):
         # Mặc định kết nối từ Docker sang Host qua host.docker.internal, fallback sang localhost
         default_url = (
@@ -34,7 +34,7 @@ class CadastralReasoningService:
         )
         self.ollama_url = os.getenv("OLLAMA_URL", ollama_url or default_url).rstrip("/")
         self.model_name = os.getenv("LLM_MODEL_NAME", model_name or "qwen3:8b")
-        self.timeout = timeout
+        self.timeout = int(os.getenv("OCR_OLLAMA_TIMEOUT", str(timeout)))
 
     def apply_mutations(
         self,
@@ -184,10 +184,14 @@ class CadastralReasoningService:
             "Bạn là chuyên gia thẩm định hồ sơ địa chính và biến động đất đai Việt Nam.\n"
             "Nhiệm vụ của bạn là đọc các mục biến động tại Trang 4 của Giấy chứng nhận quyền sử dụng đất, "
             "đối chiếu với thông tin gốc (Trang 1, 2) và cập nhật dữ liệu pháp lý mới nhất theo các nguyên tắc:\n"
-            "1. Xác định nội dung sửa đổi theo dòng thời gian (mục mới nhất áp dụng).\n"
-            "2. Nếu có đính chính/sửa đổi về thửa đất (tờ bản đồ, số thửa, diện tích) -> cập nhật trường tương ứng thành giá trị mới nhất.\n"
-            "3. Nếu có cập nhật giấy tờ tùy thân của chủ đất (đổi CMND sang CCCD) -> cập nhật số định danh mới cho đúng chủ đất đó.\n"
-            "4. Nếu chuyển nhượng/tặng cho toàn bộ quyền sử dụng đất -> cập nhật tên người nhận chuyển nhượng làm chủ sử dụng mới.\n"
+            "1. QUY TẮC THỜI GIAN: Các giao dịch biến động được ghi theo thứ tự thời gian từ trước đến sau (hoặc từ trên xuống dưới). "
+            "Giao dịch ở vị trí muộn nhất/sau cùng (có mốc thời gian muộn hơn) là giao dịch có hiệu lực pháp lý cao nhất.\n"
+            "2. XÁC ĐỊNH CHỦ SỞ HỮU HIỆN HÀNH: Nếu xuất hiện giao dịch chuyển quyền (chuyển nhượng, tặng cho hoặc THỪA KẾ) toàn bộ quyền sử dụng đất, "
+            "thì người nhận ở giao dịch CUỐI CÙNG (muộn nhất theo thời gian) chính là CHỦ SỬ DỤNG ĐẤT HIỆN TẠI. "
+            "Cập nhật 'ho_ten_chu_1' thành tên người nhận cuối cùng và 'cmnd_chu_1' thành số CCCD/CMND của người đó. "
+            "(Ví dụ: Năm 2019 chuyển nhượng cho ông A, đến năm 2023 thừa kế cho ông B -> Chủ sử dụng hiện tại là ông B, CCCD của ông B).\n"
+            "3. Nếu có đính chính/sửa đổi về thửa đất (tờ bản đồ, số thửa, diện tích) -> cập nhật trường tương ứng thành giá trị mới nhất.\n"
+            "4. Nếu chỉ có cập nhật giấy tờ tùy thân của chủ đất (đổi CMND sang CCCD) -> cập nhật số định danh mới cho đúng chủ đất đó.\n"
             "5. QUY TẮC BẢO TOÀN: Giữ nguyên 100% các thông tin không bị sửa đổi, đặc biệt là các tài sản gắn liền với đất, mục đích sử dụng đất.\n"
             "6. Bắt buộc trả về định dạng JSON hợp lệ theo đúng cấu trúc sau, không thêm lời thoại ngoài JSON:\n"
             "{\n"
@@ -195,11 +199,11 @@ class CadastralReasoningService:
             '    "to_ban_do": "<số tờ bản đồ mới sau đính chính hoặc giữ nguyên>",\n'
             '    "so_thua": "<số thửa mới sau đính chính/tách hoặc giữ nguyên>",\n'
             '    "dien_tich_cap": "<diện tích mới hoặc giữ nguyên>",\n'
-            '    "ho_ten_chu_1": "<tên chủ mới nếu chuyển nhượng hoặc giữ nguyên>",\n'
-            '    "cmnd_chu_1": "<số CCCD/CMND mới nếu thay đổi hoặc giữ nguyên>"\n'
+            '    "ho_ten_chu_1": "<tên chủ mới sau giao dịch chuyển quyền sau cùng hoặc giữ nguyên>",\n'
+            '    "cmnd_chu_1": "<số CCCD/CMND mới của chủ hiện tại hoặc giữ nguyên>"\n'
             "  },\n"
             '  "cac_thay_doi_da_ap_dung": [\n'
-            '    {"truong": "to_ban_do", "gia_tri_cu": "...", "gia_tri_moi": "...", "can_cu": "..."}\n'
+            '    {"truong": "ho_ten_chu_1", "gia_tri_cu": "...", "gia_tri_moi": "...", "can_cu": "..."}\n'
             "  ],\n"
             '  "giai_trinh_ly_do": "<giải trình ngắn gọn căn cứ pháp lý của các thay đổi>"\n'
             "}"
@@ -276,22 +280,55 @@ class CadastralReasoningService:
                 "can_cu": to_match.group(0),
             })
 
-        # 2. Thay đổi CMND sang CCCD: "thay đổi CMND từ số ... thành CCCD số 031181009787"
-        cccd_match = re.search(
-            r"(?:thay đổi|đổi)\s*CMND.*?thành\s*CCCD\s*số[:\s]*(\d{9,12})",
-            full_text,
-            re.IGNORECASE,
-        )
-        if not cccd_match:
-            cccd_match = re.search(r"CCCD\s*số[:\s]*(\d{12})", full_text, re.IGNORECASE)
-        if cccd_match:
-            new_cccd = cccd_match.group(1).strip()
-            result["cmnd_chu_1"] = new_cccd
-            result["changes"].append({
-                "truong": "cmnd_chu_1",
-                "gia_tri_cu": orig_cmnd,
-                "gia_tri_moi": new_cccd,
-                "can_cu": cccd_match.group(0),
-            })
+        # 2. Chuyển quyền (Thừa kế, chuyển nhượng, tặng cho) -> duyệt từ mục muộn nhất trở về trước
+        found_owner = False
+        for m_text in reversed(mutation_texts):
+            transfer_match = re.search(
+                r"(?:th[u|ü|i|ư]ra?\s*k[e|é|ế]|thừa\s*kế|thua\s*ke|chuy[e|ê]n\s*nh[u|ư][o|ơ]ng|t[a|ặ]ng\s*cho)\s+cho\s+(?:ông|bà|ong|ba|ng\b|cụ)?\s*([A-Za-zÀ-ỹ\s]+?)(?:,|\s+CCCD|\s+CMND|\s+theo|\s+địa chỉ|\s+sinh năm|$)",
+                m_text,
+                re.IGNORECASE,
+            )
+            if transfer_match:
+                new_name = transfer_match.group(1).strip()
+                new_name = re.sub(r"^(?:ông|bà|ong|ba|ng)\s*", "", new_name, flags=re.IGNORECASE).strip()
+                if len(new_name) > 3 and not re.search(r"ngân hàng|chi nhánh|ubnd", new_name, re.IGNORECASE):
+                    result["ho_ten_chu_1"] = new_name
+                    result["changes"].append({
+                        "truong": "ho_ten_chu_1",
+                        "gia_tri_cu": "",
+                        "gia_tri_moi": new_name,
+                        "can_cu": transfer_match.group(0).strip(),
+                    })
+                    owner_cccd_match = re.search(r"(?:CCCD|CMND|số định danh)\s*(?:số|so)?[:\s]*(\d{9,12})", m_text, re.IGNORECASE)
+                    if owner_cccd_match:
+                        new_cccd = owner_cccd_match.group(1).strip()
+                        result["cmnd_chu_1"] = new_cccd
+                        result["changes"].append({
+                            "truong": "cmnd_chu_1",
+                            "gia_tri_cu": orig_cmnd,
+                            "gia_tri_moi": new_cccd,
+                            "can_cu": owner_cccd_match.group(0),
+                        })
+                    found_owner = True
+                    break
+
+        # 3. Thay đổi CMND sang CCCD độc lập nếu chưa có chủ mới
+        if not found_owner:
+            cccd_match = re.search(
+                r"(?:thay đổi|đổi)\s*CMND.*?thành\s*CCCD\s*số[:\s]*(\d{9,12})",
+                full_text,
+                re.IGNORECASE,
+            )
+            if not cccd_match:
+                cccd_match = re.search(r"CCCD\s*số[:\s]*(\d{12})", full_text, re.IGNORECASE)
+            if cccd_match:
+                new_cccd = cccd_match.group(1).strip()
+                result["cmnd_chu_1"] = new_cccd
+                result["changes"].append({
+                    "truong": "cmnd_chu_1",
+                    "gia_tri_cu": orig_cmnd,
+                    "gia_tri_moi": new_cccd,
+                    "can_cu": cccd_match.group(0),
+                })
 
         return result

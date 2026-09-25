@@ -940,12 +940,37 @@ class GCNMerger:
         if not noi_cap:
             can_review_set.add("noi_cap")
 
+        # Loại trừ trang biến động (page_bd) khỏi phạm vi quét ngày cấp GCN gốc
+        cap_search_pages = [p for p in cap_pages if p and p != page_bd]
+        if not cap_search_pages:
+            cap_search_pages = [p for p in pages_results if p != page_bd]
+        if not cap_search_pages:
+            cap_search_pages = pages_results
+
         raw_ngay_cap, ng_p, ng_box, ng_conf = get_field_provenance(
             lambda p: p.get("ngay_cap") or p.get("cap_gcn", {}).get("ngay_cap") or p.get("raw_fields", {}).get("ngay_cap", {}).get("value"),
-            cap_pages + pages_results
+            cap_search_pages
         )
         ng_valid, norm_ngay_cap, ng_err = GCNValidators.validate_date(raw_ngay_cap) if raw_ngay_cap else (False, "", "Thiếu ngày cấp")
         ngay_cap = norm_ngay_cap if ng_valid else ""
+
+        # Nếu ngày cấp chưa hợp lệ hoặc bị ô nhiễm chuỗi văn bản, quét trực tiếp từ các hộp OCR trang cấp
+        if not ng_valid:
+            from .parsers.certification_parser import CertificationParser
+            for p in cap_search_pages:
+                p_boxes = p.get("ocr_results") or []
+                if p_boxes:
+                    parsed = CertificationParser.parse(p_boxes)
+                    cand_d = parsed.get("ngay_cap")
+                    if cand_d:
+                        is_v_d, norm_d, _ = GCNValidators.validate_date(cand_d)
+                        if is_v_d:
+                            ng_valid = True
+                            ngay_cap = norm_d
+                            raw_ngay_cap = cand_d
+                            ng_conf = 0.85
+                            break
+
         if not ng_valid:
             ng_conf = min(ng_conf, 0.40)
             if raw_ngay_cap: can_review_set.add("ngay_cap")

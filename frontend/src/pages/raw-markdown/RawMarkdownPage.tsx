@@ -23,7 +23,8 @@ import {
   FileText,
   ChevronDown,
   CheckCircle2,
-  RotateCcw
+  RotateCcw,
+  Sparkles
 } from 'lucide-react';
 import { PgRecordSummary, PgFolderOption, PgSourceOption, PgStats } from '../../shared/types';
 import { QuickReviewPanel } from '../../shared/components/QuickReviewPanel';
@@ -94,7 +95,7 @@ export const formatVietnamDateTime = (dateStr?: string | null): string => {
 };
 
 export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table, isActive }) => {
-  const { can } = useAuth();
+  const { can, isRootAdmin } = useAuth();
   // Dữ liệu hồ sơ
   const [records, setRecords] = useState<PgRecordSummary[]>([]);
   const [totalRecords, setTotalRecords] = useState<number>(0);
@@ -118,12 +119,14 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
   // Modal xác nhận xóa
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean;
-    type: 'single' | 'folder' | 'source' | 'project';
+    type: 'single' | 'folder' | 'source' | 'project' | 'wipe_all';
     targetName: string;
     targetTitle?: string;
     targetIds?: string[];
   } | null>(null);
+  const [confirmInputText, setConfirmInputText] = useState<string>('');
   const [deleting, setDeleting] = useState<boolean>(false);
+  const [vacuuming, setVacuuming] = useState<boolean>(false);
 
   // Modal xem Markdown chi tiết
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
@@ -404,6 +407,24 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
     }
   };
 
+  // Thực thi bảo trì thu hồi bộ nhớ đĩa
+  const handleVacuumDatabase = async () => {
+    if (!window.confirm('Hệ thống sẽ chạy VACUUM FULL trong PostgreSQL và dọn sạch các tệp ảnh mồ côi trên ổ cứng để thu hồi tối đa dung lượng đĩa vật lý về hệ điều hành. Bạn có muốn tiếp tục?')) {
+      return;
+    }
+    setVacuuming(true);
+    try {
+      const res = await axios.post('/api/v1/pg/vacuum');
+      alert(res.data?.message || 'Đã thu hồi dung lượng đĩa thành công!');
+      await fetchStats();
+    } catch (err: any) {
+      const msg = await extractErrorMessage(err, 'Lỗi khi bảo trì thu hồi bộ nhớ đĩa');
+      alert(msg);
+    } finally {
+      setVacuuming(false);
+    }
+  };
+
   // Thực thi xóa sau khi người dùng xác nhận
   const executeDelete = async () => {
     if (!deleteConfirm) return;
@@ -412,21 +433,40 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       setDeleteConfirm(null);
       return;
     }
+
+    if (deleteConfirm.type === 'wipe_all' || deleteConfirm.type === 'project') {
+      if (confirmInputText.trim().toUpperCase() !== 'XOA TOAN BO') {
+        alert("Vui lòng nhập chính xác cụm từ 'XOA TOAN BO' để xác nhận.");
+        return;
+      }
+    }
+
     setDeleting(true);
     try {
-      if (deleteConfirm.type === 'single' && deleteConfirm.targetIds?.[0]) {
+      if (deleteConfirm.type === 'wipe_all') {
+        const res = await axios.delete('/api/v1/pg/wipe-all', {
+          data: { confirmation: confirmInputText.trim().toUpperCase() }
+        });
+        alert(res.data?.message || 'Đã xóa sạch toàn bộ kho dữ liệu CSDL bằng TRUNCATE và giải phóng ổ đĩa (zero dead tuples).');
+        setSelectedProject('all');
+      } else if (deleteConfirm.type === 'project') {
+        const res = await axios.delete('/api/v1/pg/by-project', {
+          params: {
+            project_id: deleteConfirm.targetName,
+            confirmation: confirmInputText.trim().toUpperCase()
+          }
+        });
+        alert(res.data?.message || 'Đã xóa toàn bộ dữ liệu dự án và thu hồi đĩa.');
+        setSelectedProject('all');
+      } else if (deleteConfirm.type === 'single' && deleteConfirm.targetIds?.[0]) {
         await axios.delete('/api/v1/pg/records', {
           data: { ids: deleteConfirm.targetIds }
         });
-      } else if (deleteConfirm.type === 'project') {
-        await axios.delete('/api/v1/pg/by-project', {
-          params: { project_id: deleteConfirm.targetName }
-        });
-        setSelectedProject('all');
       }
       // Nạp lại dữ liệu
       await Promise.all([fetchRecords(), fetchStats()]);
       setDeleteConfirm(null);
+      setConfirmInputText('');
     } catch (err: any) {
       const msg = await extractErrorMessage(err, 'Lỗi khi thực hiện xóa dữ liệu');
       alert(msg);
@@ -682,10 +722,12 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
       <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-wrap items-center justify-between gap-3">
         {/* Nhóm Thông Tin & Xóa Theo Bộ Lọc */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Nút Xóa Dự Án (Chỉ hiển thị khi đang chọn 1 dự án cụ thể) */}
           {can('record.delete') && selectedProject !== 'all' && (
             <button
               onClick={() => {
                 const pName = projectOptions.find(p => p.project_id === selectedProject)?.project_name || selectedProject;
+                setConfirmInputText('');
                 setDeleteConfirm({
                   open: true,
                   type: 'project',
@@ -698,6 +740,39 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
             >
               <Trash2 size={14} />
               <span>Xóa dữ liệu dự án này</span>
+            </button>
+          )}
+
+          {/* Nút Xóa Toàn Bộ Kho Dữ Liệu (Chỉ Root Admin và khi chọn Tất cả dự án) */}
+          {isRootAdmin && selectedProject === 'all' && (
+            <button
+              onClick={() => {
+                setConfirmInputText('');
+                setDeleteConfirm({
+                  open: true,
+                  type: 'wipe_all',
+                  targetName: 'toan_bo_kho_du_lieu',
+                  targetTitle: 'Toàn bộ kho hồ sơ & ảnh crop trên hệ thống'
+                });
+              }}
+              className="px-3 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              title="Xóa sạch toàn bộ hồ sơ CSDL bằng TRUNCATE và giải phóng ổ đĩa (Zero-Bloat)"
+            >
+              <Trash2 size={14} />
+              <span>Xóa sạch toàn bộ kho dữ liệu</span>
+            </button>
+          )}
+
+          {/* Nút Thu Hồi Dung Lượng Đĩa (Chạy VACUUM FULL & Dọn file mồ côi) */}
+          {can('record.delete') && (
+            <button
+              onClick={handleVacuumDatabase}
+              disabled={vacuuming}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 border border-slate-300 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
+              title="Chạy VACUUM FULL trong PostgreSQL và dọn sạch các tệp ảnh mồ côi trên ổ cứng"
+            >
+              <Sparkles size={14} className={vacuuming ? "animate-spin text-amber-500" : "text-amber-600"} />
+              <span>{vacuuming ? 'Đang thu hồi đĩa...' : 'Thu hồi dung lượng đĩa'}</span>
             </button>
           )}
 
@@ -973,40 +1048,80 @@ export const RawMarkdownPage: React.FC<RawMarkdownPageProps> = ({ onView129Table
         )}
       </div>
 
-      {/* ── MODAL XÁC NHẬN XÓA CÓ CHỌN LỌC ── */}
+      {/* ── MODAL XÁC NHẬN XÓA CÓ CHỌN LỌC & ZERO-BLOAT ── */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+            <div className={`w-12 h-12 rounded-full ${deleteConfirm.type === 'wipe_all' ? 'bg-rose-200 text-rose-700 animate-pulse' : 'bg-rose-100 text-rose-600'} flex items-center justify-center mx-auto`}>
               <AlertTriangle size={24} />
             </div>
             <div className="text-center">
-              <h3 className="text-base font-bold text-slate-900">Xác Nhận Xóa Dữ Liệu & Ảnh Crop</h3>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              <h3 className="text-base font-bold text-slate-900">
+                {deleteConfirm.type === 'wipe_all' ? 'XÓA SẠCH TOÀN BỘ KHO DỮ LIỆU' : 'Xác Nhận Xóa Dữ Liệu & Ảnh Crop'}
+              </h3>
+              <div className="text-xs text-slate-600 mt-2 leading-relaxed space-y-1.5">
                 {deleteConfirm.type === 'single' && (
-                  <>Bạn có chắc chắn muốn xóa hồ sơ <b>"{deleteConfirm.targetName}"</b> khỏi CSDL và xóa toàn bộ ảnh crop, preview liên quan trên ổ đĩa?</>
+                  <p>Bạn có chắc chắn muốn xóa hồ sơ <b>"{deleteConfirm.targetName}"</b> khỏi CSDL và xóa toàn bộ ảnh crop, preview liên quan trên ổ đĩa?</p>
                 )}
                 {deleteConfirm.type === 'project' && (
-                  <>Bạn có chắc chắn muốn xóa toàn bộ hồ sơ, dữ liệu bóc tách và tất cả ảnh crop/preview thuộc dự án <b>"{deleteConfirm.targetTitle || deleteConfirm.targetName}"</b> khỏi CSDL và ổ đĩa?</>
+                  <p>Bạn có chắc chắn muốn xóa toàn bộ hồ sơ, dữ liệu bóc tách và tất cả ảnh crop/preview thuộc dự án <b>"{deleteConfirm.targetTitle || deleteConfirm.targetName}"</b> khỏi CSDL và ổ đĩa?</p>
                 )}
+                {deleteConfirm.type === 'wipe_all' && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[11px] leading-relaxed text-left">
+                    <p className="font-bold uppercase mb-1">Cảnh báo cấp cao nhất (Root Admin):</p>
+                    <p>Thao tác này sẽ xóa vĩnh viễn <b>tất cả hồ sơ, đợt quét, audit reviews trong CSDL và dọn sạch toàn bộ thư mục ảnh crop trên ổ đĩa (/app/output)</b>.</p>
+                    <p className="mt-1 text-slate-600">
+                      ⚡ <b>Phương thức:</b> Sử dụng lệnh <code>TRUNCATE TABLE</code> kết hợp <code>VACUUM FULL</code>, hoàn toàn <b>không sử dụng lệnh DELETE</b> nhằm giải phóng đĩa cứng ngay lập tức và chống phình to CSDL (zero dead tuples).
+                    </p>
+                  </div>
+                )}
+              </div>
+              <p className="text-[11px] text-rose-600 font-semibold mt-2">
+                Thao tác này sẽ xóa vĩnh viễn và không thể phục hồi!
               </p>
-              <p className="text-[11px] text-rose-600 font-semibold mt-1">
-                Thao tác này sẽ xóa vĩnh viễn cả bản ghi trong CSDL và các tệp ảnh crop trên ổ cứng, không thể phục hồi!
-              </p>
+
+              {(deleteConfirm.type === 'wipe_all' || deleteConfirm.type === 'project') && (
+                <div className="mt-3.5 text-left bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                    Nhập chính xác cụm từ <span className="text-rose-600 font-mono font-black">XOA TOAN BO</span> để mở khóa nút xóa:
+                  </label>
+                  <input
+                    type="text"
+                    value={confirmInputText}
+                    onChange={(e) => setConfirmInputText(e.target.value)}
+                    placeholder="XOA TOAN BO"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold uppercase tracking-wider focus:ring-2 focus:ring-rose-500 focus:outline-none bg-white"
+                    autoFocus
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3 pt-2">
               <button
-                onClick={() => setDeleteConfirm(null)}
+                onClick={() => {
+                  setDeleteConfirm(null);
+                  setConfirmInputText('');
+                }}
                 disabled={deleting}
-                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition"
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
                 Hủy bỏ
               </button>
               <button
                 onClick={executeDelete}
-                disabled={deleting}
-                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+                disabled={
+                  deleting ||
+                  ((deleteConfirm.type === 'wipe_all' || deleteConfirm.type === 'project') &&
+                    confirmInputText.trim().toUpperCase() !== 'XOA TOAN BO')
+                }
+                className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm ${
+                  deleting ||
+                  ((deleteConfirm.type === 'wipe_all' || deleteConfirm.type === 'project') &&
+                    confirmInputText.trim().toUpperCase() !== 'XOA TOAN BO')
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                    : 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
+                }`}
               >
                 {deleting ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
                 <span>{deleting ? 'Đang xóa...' : 'Đồng ý xóa'}</span>

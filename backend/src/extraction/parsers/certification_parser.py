@@ -272,14 +272,20 @@ class CertificationParser:
 
         # 5. Ngày cấp GCN & Nơi cấp fallback từ dòng ngày
         def _parse_vn_date(s: str) -> Optional[str]:
+            if not s or any(kw in s.lower() for kw in ["chi nhánh", "quy hoạch", "hành lang", "nội dung thay đổi", "phường", "quận lê chân", "giám đốc", "chủ tịch"]):
+                return None
+
             def fix_digits(cand: str) -> str:
-                repl = {'S': '5', 's': '5', 'O': '0', 'o': '0', 'l': '1', 'I': '1', 'i': '1', 'B': '8', 'q': '9'}
+                repl = {
+                    'S': '5', 's': '5', 'O': '0', 'o': '0', 'l': '1', 'I': '1', 'i': '1',
+                    'B': '8', 'q': '9', 'D': '0', 'd': '0', 'Đ': '0', 'đ': '0', 'V': '0', 'v': '0'
+                }
                 for k, v in repl.items():
                     cand = cand.replace(k, v)
                 return re.sub(r"\D", "", cand)
 
-            # Pattern: [Địa danh], ngày [D] tháng [M] năm [YYYY hoặc YY YY]
-            m = re.search(r"(?:ngày|ngay)\s*([0-9SsOoIliBq,\.]{1,3})\s*(?:tháng|thang)\s*([0-9SsOoIliBq,\.]{1,3})\s*(?:năm|nam)\s*(\d{2}\s*\d{2}|\d{4})", s, re.IGNORECASE)
+            # Pattern 1: [Địa danh], ngày [D] tháng [M] năm [YYYY hoặc YY YY]
+            m = re.search(r"(?:ngày|ngay)\s*([0-9SsOoIliBqDdĐđVv,\.]{1,3})\s*(?:tháng|thang)\s*([0-9SsOoIliBqDdĐđVv,\.]{1,3})\s*(?:năm|nam)\s*(\d{2}\s*\d{2}|\d{4})", s, re.IGNORECASE)
             if m:
                 d_str = fix_digits(m.group(1))
                 m_str = fix_digits(m.group(2))
@@ -288,15 +294,26 @@ class CertificationParser:
                     d = int(d_str)
                     mth = int(m_str)
                     y = int(y_str)
-                    # Giới hạn năm cấp GCN phải <= năm 2026 (không thể ở tương lai)
                     if 1 <= d <= 31 and 1 <= mth <= 12 and 1950 <= y <= 2026:
                         return f"{d:02d}/{mth:02d}/{y}"
 
-            m_slash = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b", s)
-            if m_slash and any(k in s.lower() for k in ["ngày", "ngay", "cấp", "cap", "/"]):
+            # Pattern 2: DD/MM/YYYY hoặc DD.MM.YYYY
+            m_slash = re.search(r"\b(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})\b", s)
+            if m_slash and any(k in s.lower() for k in ["ngày", "ngay", "cấp", "cap", "/", "."]):
                 d, mth, y = int(m_slash.group(1)), int(m_slash.group(2)), int(m_slash.group(3))
                 if 1 <= d <= 31 and 1 <= mth <= 12 and 1950 <= y <= 2026:
                     return f"{d:02d}/{mth:02d}/{y}"
+
+            # Pattern 3: Fallback khi ngày viết tay mờ (ví dụ: "tháng 12 năm 2010" -> mặc định ngày 01)
+            m_mth = re.search(r"(?:tháng|thang)\s*([0-9SsOoIliBqDdĐđVv,\.]{1,3})\s*(?:năm|nam)\s*(\d{4})", s, re.IGNORECASE)
+            if m_mth:
+                m_str = fix_digits(m_mth.group(1))
+                if m_str.isdigit():
+                    mth = int(m_str)
+                    y = int(m_mth.group(2))
+                    if 1 <= mth <= 12 and 1950 <= y <= 2026:
+                        return f"01/{mth:02d}/{y}"
+
             return None
 
         # Ưu tiên 1: Tìm ngày cấp ngay cạnh/trên khối ký của cơ quan thẩm quyền (TM. UBND / Chủ tịch)
@@ -363,43 +380,79 @@ class CertificationParser:
         BLACKLIST_WORDS = [
             "riêng", "chung", "mục đích", "diện tích", "thời hạn", "sử dụng",
             "thửa", "bản đồ", "không", "lúa", "đất ở", "rừng", "cây", "cmnd", "cccd", "hộ", "sinh năm",
-            "tiếp nhận", "hồ sơ", "quyền số", "thứ tự"
+            "tiếp nhận", "hồ sơ", "quyền số", "thứ tự", "quy định", "lưu ý", "khai báo"
         ]
 
         def normalize_svs(raw: str) -> Optional[str]:
             if not raw:
                 return None
-            s = re.sub(r'^(?:cấp|cap|gcn|gtn|gơn|sổ|số|so|ấp|lập|vào\s*s[ổốóo]|vao\s*s[ổốóo])\s*[:\.]?\s*', '', raw.strip(), flags=re.IGNORECASE).strip(".:- ")
+            s = re.sub(
+                r'^(?:cấp|cap|gcn|gtn|gơn|sổ|số|so|ấp|lập|vào\s*s[ổốóoôòõỏ]|vao\s*s[ổốóoôòõỏ]|số\s*vào\s*s[ổốóoôòõỏ]\s*cấp\s*gcn)\s*[:\.]?\s*',
+                '',
+                raw.strip(),
+                flags=re.IGNORECASE
+            ).strip(".:- ")
+            if not s or s in ('-', '--', '-/-', '...'):
+                return None
             if any(bw in s.lower() for bw in BLACKLIST_WORDS) or s.upper().startswith(("MND", "CMND", "CCCD")):
                 return None
-            # Chuẩn hóa mã CH/CS (O/o->0, S/s->5, I/l/i->1, B->8, q->9, D->0, G->6)
-            m_ch = re.search(r'(?:GCN|GƠN|sổ)?\s*(C[HNS]|VP)\s*([0-9A-Za-z\.\-_%]+)', s, re.IGNORECASE)
-            if m_ch:
-                prefix = m_ch.group(1).upper()
-                body = m_ch.group(2)
-                repl = {'O': '0', 'o': '0', 'S': '5', 's': '5', 'I': '1', 'l': '1', 'i': '1', 'L': '1', 'B': '8', 'q': '9', 'D': '0', 'G': '6', '%': '9', 'T': '7'}
-                norm_body = "".join(repl.get(c, c) for c in body)
-                # Loại bỏ dấu phân cách rác nằm giữa các số (như CHO00.39, CHOO-484)
-                norm_clean = re.sub(r"[\.\-_]", "", norm_body)
-                m_dig = re.match(r"^(\d{1,6})", norm_clean)
-                if m_dig:
-                    digits = m_dig.group(1)
-                    if len(digits) < 5 and prefix in ("CH", "CS", "VP"):
-                        digits = digits.zfill(5)
-                    return f"{prefix}{digits}"
-                if re.search(r"\d", norm_clean):
-                    digits = re.sub(r"\D", "", norm_clean)
-                    if digits and len(digits) < 5 and prefix in ("CH", "CS", "VP"):
-                        return f"{prefix}{digits.zfill(5)}"
-                    return f"{prefix}{norm_clean}"
-            # Định dạng chung: phải có chữ số, dài từ 3 đến 25, không bắt đầu bằng tiền tố CMND
-            compact = re.sub(r"\s+", "", s).upper()
-            if re.fullmatch(r"(?:[A-Z]{1,4})?\d{1,8}(?:/[A-Z0-9-]+)?", compact):
-                if not re.match(r"^0\.\d+", compact):
-                    return compact
-            return None
+            
+            # Bóc tách tiền tố (CH, CS, CN, VP, C.H, Ctt, Ct., OH, MOD, U4...)
+            m_pfx = re.search(r'^(?:GCN|SỔ|SO)?\s*(C[\.\-_ ]?[HNS]|Ctt|Ct\.|VP|CT|OH|MOD|U4)\s*[:\.]?\s*(.+)$', s, re.IGNORECASE)
+            prefix = ""
+            body = s
+            if m_pfx:
+                raw_pfx = m_pfx.group(1).upper().replace(".", "").replace("-", "").replace(" ", "")
+                if raw_pfx in ("CH", "CTT", "CT", "OH", "MOD", "U4"):
+                    prefix = "CH"
+                elif raw_pfx.startswith("CN"):
+                    prefix = "CN"
+                elif raw_pfx.startswith("CS"):
+                    prefix = "CS"
+                elif raw_pfx.startswith("VP"):
+                    prefix = "VP"
+                else:
+                    prefix = raw_pfx[:2]
+                body = m_pfx.group(2)
 
-        # Chiến lược 1: Quét Regex dung sai cao trên toàn văn bản (nhận diện các lỗi OCR: só, sô, số, sỏ, có, 35, 36, Sẽ, Sa, vô, m6, cấp GCN...)
+            suffix = ""
+            if "/" in body:
+                parts = body.split("/", 1)
+                body = parts[0]
+                cleaned_suffix = re.sub(r'[^A-Z0-9]', '', parts[1].upper())
+                if cleaned_suffix:
+                    if any(k in cleaned_suffix for k in ("TNH", "INH", "1NH")):
+                        suffix = "/TNH"
+                    else:
+                        suffix = "/" + cleaned_suffix
+
+            repl = {
+                'O': '0', 'o': '0', 'S': '5', 's': '5', 'I': '1', 'l': '1', 'i': '1', 'L': '1', '|': '1', '!': '1',
+                'Í': '1', 'í': '1', 'Ì': '1', 'ì': '1', 'B': '8', 'q': '9', 'D': '0', 'd': '0', 'Đ': '0', 'đ': '0',
+                'U': '0', 'u': '0', 'V': '0', 'v': '0', 'C': '0', 'c': '0', 'Q': '0', 'q': '0', 'G': '6', '%': '9',
+                'T': '7', 't': '7'
+            }
+            norm_body = "".join(repl.get(c, c) for c in body)
+            norm_clean = re.sub(r"[\.\-_\s]", "", norm_body)
+            digits = re.sub(r'\D', '', norm_clean)
+
+            if not digits or set(digits) == {'0'}:
+                return None
+            if len(digits) < 3 and not prefix:
+                return None
+
+            if prefix:
+                if len(digits) < 5 and prefix in ("CH", "CS", "VP"):
+                    digits = digits.zfill(5)
+                compact = f"{prefix}{digits}{suffix}"
+            else:
+                compact = f"{digits}{suffix}"
+
+            if len(compact) > 30:
+                return None
+            return compact
+
+        # Chiến lược 1: Quét Regex dung sai cao trên toàn văn bản
         svs_patterns = [
             re.compile(
                 r"(?:(?:Số|[0-9]{1,2}|Sẽ|Sé|Sa|Sô|Số|só|sổ|m6|vô)\s*(?:vào|v[aà]o|v[aà]n)?\s*(?:s[ổốóoôòõỏ]|có)\s*(?:cấp|c[aâấ]p|có)?\s*(?:GCN|GƠN|GTN|sổ)?)\s*[:\.]?\s*([A-Za-z0-9\.\-_/% ]+)",
@@ -420,20 +473,23 @@ class CertificationParser:
                 if m:
                     cand = m.group(1).strip()
                     cand = re.split(r"[\n\r]|ngày|ngay|năm|tháng|bải|số\s*phát\s*hành", cand, flags=re.IGNORECASE)[0].strip()
-                    norm = normalize_svs(cand)
-                    if norm:
-                        return norm
+                    if cand and not cand.startswith("-"):
+                        norm = normalize_svs(cand)
+                        if norm:
+                            return norm
 
         # Chiến lược 2: Spatial Engine với anchor nhãn chuẩn
         svs_res = SpatialEngine.extract_field_value_spatially(
             sorted_boxes, CertificationParser.SO_VAO_SO_LABELS, direction="right"
         )
         if svs_res and svs_res.get("value"):
-            norm = normalize_svs(svs_res["value"])
-            if norm:
-                return norm
+            cand = svs_res["value"].strip()
+            if cand and not cand.startswith("-"):
+                norm = normalize_svs(cand)
+                if norm:
+                    return norm
 
-        # Chiến lược 3: Tìm mã định dạng CH/CS hoặc số quyết định trong khối chứng nhận (hỗ trợ chuỗi dính liền GCNCHxxxxx)
+        # Chiến lược 3: Tìm mã định dạng CH/CS hoặc số quyết định trong khối chứng nhận
         for line in lines:
             if "tiếp nhận" in line.lower() or "đơn đề nghị" in line.lower():
                 continue

@@ -10,6 +10,7 @@ export interface AuthUser {
   roles: string[];
   permissions: string[];
   region?: string;
+  is_root_admin?: boolean;
 }
 
 interface KeycloakPublicConfig {
@@ -21,6 +22,7 @@ interface KeycloakPublicConfig {
 
 interface AuthContextValue {
   user: AuthUser | null;
+  isRootAdmin: boolean;
   loading: boolean;
   error: string | null;
   can: (permission: string) => boolean;
@@ -36,6 +38,7 @@ const localDevelopmentUser: AuthUser = {
   display_name: 'Local development',
   roles: ['ocr-admin'],
   permissions: ['*'],
+  is_root_admin: true,
 };
 
 // Biến toàn cục module để tránh khởi tạo Keycloak nhiều lần khi React 18 StrictMode mount/unmount kép
@@ -190,14 +193,31 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     setRetryTrigger((prev) => prev + 1);
   }, []);
 
+  const isRootAdmin = useMemo(() => {
+    if (!user) return false;
+    if (user.is_root_admin === true) return true;
+    if (user.username === 'admin' || user.username === 'local-development' || user.id === 'local-development') {
+      return user.roles?.includes('ocr-admin') ?? false;
+    }
+    return false;
+  }, [user]);
+
   const value = useMemo<AuthContextValue>(() => ({
     user,
+    isRootAdmin,
     loading,
     error,
-    can: (permission) => Boolean(user?.permissions.includes('*') || user?.permissions.includes(permission)),
+    can: (permission) => {
+      if (!user) return false;
+      // Các tính năng kiểm thử của root admin: chỉ root admin mới có quyền
+      if (permission === 'document.create' || permission === 'batch.server_scan') {
+        return isRootAdmin;
+      }
+      return Boolean(user.permissions.includes('*') || user.permissions.includes(permission));
+    },
     logout,
     retry,
-  }), [error, loading, logout, retry, user]);
+  }), [error, isRootAdmin, loading, logout, retry, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

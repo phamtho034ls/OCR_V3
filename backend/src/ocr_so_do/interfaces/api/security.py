@@ -93,6 +93,7 @@ ROLE_PERMISSIONS: dict[str, FrozenSet[str]] = {
 # Chỉ ba role này được cấp mới. ROLE_PERMISSIONS còn chứa các role legacy để
 # access token cũ không bị mất quyền đột ngột.
 APP_ROLES = ("ocr-admin", "ocr-truongphong", "ocr-member")
+INITIAL_ADMIN_USERNAME = os.getenv("OCR_INITIAL_ADMIN_USERNAME", "admin").strip()
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -121,6 +122,11 @@ class Principal:
     def is_admin(self) -> bool:
         return "ocr-admin" in self.roles
 
+    def is_root_admin(self) -> bool:
+        return self.is_admin() and (
+            self.username == INITIAL_ADMIN_USERNAME or self.subject == "local-development"
+        )
+
     def is_truong_phong(self) -> bool:
         return "ocr-truongphong" in self.roles
 
@@ -143,6 +149,7 @@ class Principal:
             "roles": sorted(self.roles),
             "permissions": sorted(self.permissions),
             "primary_role": self.primary_role(),
+            "is_root_admin": self.is_root_admin(),
         }
 
 
@@ -205,6 +212,14 @@ def require_project_management(store: Any, principal: Principal, project_id: str
         )
 
 
+def require_root_admin(principal: Principal) -> None:
+    if not principal.is_root_admin():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chỉ Quản trị viên tối cao (Root Admin) mới có quyền thực hiện thao tác này.",
+        )
+
+
 def _roles_from_claims(claims: dict[str, Any]) -> FrozenSet[str]:
     roles: set[str] = set()
     realm_access = claims.get("realm_access")
@@ -253,13 +268,23 @@ def _decode_bearer_token(token: str) -> Principal:
     roles = _roles_from_claims(claims)
     username = str(claims.get("preferred_username") or claims.get("sub"))
     display_name = str(claims.get("name") or username)
+    subject = str(claims["sub"])
+    perms = set(permissions_for_roles(roles))
+    is_root = ("ocr-admin" in roles) and (
+        username == INITIAL_ADMIN_USERNAME or subject == "local-development"
+    )
+    if not is_root:
+        # Luồng Hồ sơ đơn lẻ và Thư mục quét máy chủ chỉ mở cho admin cao nhất phục vụ kiểm thử
+        perms.discard(Permission.DOCUMENT_CREATE)
+        perms.discard(Permission.SERVER_SCAN)
+
     return Principal(
-        subject=str(claims["sub"]),
+        subject=subject,
         username=username,
         display_name=display_name,
         email=str(claims["email"]) if claims.get("email") else None,
         roles=roles,
-        permissions=permissions_for_roles(roles),
+        permissions=frozenset(perms),
     )
 
 
@@ -325,6 +350,16 @@ def get_current_principal(request: Request) -> Principal:
     return principal
 
 
+def require_root_admin(request: Request) -> Principal:
+    principal = get_current_principal(request)
+    if not principal.is_root_admin():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chỉ tài khoản Root Admin cao nhất mới có quyền thực hiện thao tác này.",
+        )
+    return principal
+
+
 def require_permission(permission: str):
     def dependency(request: Request) -> Principal:
         principal = get_current_principal(request)
@@ -375,7 +410,7 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
         if method == "POST" and path.endswith("/cancel"):
             return Permission.BATCH_READ
         if method == "POST" and (path.endswith("/preview") or path.endswith("/start")):
-            return Permission.BATCH_CREATE
+            return Permission.SERVER_SCAN
         if method == "GET" and path.endswith("/export-129"):
             return Permission.EXPORT_129
         if method == "GET" and "/crops" in path:
@@ -389,7 +424,7 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
             path.endswith("/scan-hsq-dossiers")
             or path.endswith("/hsq/preview")
         ):
-            return Permission.BATCH_CREATE
+            return Permission.SERVER_SCAN
         if method == "POST" and path.endswith("/cancel"):
             return Permission.BATCH_READ
         if method == "POST" and path.endswith("/convert-markdown-to-129-excel"):
@@ -402,6 +437,8 @@ def required_permission_for_request(method: str, path: str) -> Optional[str]:
         return Permission.EXPORT_129 if method == "POST" else Permission.RECORD_READ
 
     if path.startswith("/api/v1/pg"):
+        if path == "/api/v1/pg/wipe-all" or path == "/api/v1/pg/vacuum":
+            return Permission.RECORD_DELETE
         if method == "DELETE":
             return Permission.RECORD_DELETE
         if method == "POST" and "/review" in path:

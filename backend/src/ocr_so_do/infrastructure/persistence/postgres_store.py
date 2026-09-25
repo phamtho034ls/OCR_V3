@@ -1652,24 +1652,181 @@ class PostgresStore:
                     """, (ids,))
                     deleted_count = cur.rowcount
                     conn.commit()
+
+            # 4. Tự động thu hồi bộ nhớ vật lý hoàn toàn bằng VACUUM FULL (tránh phình to DB)
+            try:
+                with self.get_connection() as conn:
+                    conn.autocommit = True
+                    with conn.cursor() as cur:
+                        cur.execute("VACUUM FULL ocr_records;")
+                        cur.execute("VACUUM FULL ocr_field_reviews;")
+            except Exception as v_err:
+                logger.debug(f"VACUUM FULL sau khi xóa records: {v_err}")
+
             return deleted_count
         except Exception as e:
             logger.error(f"Lỗi xóa records theo IDs trong PostgreSQL: {e}")
             return 0
 
+    def wipe_all_data(self) -> Dict[str, Any]:
+        """Xóa sạch toàn bộ hồ sơ, đợt quét, audit reviews trong CSDL và dọn sạch ổ đĩa /app/output (Chỉ Root Admin).
+        Phương pháp: Sử dụng TRUNCATE TABLE (DDL) thay vì lệnh DELETE để giải phóng đĩa cứng ngay lập tức và tránh phình to CSDL (zero dead tuples).
+        """
+        if not self._pool:
+            return {"deleted_records": 0, "cleaned_files": 0}
+
+        rec_count = 0
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM ocr_records;")
+                rec_count = cur.fetchone()[0]
+                # TRUNCATE TABLE giải phóng toàn bộ block lưu trữ relation, không sinh WAL row-by-row, không sinh dead tuples
+                cur.execute("TRUNCATE TABLE ocr_field_reviews, cccd_crop_audits, ocr_records, ocr_batches RESTART IDENTITY CASCADE;")
+                conn.commit()
+
+        # Dọn sạch toàn bộ thư mục output trên đĩa
+        project_root = Path(__file__).resolve().parents[5]
+        output_dir = project_root / "output"
+        cleaned_files = 0
+        if output_dir.exists() and output_dir.is_dir():
+            for item in output_dir.iterdir():
+                try:
+                    if item.is_dir():
+                        shutil.rmtree(item, ignore_errors=True)
+                    else:
+                        item.unlink(missing_ok=True)
+                    cleaned_files += 1
+                except Exception as e:
+                    logger.warning(f"Lỗi khi dọn thư mục output {item}: {e}")
+
+        # Chạy VACUUM FULL để giải phóng hoàn toàn dung lượng đĩa CSDL về hệ điều hành
+        try:
+            with self.get_connection() as conn:
+                conn.autocommit = True
+                with conn.cursor() as cur:
+                    cur.execute("VACUUM FULL ocr_records;")
+                    cur.execute("VACUUM FULL ocr_field_reviews;")
+                    cur.execute("VACUUM FULL ocr_batches;")
+                    cur.execute("VACUUM FULL cccd_crop_audits;")
+        except Exception as e:
+            logger.warning(f"Lỗi chạy VACUUM FULL: {e}")
+
+        return {
+            "deleted_records": rec_count,
+            "cleaned_files": cleaned_files,
+        }
+
+    def clean_orphan_disk_artifacts(self) -> Dict[str, Any]:
+        """Dọn dẹp các thư mục mồ côi trên ổ đĩa /app/output không còn tồn tại trong CSDL."""
+        project_root = Path(__file__).resolve().parents[5]
+        output_dir = project_root / "output"
+        if not output_dir.exists() or not output_dir.is_dir():
+            return {"cleaned_folders": 0}
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM ocr_records;")
+                active_ids = {str(r[0]) for r in cur.fetchall()}
+
+        cleaned = 0
+        for item in output_dir.iterdir():
+            if item.is_dir() and item.name not in ("batches", "artifacts", "temp"):
+                if item.name not in active_ids:
+                    try:
+                        shutil.rmtree(item, ignore_errors=True)
+                        cleaned += 1
+                    except Exception as e:
+                        logger.warning(f"Lỗi xóa thư mục mồ côi {item}: {e}")
+        return {"cleaned_folders": cleaned}
+
+    def vacuum_database(self) -> Dict[str, Any]:
+        """Chạy bảo trì VACUUM FULL trên PostgreSQL và dọn tệp ảnh mồ côi để thu hồi tối đa dung lượng đĩa vật lý."""
+        cleaned_info = self.clean_orphan_disk_artifacts()
+        try:
+            with self.get_connection() as conn:
+                conn.autocommit = True
+                with conn.cursor() as cur:
+                    cur.execute("VACUUM FULL ocr_records;")
+                    cur.execute("VACUUM FULL ocr_field_reviews;")
+                    cur.execute("VACUUM FULL ocr_batches;")
+                    cur.execute("VACUUM FULL cccd_crop_audits;")
+                    cur.execute("VACUUM FULL ocr_projects;")
+                    cur.execute("VACUUM FULL project_members;")
+            return {"status": "success", **cleaned_info}
+        except Exception as e:
+            logger.warning(f"Lỗi VACUUM FULL: {e}")
+            return {"status": "error", "error": str(e), **cleaned_info}
+
     def delete_records_by_project(self, project_id: str) -> int:
-        """Xóa toàn bộ hồ sơ thuộc một dự án, dọn sạch cả file ảnh crop/preview trên đĩa và CSDL."""
+        """Xóa toàn bộ hồ sơ thuộc một dự án, dọn sạch ảnh crop/preview trên đĩa và CSDL mà không làm phình to DB.
+        Sử dụng kỹ thuật TRUNCATE / CTAS Rewrite + VACUUM FULL (không dùng lệnh DELETE đơn thuần) để chống phình to dữ liệu.
+        """
         if not self._pool or not project_id:
             return 0
         try:
+            # 1. Lấy thông tin records thuộc project để dọn dẹp file ảnh crop / output trên đĩa
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute("SELECT id FROM ocr_records WHERE project_id = %s;", (project_id,))
-                    rows = cur.fetchall()
-            doc_ids = [str(r["id"]) for r in rows]
-            if doc_ids:
-                return self.delete_records_by_ids(doc_ids)
-            return 0
+                    cur.execute("""
+                        SELECT id, batch_id, structured_data
+                        FROM ocr_records
+                        WHERE project_id = %s;
+                    """, (project_id,))
+                    records_to_delete = cur.fetchall()
+
+            deleted_count = len(records_to_delete)
+            if records_to_delete:
+                doc_ids = [str(r["id"]) for r in records_to_delete]
+                self.clean_record_disk_artifacts(doc_ids, records_to_delete)
+
+            # 2. Xóa dữ liệu trong CSDL: Áp dụng phương thức chống phình to dữ liệu (tránh dead tuples)
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM ocr_records WHERE project_id IS DISTINCT FROM %s;", (project_id,))
+                    other_count = cur.fetchone()[0]
+
+                    if other_count == 0:
+                        # Toàn bộ dữ liệu thuộc về project này: TRUNCATE trực tiếp sạch sẽ không bloat
+                        cur.execute("TRUNCATE TABLE ocr_field_reviews, cccd_crop_audits, ocr_records, ocr_batches CASCADE;")
+                        conn.commit()
+                    else:
+                        # Có dữ liệu của project khác: Dùng CTAS + TRUNCATE + INSERT của records cần giữ thay vì lệnh DELETE
+                        cur.execute("""
+                            CREATE TEMP TABLE tmp_reviews AS 
+                            SELECT r.* FROM ocr_field_reviews r
+                            JOIN ocr_records o ON r.document_id = o.id
+                            WHERE o.project_id IS DISTINCT FROM %s;
+
+                            CREATE TEMP TABLE tmp_records AS 
+                            SELECT * FROM ocr_records WHERE project_id IS DISTINCT FROM %s;
+
+                            CREATE TEMP TABLE tmp_batches AS 
+                            SELECT * FROM ocr_batches WHERE project_id IS DISTINCT FROM %s;
+
+                            TRUNCATE TABLE ocr_field_reviews, ocr_records, ocr_batches CASCADE;
+
+                            INSERT INTO ocr_batches SELECT * FROM tmp_batches;
+                            INSERT INTO ocr_records SELECT * FROM tmp_records;
+                            INSERT INTO ocr_field_reviews SELECT * FROM tmp_reviews;
+
+                            DROP TABLE tmp_reviews;
+                            DROP TABLE tmp_records;
+                            DROP TABLE tmp_batches;
+                        """, (project_id, project_id, project_id))
+                        conn.commit()
+
+            # 3. Thu hồi toàn bộ không gian đĩa về hệ điều hành bằng VACUUM FULL
+            try:
+                with self.get_connection() as conn:
+                    conn.autocommit = True
+                    with conn.cursor() as cur:
+                        cur.execute("VACUUM FULL ocr_records;")
+                        cur.execute("VACUUM FULL ocr_field_reviews;")
+                        cur.execute("VACUUM FULL ocr_batches;")
+            except Exception as v_err:
+                logger.debug(f"VACUUM FULL sau khi xóa project: {v_err}")
+
+            return deleted_count
         except Exception as e:
             logger.error(f"Lỗi delete_records_by_project {project_id}: {e}")
             return 0

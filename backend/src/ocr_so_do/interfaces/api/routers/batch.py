@@ -654,7 +654,7 @@ async def scan_directory(
     dir_p = permitted_source_directory(req.directory_path)
 
     # Chức năng quét thư mục máy chủ chỉ mở cho Quản trị viên cao nhất để kiểm thử
-    if not principal.is_admin():
+    if not principal.is_root_admin():
         raise HTTPException(
             status_code=403,
             detail="Chức năng quét thư mục máy chủ chỉ dành cho Quản trị viên cao nhất phục vụ kiểm thử và chạy test.",
@@ -779,10 +779,11 @@ async def preview_hsq_dossiers(
     if not project_id:
         raise HTTPException(status_code=422, detail="Vui lòng chọn dự án hợp lệ trước khi phân tích hồ sơ HSQ.")
     dir_p = permitted_source_directory(req.directory_path)
-    if not principal.is_admin():
-        store = _get_pg_store()
-        if not store.is_project_member(project_id, principal.subject):
-            raise HTTPException(status_code=403, detail=f"Bạn không phải thành viên của dự án '{project_id}'.")
+    if not principal.is_root_admin():
+        raise HTTPException(
+            status_code=403,
+            detail="Chức năng phân tích hồ sơ HSQ VILG chỉ dành cho Quản trị viên cao nhất phục vụ kiểm thử và chạy test.",
+        )
 
     dossiers = HSQDossierScanner().scan(dir_p)
     if not dossiers:
@@ -813,10 +814,11 @@ async def scan_hsq_dossiers(
     if not req.project_id:
         raise HTTPException(status_code=422, detail="Vui lòng chọn dự án hợp lệ trước khi quét hồ sơ HSQ.")
     dir_p = permitted_source_directory(req.directory_path)
-    if not principal.is_admin():
-        store = _get_pg_store()
-        if not store.is_project_member(req.project_id, principal.subject):
-            raise HTTPException(status_code=403, detail=f"Bạn không phải thành viên của dự án '{req.project_id}'.")
+    if not principal.is_root_admin():
+        raise HTTPException(
+            status_code=403,
+            detail="Chức năng quét hồ sơ HSQ VILG chỉ dành cho Quản trị viên cao nhất phục vụ kiểm thử và chạy test.",
+        )
 
     dossiers = HSQDossierScanner().scan(dir_p)
     ready_dossiers = [dossier for dossier in dossiers if dossier.is_ready]

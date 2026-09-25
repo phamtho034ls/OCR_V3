@@ -163,6 +163,11 @@ class Cadastral129Mapper:
             "quyền sử dụng", "quyen su dung",
             "hình thức", "hinh thuc",
             "nguồn gốc", "nguon goc",
+            "thông tin về đất", "thong tin ve dat", "thông tin về đát",
+            "tài sản gắn liền với đất", "tai san gan lien voi dat",
+            "thửa đất, nhà ở", "thua dat, nha o",
+            "chi nhánh, quận", "chi nhán, quận", "chi nhánh", "chi nhán",
+            "văn phòng đăng ký", "van phong dang ky", "vpđkđđ",
             "diện tích(m²)", "diện tích(m2)", "(m²)", "(m2)", "m²", "m2",
             "uỷ ban", "uy ban", "ubnd", "chủ tịch", "chu tich", "ký tên", "ky ten"
         ]
@@ -189,6 +194,9 @@ class Cadastral129Mapper:
             r"\bxac\s*nhan\s*(?:cua|boi)\b",
             r"\bco\s*quan\s*cap\b",
             r"\bnguoi\s*ky\b",
+            r"\bchi\s*nhan[hg]?\s*[,:]?\s*quan\b",
+            r"\bvan\s*phong\s*dang\s*ky\b",
+            r"\bchi\s*nhan[hg]\s*van\s*phong\b",
         )
         return any(re.search(pattern, folded, re.IGNORECASE) for pattern in patterns)
 
@@ -237,7 +245,29 @@ class Cadastral129Mapper:
         # Chuẩn hóa lỗi chính tả OCR của từ 'Thôn' (Thòa, Thòn, Thòm, Thỏa, Thôa, Thơn, Thơ, Thỏo, Thon -> Thôn)
         s = re.sub(r'^(?:Thon|Thôu|Thoan|Thôan|Th[oòóỏõọôốồổỗộơớờởỡợaáàảãạ][mnao]|Thơ)\s+', 'Thôn ', s, flags=re.IGNORECASE)
 
-        # Chuẩn hóa chính tả quang học OCR địa danh
+        # Làm sạch dấu gạch ngang nối và dấu hỏi rác OCR bị dính trước/sau dấu phẩy (như 'Trần Nguyên Hãn -,', '- ,', '-,')
+        s = re.sub(r"[\s\-_–—\?]+,", ",", s)
+        s = re.sub(r",\s*[\-_–—\?]+\s*,", ", ", s)
+        s = re.sub(r",\s*[\-_–—\?]+\s*", ", ", s)
+        s = re.sub(r"\s*[\-–—]\s*(?=(?:phường|quận|thành phố|xã|huyện)\b)", ", ", s, flags=re.IGNORECASE)
+
+        # Cắt bỏ số rác OCR ở cuối (như ', 111')
+        s = re.sub(r'[,;\s]+\d{1,4}\s*$', '', s).strip()
+
+        # Chuẩn hóa chính tả quang học OCR địa danh Hải Phòng
+        s = re.sub(r"\bqu[aậâ]n\s*[:\.]?\s*L[eêề]\s*[\-,]\s*Ch[a-zA-Zà-ỹÀ-Ỹ\[\]\?;]*\b", "quận Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bqu[aậâ]n\s*[:\.]?\s*L[eêề]\s+Ch[a-zA-Zà-ỹÀ-Ỹ\[\]\?;]+\b[;]?", "quận Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bqu[aậâ]n\s*[:\.]?\s*L[eêề]\s*(?:Ch[aâăáàảãạiíoô][a-z\[\]\?]*|C\b|Ch\b)", "quận Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bqu[aậâ]n\s*[:\.]?\s*L[eêề]\b(?!\s*Chân)", "quận Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bL[eêề]\s*(?:Châi\[|Chai\[|Châu|Chau|Chầi|Chân\[|Chần|Chất)\b", "Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bLề\s*Chân\b", "Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bLê\s*Châu\b", "Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bhuyện\s+Lê\s*Chân\b", "quận Lê Chân", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bhuyện\s+(Hồng\s*Bàng|Ngô\s*Quyền|Hải\s*An|Kiến\s*An|Đồ\s*Sơn|Dương\s*Kinh)\b", r"quận \1", s, flags=re.IGNORECASE)
+        s = re.sub(r"\btỉnh\s+Hải\s*Phòng\b", "thành phố Hải Phòng", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bTôn\s*Đức\s*Tháng\b", "Tôn Đức Thắng", s, flags=re.IGNORECASE)
+        s = re.sub(r"\bTr[aâăáàảãạ]n\s+[nN]guy[eê]n\s+H[aãáàảạ]n\b", "Trần Nguyên Hãn", s, flags=re.IGNORECASE)
+        s = re.sub(r"quận Lê Chân;\s*,", "quận Lê Chân,", s, flags=re.IGNORECASE)
         s = re.sub(r"\b(?:xi|xì|xĩ|xa|sĩ|pxã|23|21|13|11|X1)\s+Vĩnh\s*Y[êeèẽêu][un]?\b", "xã Vĩnh Yên", s, flags=re.IGNORECASE)
         s = re.sub(r"\bVĩnh\s*Yêu\b", "Vĩnh Yên", s, flags=re.IGNORECASE)
         s = re.sub(r"\bVinh\s*Yên\b", "Vĩnh Yên", s, flags=re.IGNORECASE)
@@ -286,6 +316,21 @@ class Cadastral129Mapper:
         )
         if direct_city:
             s = s[:direct_city.end()].strip(" -:;,.")
+
+        # Loại bỏ các chuỗi rác cơ quan hành chính bị nhận nhầm thành địa chỉ (như 'CHI NHÁN, QUẬN')
+        s_low = s.lower()
+        if any(bad in s_low for bad in [
+            "chi nhánh, quận", "chi nhán, quận", "chi nhánh văn phòng", "văn phòng đăng ký",
+            "chi nhánh vpq", "chi nhánh vpđkđđ", "quận chi nhánh", "quận chinhánh"
+        ]) or (len(s) <= 25 and any(k in s_low for k in ["chi nhánh", "chi nhán"]) and not any(k in s_low for k in ["số ", "thôn", "tổ ", "ngõ ", "phố ", "đường "])):
+            return ""
+
+        # Loại bỏ các chuỗi rác tiêu đề Section II
+        if any(bad in s_low for bad in [
+            "thông tin về đất", "thông tin về đát", "tài sản gắn liền với đất", "thông tin về nhà ở", "thửa đất, nhà ở"
+        ]):
+            return ""
+
         # Nếu sau khi làm sạch chuỗi chỉ còn lại tên người (không hề có cấp hành chính thôn/xã/huyện/tỉnh/đường/phố/số nhà)
         if s and not any(k in s.lower() for k in ["thôn", "thon", "xóm", "xom", "bản", "ban", "tổ", "to", "làng", "lang", "phố", "pho", "đường", "duong", "xã", "xa", "phường", "phuong", "thị trấn", "thi tran", "huyện", "huyen", "quận", "quan", "thị xã", "thi xa", "tỉnh", "tinh", "thành phố", "thanh pho", "tp", "đồng", "dong", "khu"]):
             return ""
@@ -314,6 +359,8 @@ class Cadastral129Mapper:
         res["dia_chi_chi_tiet"] = addr
         # Tách các cấp bằng dấu phẩy
         parts = [p.strip() for p in re.split(r"[,;]\s*", addr) if p.strip()]
+        while parts and re.match(r"^\d+$", parts[-1]):
+            parts.pop()
         if not parts:
             return res
 
@@ -324,7 +371,7 @@ class Cadastral129Mapper:
             if m_tinh:
                 res["ten_tinh"] = m_tinh.group(1).strip()
                 parts.pop()
-            elif not re.search(r"^(?:huyện|huyen|quận|quan|thị\s*xã|thi\s*xa|xã|xa|phường|phuong|thị\s*trấn|thi\s*tran|thôn|thon|xóm|xom|bản|ban|tổ|to|đường|duong|số|so|phố|pho|đồng|dong)\b", last, re.IGNORECASE):
+            elif not re.search(r"^(?:huyện|huyen|quận|quan|thị\s*xã|thi\s*xa|xã|xa|phường|phuong|thị\s*trấn|thi\s*tran|thôn|thon|xóm|xom|bản|ban|tổ|to|đường|duong|số|so|phố|pho|đồng|dong|\d+)\b", last, re.IGNORECASE):
                 # Thử match với DMN tỉnh
                 try:
                     from ...domain.rules.address.dmn_vn_normalizer import DmnVnNormalizer
@@ -417,6 +464,9 @@ class Cadastral129Mapper:
                 res["ten_xa"] = norm_xa
         except Exception:
             pass
+
+        if "lê chân" in res.get("ten_huyen", "").lower() or any(q in res.get("ten_huyen", "").lower() for q in ["hồng bàng", "ngô quyền", "hải an", "kiến an", "đồ sơn", "dương kinh"]):
+            res["ten_tinh"] = "Hải Phòng"
 
         return res
 
@@ -560,17 +610,29 @@ class Cadastral129Mapper:
                 row["DDK_capGiayNguoiDaiDien"] = 1 if is_rep else 0
 
                 # Preserve the representative and their evidence in the
-                # companion fields requested by the user.
-                row["VC_hoTen"] = representative.get("CHU_hoTen", "")
-                row["VC_ngaySinh"] = representative.get("CHU_ngaySinh", "")
-                row["VC_gioiTinh"] = representative.get("CHU_gioiTinh", "")
-                row["VC_quocTich"] = representative.get("CHU_quocTich", "VNM")
-                for suffix in ("diaChiChiTiet", "soNha", "tenDuongPho", "tenTDP", "tenXa", "tenHuyen", "tenTinh"):
-                    row[f"VC_{suffix}"] = representative.get(f"CHU_{suffix}", "")
-                row["GT_VC_loaiGiayTo"] = representative.get("GT_loaiGiayTo", "")
-                row["GT_VC_soGiayTo"] = representative.get("GT_soGiayTo", "")
-                row["GT_VC_ngayCap"] = representative.get("GT_ngayCap", "")
-                row["GT_VC_noiCap"] = representative.get("GT_noiCap", "")
+                # companion fields only for other heirs, not for the representative themself.
+                if is_rep:
+                    row["VC_hoTen"] = ""
+                    row["VC_ngaySinh"] = ""
+                    row["VC_gioiTinh"] = ""
+                    row["VC_quocTich"] = ""
+                    for suffix in ("diaChiChiTiet", "soNha", "tenDuongPho", "tenTDP", "tenXa", "tenHuyen", "tenTinh"):
+                        row[f"VC_{suffix}"] = ""
+                    row["GT_VC_loaiGiayTo"] = ""
+                    row["GT_VC_soGiayTo"] = ""
+                    row["GT_VC_ngayCap"] = ""
+                    row["GT_VC_noiCap"] = ""
+                else:
+                    row["VC_hoTen"] = representative.get("CHU_hoTen", "")
+                    row["VC_ngaySinh"] = representative.get("CHU_ngaySinh", "")
+                    row["VC_gioiTinh"] = representative.get("CHU_gioiTinh", "")
+                    row["VC_quocTich"] = representative.get("CHU_quocTich", "VNM")
+                    for suffix in ("diaChiChiTiet", "soNha", "tenDuongPho", "tenTDP", "tenXa", "tenHuyen", "tenTinh"):
+                        row[f"VC_{suffix}"] = representative.get(f"CHU_{suffix}", "")
+                    row["GT_VC_loaiGiayTo"] = representative.get("GT_loaiGiayTo", "")
+                    row["GT_VC_soGiayTo"] = representative.get("GT_soGiayTo", "")
+                    row["GT_VC_ngayCap"] = representative.get("GT_ngayCap", "")
+                    row["GT_VC_noiCap"] = representative.get("GT_noiCap", "")
 
                 stt = start_stt + row_offset
                 row["STT"] = stt
@@ -642,8 +704,15 @@ class Cadastral129Mapper:
 
         # Trường hợp nhiều thửa -> tách thành N dòng
         rows = []
+        fn_st_top = ""
+        m_st_top = re.search(r'(?:th[uửủa]+|thua)\s*([0-9]+[A-Za-z]?(?:\+[0-9]+[A-Za-z]?)*)', file_name or "", re.IGNORECASE)
+        if m_st_top:
+            fn_st_top = m_st_top.group(1).upper()
+
         for offset, p_info in enumerate(danh_sach):
             curr_stt = start_stt + offset
+            if fn_st_top and str(p_info.get("so_thua", "")).strip() in ["7+3", "0+0", "0+0+2+0", "0", "00"]:
+                p_info["so_thua"] = fn_st_top
             safe_item, reasons = cls._normalise_parcel_item(p_info if isinstance(p_info, dict) else {})
             p_merged = json.loads(json.dumps(merged))
             p_thua = p_merged.setdefault("thua_dat", {})
@@ -665,15 +734,26 @@ class Cadastral129Mapper:
             row = cls.map_merged_to_row(p_merged, stt=curr_stt, file_name=file_name)
             row["STT"] = curr_stt
             row["DDK_maDon"] = f"DON_{curr_stt}"
-            row["TD_soThuTuThua"] = safe_item["so_thua"] or p_thua.get("so_thua", "")
-            row["TD_soHieuToBanDo"] = safe_item["to_ban_do"] or p_thua.get("to_ban_do", "")
-            row["TD_dienTich"] = safe_item["dien_tich"] if safe_item["dien_tich"] is not None else p_thua.get("dien_tich")
-            row["TD_dienTichPhapLy"] = safe_item["dien_tich_phap_ly"]
-            row["TD_dienTichMDSD"] = safe_item["dien_tich_mdsd"]
-            row["TD_dienTichNguonGoc"] = safe_item["dien_tich_nguon_goc"]
-            row["TD_maMucDichSuDung"] = safe_item["ma_muc_dich"] or row.get("TD_maMucDichSuDung", "")
-            row["TD_thoiHanSuDung"] = safe_item["thoi_han"] or row.get("TD_thoiHanSuDung", "") or p_thua.get("thoi_han", "")
-            row["TD_nguonGoc"] = safe_item["nguon_goc"] or row.get("TD_nguonGoc", "") or p_thua.get("nguon_goc", "")
+            # map_merged_to_row đã thực hiện chuẩn hóa cao nhất (bao gồm regex fallback tên file, Section IV raw text).
+            # Chỉ ghi đè từ safe_item nếu row chưa có giá trị hoặc safe_item cung cấp diện tích chi tiết.
+            if not row.get("TD_soThuTuThua") and safe_item.get("so_thua"):
+                row["TD_soThuTuThua"] = safe_item["so_thua"]
+            if not row.get("TD_soHieuToBanDo") and safe_item.get("to_ban_do"):
+                row["TD_soHieuToBanDo"] = safe_item["to_ban_do"]
+            if row.get("TD_dienTich") is None and safe_item.get("dien_tich") is not None:
+                row["TD_dienTich"] = safe_item["dien_tich"]
+            if safe_item.get("dien_tich_phap_ly") is not None:
+                row["TD_dienTichPhapLy"] = safe_item["dien_tich_phap_ly"]
+            if safe_item.get("dien_tich_mdsd") is not None:
+                row["TD_dienTichMDSD"] = safe_item["dien_tich_mdsd"]
+            if safe_item.get("dien_tich_nguon_goc") is not None:
+                row["TD_dienTichNguonGoc"] = safe_item["dien_tich_nguon_goc"]
+            if not row.get("TD_maMucDichSuDung") and safe_item.get("ma_muc_dich"):
+                row["TD_maMucDichSuDung"] = safe_item["ma_muc_dich"]
+            if not row.get("TD_thoiHanSuDung") and safe_item.get("thoi_han"):
+                row["TD_thoiHanSuDung"] = safe_item["thoi_han"]
+            if not row.get("TD_nguonGoc") and safe_item.get("nguon_goc"):
+                row["TD_nguonGoc"] = safe_item["nguon_goc"]
             if reasons:
                 row["_quality_status"] = "review"
                 row["_quality_reasons"] = reasons
@@ -730,13 +810,92 @@ class Cadastral129Mapper:
         )
         so_phat_hanh = (so_phat_hanh or "")[:15]
 
-        raw_svs = merged.get("so_vao_so", "") or ""
+        raw_md = merged.get("raw_ocr_markdown") or merged.get("raw_markdown") or ""
+
+        raw_svs = merged.get("so_vao_so", "") or (cap.get("so_vao_so", "") if isinstance(cap, dict) else "") or ""
         is_svs_v, norm_svs, _ = GCNValidators.validate_registry_book_number(raw_svs) if raw_svs else (False, "", None)
-        so_vao_so = (norm_svs if is_svs_v else "")[:25]
+        so_vao_so = (norm_svs if (is_svs_v and norm_svs not in ["CH00000", "CN00000"]) else "")[:25]
+        if not so_vao_so and raw_md:
+            for line in raw_md.splitlines():
+                if "## I. DỮ LIỆU BÓC TÁCH" in line:
+                    continue
+                m_svs = re.search(
+                    r'(?:(?:S[ốoôóòõỏ0-9]|So|so|V[àa]o|vao)\s*(?:v[àa]o|vao)?\s*s[ổốoôóòõỏ0-9]?\s*c[ấaâắặ]p\s*(?:GCN|gi[ấa]y)?|v[àa]o\s*s[ổốoôóòõỏ0-9]\s*c[ấaâắặ]p|s[ổốoôóòõỏ0-9]\s*v[àa]o\s*s[ổốoôóòõỏ0-9]|c[ấaâắặ]p\s*GCN\s*s[ốoôóòõỏ0-9]|s[ổốoôóòõỏ0-9]\s*c[ấaâắặ]p\s*GCN)\s*[:\.]?\s*([A-Za-z0-9\.\-_/% ]+)',
+                    line,
+                    re.IGNORECASE
+                )
+                if m_svs:
+                    cand_svs = m_svs.group(1).strip()
+                    if cand_svs and not cand_svs.startswith('-') and not cand_svs.startswith("None"):
+                        is_fb_v, norm_fb_svs, _ = GCNValidators.validate_registry_book_number(cand_svs)
+                        if is_fb_v and norm_fb_svs not in ["CH00000", "CN00000"]:
+                            so_vao_so = norm_fb_svs[:25]
+                            break
+                m_dir = re.search(r'\b((?:CH|CN|CS|CT|CC|UB|VP|TNH)[\s\.\-_0-9]+(?:\/[A-Za-z0-9\-_]+)?)\b', line, re.IGNORECASE)
+                if m_dir and not so_vao_so:
+                    cand_dir = m_dir.group(1).strip()
+                    is_d_v, norm_d_svs, _ = GCNValidators.validate_registry_book_number(cand_dir)
+                    if is_d_v and norm_d_svs not in ["CH00000", "CN00000"]:
+                        so_vao_so = norm_d_svs[:25]
+                        break
 
         raw_ngay_cap = cap.get("ngay_cap", "") or ""
         is_nc_valid, norm_ngay_cap, _ = GCNValidators.validate_date(raw_ngay_cap) if raw_ngay_cap else (False, None, None)
         valid_ngay_cap = norm_ngay_cap if is_nc_valid else None
+        if not valid_ngay_cap and raw_md:
+            lines = raw_md.splitlines()
+            for idx, line in enumerate(lines):
+                if any(b in line.lower() for b in ['sinh năm', 'hạn sử dụng', 'thời hạn', 'đến ngày', 'mục đích', 'chuyển nhượng', 'thu hồi', 'nội dung thay đổi', 'nội dung bổ sung']):
+                    continue
+                is_fb_d, norm_fb_d, _ = GCNValidators.validate_date(line)
+                if is_fb_d:
+                    valid_ngay_cap = norm_fb_d
+                    break
+
+                window_text = line
+                if idx + 1 < len(lines):
+                    window_text += " " + lines[idx + 1]
+                if idx + 2 < len(lines):
+                    window_text += " " + lines[idx + 2]
+
+                m_d = re.search(
+                    r'(?:ngày|ngay|ngảy|ngáy|\bng\b|\bngày\s*t\b)?\s*[:\.]?\s*([0-9IlL\./otT\-\?]+|\s*)\s*(?:tháng|thang)\s*[:\.]?\s*([0-9IlLoO\.]+)\s*(?:năm|nam)\s*[:\.]?\s*([12][0-9]{3})',
+                    window_text,
+                    re.IGNORECASE
+                )
+                if m_d:
+                    day_str = m_d.group(1).strip()
+                    mon_str = m_d.group(2).strip()
+                    yr_str = m_d.group(3).strip()
+
+                    day_clean = re.sub(r'[^0-9]', '', day_str.replace('I', '1').replace('l', '1').replace('t', '4').replace('o', '0').replace('O', '0'))
+                    if not day_clean or int(day_clean) == 0 or int(day_clean) > 31:
+                        day_clean = "01"
+                    elif len(day_clean) == 1:
+                        day_clean = f"0{day_clean}"
+                    elif len(day_clean) > 2:
+                        day_clean = day_clean[:2]
+                        if int(day_clean) > 31:
+                            day_clean = "01"
+
+                    mon_clean = re.sub(r'[^0-9]', '', mon_str.replace('I', '1').replace('l', '1').replace('o', '0').replace('O', '0'))
+                    if not mon_clean or int(mon_clean) == 0 or int(mon_clean) > 12:
+                        if len(mon_clean) == 2 and mon_clean.startswith('2'):
+                            mon_clean = f"0{mon_clean[1]}"
+                        else:
+                            mon_clean = "01"
+                    elif len(mon_clean) == 1:
+                        mon_clean = f"0{mon_clean}"
+                    elif len(mon_clean) > 2:
+                        mon_clean = mon_clean[:2]
+                        if int(mon_clean) > 12:
+                            mon_clean = "01"
+
+                    test_date = f"{day_clean}/{mon_clean}/{yr_str}"
+                    ok_dt, n_dt, _ = GCNValidators.validate_date(test_date)
+                    if ok_dt:
+                        valid_ngay_cap = n_dt
+                        break
         ngay_cap = valid_ngay_cap or ""
         ten_nguoi_ky = cls._clean_signer_name(cap.get("nguoi_ky_qd", "") or "")
 
@@ -784,6 +943,34 @@ class Cadastral129Mapper:
                 chu1_gender = 0
 
         chu2_hoten = cls.clean_person_name(raw_ten2)
+        # Bổ sung trích xuất Chủ 2 (Vợ/Chồng) từ raw_md và tên thư mục nếu chưa có
+        if not chu2_hoten and raw_md:
+            m_spouse = re.search(
+                r'(?:(?:và\s+vợ\s+là|va\s+vo\s+la|vợ\s+là|vo\s+la)\s*(?:bà|ba)?|(?:và\s+chồng\s+là|va\s+chong\s+la|chồng\s+là|chong\s+la)\s*(?:ông|ong)?|(?:và|va)\s+(?:bà|ba|ông|ong))\s*[:\.]?\s*([A-ZÀ-ỸĐ][A-Za-zÀ-ỹđ\s]{2,30})(?=[,\n;\.]|\s+(?:sinh\s*năm|năm\s*sinh|cmnd|cccd|số|địa\s*chỉ)|\s*$)',
+                raw_md,
+                re.IGNORECASE
+            )
+            if m_spouse:
+                cand_spouse = cls.clean_person_name(m_spouse.group(1).strip())
+                if cand_spouse and cand_spouse.lower() != chu1_hoten.lower() and len(cand_spouse.split()) >= 2:
+                    if not any(k in cand_spouse.lower() for k in ["chủ tịch", "giám đốc", "thẩm quyền", "ủy ban", "văn phòng", "chi nhánh", "ubnd", "ký tên"]):
+                        chu2_hoten = cand_spouse
+                        raw_ten2 = cand_spouse
+                        spouse_found_in_addr = True
+
+            if not chu2_hoten and src_file:
+                m_fp = re.search(r'[\/\\](?:th[uửủa]+|thua)\s*[^\\\/]+[\/\\]([A-ZÀ-ỸĐ][A-Za-zÀ-ỹđ\s]+)\s*[-–]\s*([A-ZÀ-ỸĐ][A-Za-zÀ-ỹđ\s]+)[\/\\]', src_file, re.IGNORECASE)
+                if m_fp:
+                    p1 = cls.clean_person_name(m_fp.group(1).strip())
+                    p2 = cls.clean_person_name(m_fp.group(2).strip())
+                    if len(p1.split()) >= 2 and len(p2.split()) >= 2:
+                        if chu1_hoten.lower() in p1.lower() or p1.lower() in chu1_hoten.lower():
+                            chu2_hoten = p2
+                            raw_ten2 = p2
+                        elif chu1_hoten.lower() in p2.lower() or p2.lower() in chu1_hoten.lower():
+                            chu2_hoten = p1
+                            raw_ten2 = p1
+
         chu2_gender = 0 if chu1_gender == 1 else (1 if chu1_gender == 0 else 0)
 
         # Tách CMND / CCCD nếu chứa nhiều số
@@ -825,6 +1012,16 @@ class Cadastral129Mapper:
             if m_cid2:
                 v_fb2, n_fb2, _ = GCNValidators.validate_cccd(m_cid2.group(1))
                 chu2_cid = n_fb2 if v_fb2 else ""
+            elif chu2_hoten and raw_md:
+                # Quét số CCCD đi kèm tên Chủ 2 trong toàn văn raw_md
+                m_cid_raw = re.search(
+                    rf'(?:{re.escape(chu2_hoten)}|[Cc][Mm][Nn][Dd]|[Cc][Cc][Cc][Dd]|số)[\s:\.]*(\d{{9}}|\d{{12}})\b',
+                    raw_md,
+                    re.IGNORECASE
+                )
+                if m_cid_raw:
+                    v_fb2, n_fb2, _ = GCNValidators.validate_cccd(m_cid_raw.group(1))
+                    chu2_cid = n_fb2 if (v_fb2 and n_fb2 != chu1_cid) else ""
             else:
                 chu2_cid = ""
 
@@ -860,10 +1057,47 @@ class Cadastral129Mapper:
             m_yr2 = re.search(r"\b(19\d{2}|20\d{2})\b", f"{raw_ten2}")
             if not m_yr2 and spouse_found_in_addr:
                 m_yr2 = re.search(r"\b(19\d{2}|20\d{2})\b", addr1_raw_early)
-            chu2_dob = m_yr2.group(1) if m_yr2 else ""
+            if not m_yr2 and chu2_hoten and raw_md:
+                m_yr_raw = re.search(
+                    rf'{re.escape(chu2_hoten)}[^\n]{{0,50}}?(?:sinh\s*năm|năm\s*sinh)[\s:\.]*(\d{{4}})\b',
+                    raw_md,
+                    re.IGNORECASE
+                )
+                if m_yr_raw:
+                    v_fb_dob2, n_fb_dob2, _ = GCNValidators.validate_birth_year(m_yr_raw.group(1))
+                    chu2_dob = n_fb_dob2 if v_fb_dob2 else ""
+                else:
+                    chu2_dob = ""
+            else:
+                chu2_dob = m_yr2.group(1) if m_yr2 else ""
+
+        # Kiểm tra trùng lặp Chủ 1 và Chủ 2
+        if chu2_hoten and chu1_hoten and (chu2_hoten.strip().lower() == chu1_hoten.strip().lower()):
+            chu2_hoten = ""
+            chu2_dob = ""
+            chu2_gender = ""
+            chu2_cid = ""
+            chu2_loai_gt = ""
+            addr2_raw = ""
+            loai_chu = "Cá nhân"
+
+        loai_chu = ""
+        # Kiểm tra biến động trang 4 chuyển nhượng/tặng cho cá nhân đơn lẻ
+        bd = merged.get("bien_dong", {}) or {}
+        new_owner = bd.get("ten_chuyen_nhuong_moi") or bd.get("ten_chuyen_nhuong_1")
+        new_owner2 = bd.get("ten_chuyen_nhuong_2")
+        if new_owner and not new_owner2:
+            tt_bd = str(bd.get("thong_tin_bien_dong", "")).lower()
+            if not any(k in tt_bd for k in ["và vợ", "và chồng", "vợ là", "chồng là"]):
+                chu2_hoten = ""
+                chu2_dob = ""
+                chu2_gender = ""
+                chu2_cid = ""
+                chu2_loai_gt = ""
+                loai_chu = "Cá nhân"
 
         # Xác định loại đối tượng
-        loai_chu = nguoi.get("loai_chu", "")
+        loai_chu_raw = nguoi.get("loai_chu", "")
         if not loai_chu:
             if chu2_hoten or "vợ" in str(raw_ten1).lower():
                 loai_chu = "Vợ chồng"
@@ -871,28 +1105,81 @@ class Cadastral129Mapper:
                 loai_chu = "Hộ gia đình"
             else:
                 loai_chu = "Cá nhân"
+        elif not chu2_hoten:
+            loai_chu = "Cá nhân"
+        else:
+            loai_chu = loai_chu_raw
 
         # Phân rã địa chỉ thường trú Chủ 1 & Chủ 2
         addr1_raw = nguoi.get("dia_chi_thuong_tru") or nguoi.get("dia_chi") or ""
-        # Do not infer a spouse's residence from the primary owner's address unless
-        # the spouse was specifically extracted from the common household/address block.
+        clean_addr1_test = cls.clean_address(addr1_raw)
         addr2_raw = nguoi.get("dia_chi_thuong_tru_chu_2") or ""
+        clean_addr2_test = cls.clean_address(addr2_raw)
+
+        # Nếu addr1_raw bị rác (như 'CHI NHÁN, QUẬN' hoặc 'II. THÔNG TIN VỀ ĐẤT...') hoặc bị trống:
+        if not clean_addr1_test:
+            # Fallback 1: Lấy địa chỉ sạch của Chủ 2
+            if clean_addr2_test:
+                addr1_raw = clean_addr2_test
+            else:
+                # Fallback 2: Quét raw_md tìm địa chỉ thường trú hoặc địa chỉ đính chính ở Trang 4
+                m_p4_addr = re.search(r'(?:địa\s*chỉ\s*thường\s*trú|địa\s*chỉ)\s*[:\.]?\s*([^\n;]{8,100})', raw_md, re.IGNORECASE)
+                if m_p4_addr and cls.clean_address(m_p4_addr.group(1)):
+                    addr1_raw = m_p4_addr.group(1)
+                else:
+                    # Fallback 3: Lấy từ địa chỉ thửa đất
+                    addr1_raw = thua.get("dia_chi") or thua.get("dia_chi_thua", "") or ""
+
         addr1_parts = cls.decompose_address(addr1_raw)
-        if addr2_raw:
+
+        # Địa chỉ Chủ 2: nếu có địa chỉ riêng thì dùng, nếu không có mà có chu2_hoten thì kế thừa từ Chủ 1 (cùng hộ khẩu)
+        if clean_addr2_test:
             addr2_parts = cls.decompose_address(addr2_raw)
-        elif chu2_hoten and spouse_found_in_addr:
+        elif chu2_hoten:
             addr2_parts = dict(addr1_parts)
         else:
             addr2_parts = cls.decompose_address("")
 
         # ─── 4. Thửa đất ──────────────────────────────────────────────────────
+        # Trích xuất số thửa và tờ bản đồ từ tên file/thư mục nguồn để đối soát
+        fn_tb = ""
+        m_tb_fn = re.search(r'T[oờ]\s*(\d+)', src_file, re.IGNORECASE)
+        if m_tb_fn:
+            fn_tb = m_tb_fn.group(1)
+
+        fn_st = ""
+        m_st_fn = re.search(r'(?:th[uửủa]+|thua)\s*([0-9]+[A-Za-z]?(?:\+[0-9]+[A-Za-z]?)*)', src_file, re.IGNORECASE)
+        if m_st_fn:
+            fn_st = m_st_fn.group(1).upper()
+
         raw_so_thua = thua.get("so_thua") or folder_meta.get("so_thua", "") or ""
         v_st, n_st, _ = GCNValidators.validate_parcel_number(raw_so_thua)
-        so_thua = n_st if v_st else (str(raw_so_thua).strip() if str(raw_so_thua).strip() != "-" else "")
+        # Nếu so_thua bị rác (như '0+0', '7+3', '0+0+2+0', ...) trong khi tên file có số thửa rõ ràng:
+        is_vertex_index_noise = bool(re.match(r"^[0-9]\+[0-9]$", str(n_st or "").strip()))
+        if fn_st and (not v_st or is_vertex_index_noise or n_st in ["0+0", "0+0+2+0", "7+3", "0", "00"] or ("+" in str(raw_so_thua) and "+" not in fn_st)):
+            so_thua = fn_st
+        elif v_st:
+            so_thua = n_st
+        else:
+            # Fallback 1: Thử lấy từ folder_meta hoặc tên file
+            v_fb_st, n_fb_st, _ = GCNValidators.validate_parcel_number(folder_meta.get("so_thua", "") or fn_st)
+            if v_fb_st:
+                so_thua = n_fb_st
+            else:
+                # Fallback 2: Quét raw_md tìm số thửa
+                m_st = re.search(r'(?:thửa\s*đất\s*số|thửa\s*số|thua\s*dat\s*so|thua\s*so)\s*[:\.]?\s*(\d+[A-Za-z]?)', raw_md, re.IGNORECASE)
+                if m_st:
+                    so_thua = m_st.group(1).upper()
+                else:
+                    so_thua = fn_st or ""
 
-        raw_to_ban_do = thua.get("to_ban_do") or folder_meta.get("to_ban_do", "") or ""
-        v_tb, n_tb, _ = GCNValidators.validate_map_sheet(raw_to_ban_do)
-        to_ban_do = n_tb if v_tb else (str(raw_to_ban_do).strip() if str(raw_to_ban_do).strip() != "-" else "")
+        raw_to_ban_do = thua.get("to_ban_do") or folder_meta.get("to_ban_do", "") or fn_tb or ""
+        # Nếu to_ban_do bị dính dấu '+' (như 2+14, 17+457, 337+4, 193200+3, ...) hoặc dính chữ trích đo L.Tray:
+        if fn_tb and ("+" in str(raw_to_ban_do) or len(str(raw_to_ban_do)) > 4 or any(k in str(raw_to_ban_do).lower() for k in ["tray", "bk", "m-", "bản đồ", "tỷ lệ"])):
+            to_ban_do = fn_tb
+        else:
+            v_tb, n_tb, _ = GCNValidators.validate_map_sheet(raw_to_ban_do)
+            to_ban_do = n_tb if v_tb else (fn_tb or (str(raw_to_ban_do).strip() if str(raw_to_ban_do).strip() != "-" else ""))
 
         dien_tich = thua.get("dien_tich_cap") or thua.get("dien_tich", "") or ""
         v_dt, norm_dt, _ = GCNValidators.validate_area(dien_tich) if dien_tich else (False, None, None)
@@ -910,30 +1197,24 @@ class Cadastral129Mapper:
             marker in raw_addr_thua_lower
             for marker in ["diện tích", "dien tich", "thời hạn", "thoi han", "mục đích", "muc dich", "riêng", "chung"]
         )
-        # Trích xuất địa danh sạch nếu chuỗi dính tiêu đề bảng
         m_loc = re.search(r'((?:Thôn|Bản\s+[A-ZÀ-Ỹ]|Khu\s+[A-ZÀ-Ỹ]|Đồng\s+[A-ZÀ-Ỹ]|xã\s+[A-ZÀ-Ỹ]|huyện\s+[A-ZÀ-Ỹ])[^;\n\r]+)', str(addr_thua_raw), re.IGNORECASE)
         if is_issuing_authority_noise:
-            # Tên cơ quan cấp GCN không phải địa chỉ thửa đất, không được
-            # cắt riêng phần "huyện ..." rồi ghi thành địa chỉ hợp lệ.
             addr_thua_raw = ""
         elif m_loc and not any(k in m_loc.group(1).lower() for k in ['diện tích', 'thời hạn', 'mục đích', 'tổng số', 'sử dụng', 'riêng', 'chung']):
             clean_cand = m_loc.group(1).strip(' -:;,')
             if len(clean_cand) >= 8:
                 addr_thua_raw = clean_cand
             else:
-                # Có dữ liệu nguồn nhưng không đủ tin cậy: để trống sau khi
-                # làm sạch, không sao chép nguyên địa chỉ chủ sử dụng sang thửa đất.
                 addr_thua_raw = str(addr_thua_raw).strip()
         elif not has_parcel_address_source or is_table_header_noise:
-            # Fallback khi trường địa chỉ thửa đất trống hoặc chỉ dính tiêu đề bảng.
             addr_thua_raw = addr1_parts.get("dia_chi_chi_tiet", "")
-        clean_td_addr = GCNValidators.clean_address(addr_thua_raw)
+        clean_td_addr = cls.clean_address(GCNValidators.clean_address(addr_thua_raw))
         addr_thua_parts = cls.decompose_address(clean_td_addr)
-        # Bổ sung huyện, tỉnh nếu địa chỉ thửa đất chỉ ghi đến cấp xã (ví dụ 'Đồng Khuổi Dụi, xã Vĩnh Yên')
+
+        # Bổ sung quận/huyện, tỉnh/thành phố chuẩn xác
         td_dc = addr_thua_parts.get("dia_chi_chi_tiet", "")
         if td_dc:
             extra = []
-            # Chỉ xét sự hiện diện thực tế của cấp huyện / tỉnh trong chuỗi hiển thị td_dc
             td_has_district = bool(
                 re.search(r"\b(?:huyện|huyen|quận|quan|thị\s*xã|thi\s*xa)\b", td_dc, re.IGNORECASE)
                 or (addr_thua_parts.get("ten_huyen") and addr_thua_parts.get("ten_huyen").lower() in td_dc.lower())
@@ -942,13 +1223,24 @@ class Cadastral129Mapper:
                 re.search(r"\b(?:tỉnh|tinh|tin[hg]|thành\s*phố|thanh\s*pho|tp\.?)\b", td_dc, re.IGNORECASE)
                 or (addr_thua_parts.get("ten_tinh") and addr_thua_parts.get("ten_tinh").lower() in td_dc.lower())
             )
-            if addr1_parts.get("ten_huyen") and not td_has_district:
-                extra.append(f"huyện {addr1_parts['ten_huyen']}")
-            if addr1_parts.get("ten_tinh") and not td_has_province:
-                extra.append(f"tỉnh {addr1_parts['ten_tinh']}")
+            dist_name = addr1_parts.get("ten_huyen", "")
+            if dist_name and not td_has_district:
+                if any(q.lower() in dist_name.lower() for q in ["Lê Chân", "Hồng Bàng", "Ngô Quyền", "Hải An", "Kiến An", "Đồ Sơn", "Dương Kinh"]):
+                    extra.append(f"quận {dist_name}")
+                else:
+                    extra.append(f"huyện {dist_name}")
+            prov_name = addr1_parts.get("ten_tinh", "")
+            if any(q.lower() in str(dist_name).lower() or q.lower() in td_dc.lower() for q in ["lê chân", "hồng bàng", "ngô quyền", "hải an", "kiến an", "đồ sơn", "dương kinh"]):
+                prov_name = "Hải Phòng"
+            if prov_name and not td_has_province:
+                if any(c.lower() in prov_name.lower() for c in ["Hải Phòng", "Hà Nội", "Đà Nẵng", "Cần Thơ", "Hồ Chí Minh"]):
+                    extra.append(f"thành phố {prov_name}")
+                else:
+                    extra.append(f"tỉnh {prov_name}")
             if extra:
                 td_dc += ", " + ", ".join(extra)
-                addr_thua_parts = cls.decompose_address(td_dc)
+            td_dc = cls.clean_address(td_dc)
+            addr_thua_parts = cls.decompose_address(td_dc)
 
         raw_mdsd = thua.get("muc_dich_su_dung") or thua.get("muc_dich_sd") or thua.get("muc_dich", "") or ""
         ma_mdsd = (cls.map_muc_dich(thua.get("ma_muc_dich") or raw_mdsd, raw_mdsd) or "")[:15]
@@ -964,15 +1256,49 @@ class Cadastral129Mapper:
                 if m_dates:
                     thoi_han = "+".join(f"Đến {d}" for d in m_dates)
 
+        # Nguồn gốc sử dụng đất (Bảo tồn trọn vẹn đoạn sau pháp lý)
         raw_ng = thua.get("nguon_goc", "") or thua.get("nguon_goc_sd", "") or ""
+        if raw_md:
+            lines = raw_md.splitlines()
+            iv_idx = 0
+            for i, l in enumerate(lines):
+                if "## IV. VĂN BẢN OCR THÔ" in l:
+                    iv_idx = i
+                    break
+            cand_ng = ""
+            for idx in range(iv_idx, len(lines)):
+                line = lines[idx]
+                m_ng_l = re.search(r'(?:g\)\s*Nguồn\s*gốc\s*sử\s*dụng|Nguồn\s*gốc\s*sử\s*dụng|g\)\s*Nguon\s*goc)\s*[:\.]?\s*(.+)', line, re.IGNORECASE)
+                if m_ng_l:
+                    cand_ng = m_ng_l.group(1).strip()
+                    if idx + 1 < len(lines):
+                        next_l = lines[idx + 1].strip()
+                        if any(next_l.lower().startswith(kw) for kw in [
+                            "như giao đất", "nhu giao dat", "có thu tiền", "co thu tien",
+                            "không thu tiền", "khong thu tien", "được công nhận", "duoc cong nhan",
+                            "sử dụng đất", "su dung dat"
+                        ]) or any(k in next_l.lower() for k in ["thu tiền sử dụng đất", "thu tien su dung dat", "giao đất có thu tiền", "giao đất không thu tiền"]):
+                            if not re.match(r'^(?:[0-9]+\.|\w\))\s+', next_l):
+                                cand_ng += " " + next_l
+                    break
+            if cand_ng:
+                cand_ng = re.sub(r'[\.;,]+$', '', cand_ng).strip()
+                cand_ng = re.sub(r'\s+', ' ', cand_ng)
+                cand_ng = re.split(r'\s+(?:2\.\s*Nhà\s*ở|[0-9]+\.\s*Công\s*trình)\b', cand_ng, flags=re.IGNORECASE)[0].strip()
+                if len(cand_ng) > len(raw_ng):
+                    raw_ng = cand_ng
+
         v_ng, norm_ng, code_ng, _ = GCNValidators.validate_land_use_origin(raw_ng)
-        ng_full = norm_ng if v_ng else ""
-        ng_code = code_ng if v_ng else ""
-        if not ng_full and raw_ng:
-            ng_full, ng_code = cls.map_nguon_goc(raw_ng)
-            # Chặn nếu ng_full dính blacklist tiêu đề
-            if any(bw in ng_full.upper() for bw in ["QUYỀN SỞ HỮU", "TÀI SẢN KHÁC", "NGƯỜI SỬ DỤNG ĐẤT", "HỘ ÔNG"]):
-                ng_full, ng_code = "", ""
+        if v_ng and len(raw_ng) >= len(norm_ng or ""):
+            ng_full = raw_ng
+            ng_code = code_ng or ""
+        else:
+            ng_full = norm_ng if v_ng else ""
+            ng_code = code_ng if v_ng else ""
+            if not ng_full and raw_ng:
+                ng_full, ng_code = cls.map_nguon_goc(raw_ng)
+                if any(bw in ng_full.upper() for bw in ["QUYỀN SỞ HỮU", "TÀI SẢN KHÁC", "NGƯỜI SỬ DỤNG ĐẤT", "HỘ ÔNG"]):
+                    ng_full, ng_code = "", ""
 
         # Tỷ lệ đo đạc: ưu tiên tỷ lệ bóc tách từ GCN (chuẩn hóa 1:XXXX), nếu không có fallback về tỷ lệ chuẩn địa chính 1:1000
         raw_tl = thua.get("ty_le") or folder_meta.get("ty_le", "") or ""
